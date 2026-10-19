@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1c2a3d">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="JAF Metal">
+  <meta name="description" content="Gestão da JAF Metal: estoque, compras, produção, máquinas, equipe e financeiro.">
+  <title>JAF Metal</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css?v=1.0.0">
+  <script>
+    // tema antes de desenhar (evita "piscar" claro no modo escuro)
+    try { var t = localStorage.getItem('jaf.tema') || 'auto';
+      document.documentElement.dataset.tema = (t === 'escuro' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)) ? 'escuro' : 'claro'; } catch (e) {}
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="avisos" aria-live="polite"></div>
+  <noscript><p style="padding:24px">Ative o JavaScript para usar o sistema.</p></noscript>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.3/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js?v=1.0.0"></script>
+  <script src="js/util.js?v=1.0.0"></script>
+  <script src="js/api.js?v=1.0.0"></script>
+  <script src="js/dados.js?v=1.0.0"></script>
+  <script src="js/ui.js?v=1.0.0"></script>
+  <script src="js/app.js?v=1.0.0"></script>
+  <script src="js/pdf.js?v=1.0.0"></script>
+  <script src="js/telas/inicio.js?v=1.0.0"></script>
+  <script src="js/telas/pecas.js?v=1.0.0"></script>
+  <script src="js/telas/movimentos.js?v=1.0.0"></script>
+  <script src="js/telas/compras.js?v=1.0.0"></script>
+  <script src="js/telas/fornecedores.js?v=1.0.0"></script>
+  <script src="js/telas/maquinas.js?v=1.0.0"></script>
+  <script src="js/telas/producao.js?v=1.0.0"></script>
+  <script src="js/telas/financeiro.js?v=1.0.0"></script>
+  <script src="js/telas/clientes.js?v=1.0.0"></script>
+  <script src="js/telas/equipe.js?v=1.0.0"></script>
+  <script src="js/telas/relatorios.js?v=1.0.0"></script>
+  <script src="js/importar.js?v=1.0.0"></script>
+  <script src="js/telas/admin.js?v=1.0.0"></script>
+  <script src="js/telas/ajuda.js?v=1.0.0"></script>
+  <script>
+    App.iniciar();
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
+  </script>
+</body>
+</html>

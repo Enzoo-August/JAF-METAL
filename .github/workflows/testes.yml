@@ -1,0 +1,57 @@
+name: Testes
+
+# Roda a cada envio: banco de dados, telas (num navegador de verdade, em modo teste) e proteção do repositório.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repositorio:
+    name: Nada de dado real nem chave secreta
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nenhuma planilha no repositório
+        run: |
+          if git ls-files | grep -iE '\.(xls|xlsx|xlsm|csv)$'; then echo "::error::Planilha no repositório"; exit 1; fi
+      - name: Nenhuma chave secreta do Supabase no código
+        run: |
+          if grep -rInE 'sb_secret_[A-Za-z0-9_-]{10,}' --exclude-dir=.git .; then echo "::error::Chave secreta no código"; exit 1; fi
+      - name: Sintaxe de todos os arquivos JavaScript
+        run: for f in js/*.js js/telas/*.js testes/*.js testes/*.mjs; do node --check "$f" || exit 1; done
+
+  banco:
+    name: Banco (perfis, estoque, compras, financeiro, segurança)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar o Postgres de teste (PGlite)
+        run: mkdir -p /tmp/pg && cd /tmp/pg && npm init -y > /dev/null && npm i @electric-sql/pglite@0.5.8 --no-audit --no-fund
+      - name: Testes do banco
+        run: PGLITE=/tmp/pg node testes/banco.mjs
+
+  telas:
+    name: Telas (roteiro e layout em celular, tablet e computador)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar o navegador de teste
+        run: |
+          mkdir -p /tmp/pw && cd /tmp/pw && npm init -y > /dev/null && npm i playwright@1.59.1 --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Servir o site
+        run: python3 -m http.server 8000 > /dev/null 2>&1 &
+      - name: Roteiro pelas telas e varredura de layout (4 perfis)
+        run: PLAYWRIGHT_DIR=/tmp/pw URL=http://localhost:8000 node testes/ui-ci.mjs

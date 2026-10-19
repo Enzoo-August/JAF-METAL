@@ -1,0 +1,27 @@
+name: CodeQL
+
+# Análise de segurança do código feita pelo GitHub (procura falhas conhecidas em JavaScript).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '30 9 * * 1'   # toda segunda-feira
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analisar:
+    name: Analisar o código
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'
