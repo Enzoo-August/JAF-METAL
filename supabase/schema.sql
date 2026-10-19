@@ -25,6 +25,10 @@ language sql stable set search_path = public as $$ select (now() at time zone 'A
 create or replace function public.nz(p text) returns text
 language sql immutable set search_path = public as $$ select nullif(btrim(regexp_replace(coalesce(p, ''), '\s+', ' ', 'g')), '') $$;
 
+-- texto longo (observações): só tira os espaços das pontas; mantém as quebras de linha
+create or replace function public.nzt(p text) returns text
+language sql immutable set search_path = public as $$ select nullif(btrim(coalesce(p, ''), E' \t\r\n'), '') $$;
+
 create or replace function public.num(p jsonb, k text, padrao numeric default null) returns numeric
 language plpgsql immutable set search_path = public as $$
 declare t text := nullif(btrim(coalesce(p ->> k, '')), '');
@@ -502,7 +506,7 @@ begin
           public.nz(p->>'telefone'), public.nz(p->>'celular'), lower(public.nz(p->>'email')), public.nz(p->>'site'), public.nz(p->>'endereco'),
           public.nz(p->>'bairro'), public.nz(p->>'cidade'), upper(public.nz(p->>'uf')), public.nz(p->>'cep'), public.nz(p->>'cnpj'),
           public.nz(p->>'ie'), public.nz(p->>'qualificacao'), public.nz(p->>'qualif_metodo'), public.dt(p, 'qualif_validade'),
-          public.nz(p->>'obs'), coalesce((p->>'ativo')::boolean, true))
+          public.nzt(p->>'obs'), coalesce((p->>'ativo')::boolean, true))
   on conflict (id) do update set nome = excluded.nome, razao = excluded.razao, tipo = excluded.tipo, contato = excluded.contato,
           contato2 = excluded.contato2, telefone = excluded.telefone, celular = excluded.celular, email = excluded.email,
           site = excluded.site, endereco = excluded.endereco, bairro = excluded.bairro, cidade = excluded.cidade, uf = excluded.uf,
@@ -526,7 +530,7 @@ begin
   end if;
   insert into public.pecas (id, codigo, descricao, utilizacao, fornecedor_id, unidade, est_min, est_max, local, obs, ativo)
   values (v_id, v_cod, public.nz(p->>'descricao'), public.nz(p->>'utilizacao'), public.uid_de(p, 'fornecedor_id'),
-          coalesce(public.nz(p->>'unidade'), 'un'), v_min, v_max, public.nz(p->>'local'), public.nz(p->>'obs'),
+          coalesce(public.nz(p->>'unidade'), 'un'), v_min, v_max, public.nz(p->>'local'), public.nzt(p->>'obs'),
           coalesce((p->>'ativo')::boolean, true))
   on conflict (id) do update set codigo = excluded.codigo, descricao = excluded.descricao, utilizacao = excluded.utilizacao,
           fornecedor_id = excluded.fornecedor_id, unidade = excluded.unidade, est_min = excluded.est_min, est_max = excluded.est_max,
@@ -545,7 +549,7 @@ begin
   end if;
   insert into public.maquinas (id, nome, tipo, fabricante, modelo, numero_serie, setor, ano, preventiva_dias, obs, ativo)
   values (v_id, v_nome, public.nz(p->>'tipo'), public.nz(p->>'fabricante'), public.nz(p->>'modelo'), public.nz(p->>'numero_serie'),
-          public.nz(p->>'setor'), public.num(p, 'ano')::int, nullif(public.num(p, 'preventiva_dias')::int, 0), public.nz(p->>'obs'),
+          public.nz(p->>'setor'), public.num(p, 'ano')::int, nullif(public.num(p, 'preventiva_dias')::int, 0), public.nzt(p->>'obs'),
           coalesce((p->>'ativo')::boolean, true))
   on conflict (id) do update set nome = excluded.nome, tipo = excluded.tipo, fabricante = excluded.fabricante, modelo = excluded.modelo,
           numero_serie = excluded.numero_serie, setor = excluded.setor, ano = excluded.ano, preventiva_dias = excluded.preventiva_dias,
@@ -564,7 +568,7 @@ begin
   end if;
   insert into public.clientes (id, nome, razao, cnpj, contato, telefone, email, cidade, uf, obs, ativo)
   values (v_id, v_nome, public.nz(p->>'razao'), public.nz(p->>'cnpj'), public.nz(p->>'contato'), public.nz(p->>'telefone'),
-          lower(public.nz(p->>'email')), public.nz(p->>'cidade'), upper(public.nz(p->>'uf')), public.nz(p->>'obs'),
+          lower(public.nz(p->>'email')), public.nz(p->>'cidade'), upper(public.nz(p->>'uf')), public.nzt(p->>'obs'),
           coalesce((p->>'ativo')::boolean, true))
   on conflict (id) do update set nome = excluded.nome, razao = excluded.razao, cnpj = excluded.cnpj, contato = excluded.contato,
           telefone = excluded.telefone, email = excluded.email, cidade = excluded.cidade, uf = excluded.uf, obs = excluded.obs,
@@ -588,7 +592,7 @@ begin
     insert into public.funcionarios_privado (funcionario_id, salario, cpf, rg, nascimento, endereco, pix, ferias, obs)
     values (v_id, public.num(pr, 'salario'), public.nz(pr->>'cpf'), public.nz(pr->>'rg'), public.dt(pr, 'nascimento'),
             public.nz(pr->>'endereco'), public.nz(pr->>'pix'),
-            case when jsonb_typeof(pr->'ferias') = 'array' then pr->'ferias' else '[]'::jsonb end, public.nz(pr->>'obs'))
+            case when jsonb_typeof(pr->'ferias') = 'array' then pr->'ferias' else '[]'::jsonb end, public.nzt(pr->>'obs'))
     on conflict (funcionario_id) do update set salario = excluded.salario, cpf = excluded.cpf, rg = excluded.rg,
             nascimento = excluded.nascimento, endereco = excluded.endereco, pix = excluded.pix, ferias = excluded.ferias, obs = excluded.obs;
   end if;
@@ -671,7 +675,7 @@ begin
     insert into public.movimentos (id, data, peca_id, tipo, qtd, preco_unit, fornecedor_id, documento, motivo,
                                    funcionario_id, destino, obs)
     values (v_id, v_data, v_peca.id, 'entrada', v_qtd, v_preco, coalesce(public.uid_de(p, 'fornecedor_id'), v_peca.fornecedor_id),
-            public.nz(p->>'documento'), v_motivo, public.uid_de(p, 'funcionario_id'), public.nz(p->>'destino'), public.nz(p->>'obs'));
+            public.nz(p->>'documento'), v_motivo, public.uid_de(p, 'funcionario_id'), public.nz(p->>'destino'), public.nzt(p->>'obs'));
     return jsonb_build_object('ids', jsonb_build_array(v_id), 'custo', round(v_qtd * v_preco, 2),
                               'partes', jsonb_build_array(jsonb_build_object('qtd', v_qtd, 'preco_unit', v_preco, 'documento', public.nz(p->>'documento'))));
   end if;
@@ -691,7 +695,7 @@ begin
                                    funcionario_id, maquina_id, destino, manutencao_id, obs)
     values (v_novo, v_data, v_peca.id, 'saida', v_take, l.preco_unit, l.fornecedor_id, l.documento, v_motivo,
             public.uid_de(p, 'funcionario_id'), public.uid_de(p, 'maquina_id'), public.nz(p->>'destino'),
-            public.uid_de(p, 'manutencao_id'), public.nz(p->>'obs'));
+            public.uid_de(p, 'manutencao_id'), public.nzt(p->>'obs'));
     v_ids := v_ids || to_jsonb(v_novo);
     v_partes := v_partes || jsonb_build_object('qtd', v_take, 'preco_unit', l.preco_unit, 'documento', l.documento);
     v_custo := v_custo + v_take * l.preco_unit;
@@ -703,7 +707,7 @@ begin
     v_preco := public.ultimo_preco(v_peca.id);
     insert into public.movimentos (id, data, peca_id, tipo, qtd, preco_unit, motivo, funcionario_id, maquina_id, destino, manutencao_id, obs)
     values (v_novo, v_data, v_peca.id, 'saida', v_resta, v_preco, v_motivo, public.uid_de(p, 'funcionario_id'),
-            public.uid_de(p, 'maquina_id'), public.nz(p->>'destino'), public.uid_de(p, 'manutencao_id'), public.nz(p->>'obs'));
+            public.uid_de(p, 'maquina_id'), public.nz(p->>'destino'), public.uid_de(p, 'manutencao_id'), public.nzt(p->>'obs'));
     v_ids := v_ids || to_jsonb(v_novo);
     v_partes := v_partes || jsonb_build_object('qtd', v_resta, 'preco_unit', v_preco, 'documento', null);
     v_custo := v_custo + v_resta * v_preco;
@@ -778,11 +782,11 @@ begin
   if v_ped.id is null then
     insert into public.pedidos_compra (id, data, fornecedor_id, documento, prazo, frete, obs)
     values (v_id, public.dt(p, 'data', public.hoje()), public.uid_de(p, 'fornecedor_id'), public.nz(p->>'documento'),
-            public.dt(p, 'prazo'), coalesce(public.num(p, 'frete'), 0), public.nz(p->>'obs'));
+            public.dt(p, 'prazo'), coalesce(public.num(p, 'frete'), 0), public.nzt(p->>'obs'));
   else
     update public.pedidos_compra set data = public.dt(p, 'data', data), fornecedor_id = public.uid_de(p, 'fornecedor_id'),
            documento = public.nz(p->>'documento'), prazo = public.dt(p, 'prazo'), frete = coalesce(public.num(p, 'frete'), 0),
-           obs = public.nz(p->>'obs')
+           obs = public.nzt(p->>'obs')
      where id = v_id;
   end if;
   for i in select * from jsonb_array_elements(p -> 'itens') loop
@@ -899,7 +903,7 @@ declare v_id uuid := coalesce(public.uid_de(p, 'id'), gen_random_uuid()); v_st t
 begin
   perform public.exigir('dono','escritorio','almoxarife','producao');
   if public.uid_de(p, 'maquina_id') is null then raise exception 'Escolha a máquina'; end if;
-  if public.nz(p->>'problema') is null then raise exception 'Descreva o problema ou o serviço'; end if;
+  if public.nzt(p->>'problema') is null then raise exception 'Descreva o problema ou o serviço'; end if;
   select * into v_old from public.manutencoes where id = v_id;
   if public.eh('producao') and v_old.id is not null and v_old.criado_por is distinct from auth.uid() and v_old.status = 'concluida' then
     raise exception 'Manutenção concluída só pode ser alterada pelo escritório ou almoxarifado';
@@ -907,7 +911,7 @@ begin
   insert into public.manutencoes (id, maquina_id, data, tipo, status, problema, solucao, fornecedor_id, funcionario_id,
                                   custo_servico, horas_parada, concluida_em)
   values (v_id, public.uid_de(p, 'maquina_id'), public.dt(p, 'data', public.hoje()), coalesce(public.nz(p->>'tipo'), 'corretiva'), v_st,
-          public.nz(p->>'problema'), public.nz(p->>'solucao'), public.uid_de(p, 'fornecedor_id'), public.uid_de(p, 'funcionario_id'),
+          public.nzt(p->>'problema'), public.nzt(p->>'solucao'), public.uid_de(p, 'fornecedor_id'), public.uid_de(p, 'funcionario_id'),
           coalesce(public.num(p, 'custo_servico'), 0), public.num(p, 'horas_parada'),
           case when v_st = 'concluida' then public.dt(p, 'concluida_em', public.hoje()) end)
   on conflict (id) do update set maquina_id = excluded.maquina_id, data = excluded.data, tipo = excluded.tipo, status = excluded.status,
@@ -935,7 +939,7 @@ begin
   values (v_id, v_cli, coalesce((select nome from public.clientes where id = v_cli), public.nz(p->>'cliente_nome')),
           public.nz(p->>'pedido_cliente'), public.nz(p->>'produto'), public.nz(p->>'codigo'), v_qtd,
           coalesce(public.nz(p->>'unidade'), 'pç'), public.dt(p, 'prazo'), public.uid_de(p, 'maquina_id'),
-          public.uid_de(p, 'responsavel_id'), case when coalesce((p->>'prioridade')::int, 0) = 1 then 1 else 0 end, public.nz(p->>'obs'))
+          public.uid_de(p, 'responsavel_id'), case when coalesce((p->>'prioridade')::int, 0) = 1 then 1 else 0 end, public.nzt(p->>'obs'))
   on conflict (id) do update set cliente_id = excluded.cliente_id, cliente_nome = excluded.cliente_nome,
           pedido_cliente = excluded.pedido_cliente, produto = excluded.produto, codigo = excluded.codigo, qtd = excluded.qtd,
           unidade = excluded.unidade, prazo = excluded.prazo, maquina_id = excluded.maquina_id,
@@ -961,7 +965,7 @@ begin
          iniciada_em = case when v_st in ('producao','pronta','entregue') then coalesce(iniciada_em, now()) else iniciada_em end,
          pronta_em = case when v_st in ('pronta','entregue') then coalesce(pronta_em, now()) when v_st in ('fila','producao') then null else pronta_em end,
          entregue_em = case when v_st = 'entregue' then public.dt(p, 'entregue_em', public.hoje()) else null end,
-         obs = case when public.nz(p->>'obs') is not null then concat_ws(E'\n', obs, public.nz(p->>'obs')) else obs end
+         obs = case when public.nzt(p->>'obs') is not null then concat_ws(E'\n', obs, public.nzt(p->>'obs')) else obs end
    where id = o.id;
 end $$;
 
@@ -987,7 +991,7 @@ begin
     update public.lancamentos set tipo = p->>'tipo', descricao = v_desc, categoria = public.nz(p->>'categoria'), valor = round(v_val, 2),
            vencimento = v_venc, forma = public.nz(p->>'forma'), fornecedor_id = public.uid_de(p, 'fornecedor_id'),
            cliente_id = public.uid_de(p, 'cliente_id'), funcionario_id = public.uid_de(p, 'funcionario_id'),
-           documento = public.nz(p->>'documento'), obs = public.nz(p->>'obs'),
+           documento = public.nz(p->>'documento'), obs = public.nzt(p->>'obs'),
            pago_em = public.dt(p, 'pago_em'), valor_pago = case when public.dt(p, 'pago_em') is not null then round(coalesce(public.num(p, 'valor_pago'), v_val), 2) end
      where id = v_id;
     return v_id;
@@ -1005,7 +1009,7 @@ begin
             case when k = 1 and public.dt(p, 'pago_em') is not null then round(coalesce(public.num(p, 'valor_pago'), v_parc), 2) end,
             public.nz(p->>'forma'), public.uid_de(p, 'fornecedor_id'), public.uid_de(p, 'cliente_id'), public.uid_de(p, 'funcionario_id'),
             public.uid_de(p, 'pedido_id'), public.uid_de(p, 'ordem_id'), public.nz(p->>'documento'),
-            case when v_n > 1 then k || '/' || v_n end, v_grupo, public.nz(p->>'obs'));
+            case when v_n > 1 then k || '/' || v_n end, v_grupo, public.nzt(p->>'obs'));
   end loop;
   return v_id;
 end $$;
@@ -1172,7 +1176,7 @@ begin
               public.nz(r->>'contato2'), public.nz(r->>'telefone'), public.nz(r->>'celular'), lower(public.nz(r->>'email')),
               public.nz(r->>'site'), public.nz(r->>'endereco'), public.nz(r->>'bairro'), public.nz(r->>'cidade'),
               upper(public.nz(r->>'uf')), public.nz(r->>'cep'), public.nz(r->>'cnpj'), public.nz(r->>'ie'),
-              public.nz(r->>'qualificacao'), public.nz(r->>'qualif_metodo'), public.dt(r, 'qualif_validade'), public.nz(r->>'obs'),
+              public.nz(r->>'qualificacao'), public.nz(r->>'qualif_metodo'), public.dt(r, 'qualif_validade'), public.nzt(r->>'obs'),
               coalesce((r->>'ativo')::boolean, true));
       n_f := n_f + 1;
     end if;
@@ -1189,9 +1193,10 @@ begin
   for r in select * from jsonb_array_elements(coalesce(p -> 'pecas', '[]')) loop
     if public.nz(r->>'codigo') is null then continue; end if;
     select id into v_forn from public.fornecedores where lower(nome) = lower(public.nz(r->>'fornecedor'));
-    insert into public.pecas (codigo, descricao, utilizacao, fornecedor_id, est_min, est_max, unidade)
+    insert into public.pecas (codigo, descricao, utilizacao, fornecedor_id, est_min, est_max, unidade, obs)
     values (public.nz(r->>'codigo'), coalesce(public.nz(r->>'descricao'), public.nz(r->>'codigo')), public.nz(r->>'utilizacao'), v_forn,
-            coalesce(public.num(r, 'est_min'), 0), coalesce(public.num(r, 'est_max'), 0), coalesce(public.nz(r->>'unidade'), 'un'))
+            coalesce(public.num(r, 'est_min'), 0), coalesce(public.num(r, 'est_max'), 0), coalesce(public.nz(r->>'unidade'), 'un'),
+            public.nzt(r->>'obs'))
     on conflict (lower(codigo)) do nothing;
     if found then n_p := n_p + 1; end if;
   end loop;

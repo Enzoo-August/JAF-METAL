@@ -94,6 +94,63 @@ console.log('Peças abaixo do mínimo (Comprar):', comprar)
 const comprarPlan = abaP.filter(l => l['Status'] === 'Comprar').length
 conf(comprar === comprarPlan, 'lista de compras igual à da planilha (status "Comprar")', [comprar, comprarPlan])
 
+// NADA da aba Fornecedores pode se perder: todo link escondido e toda linha sem nome aparece em algum fornecedor
+{
+  const ws = wb.Sheets['Fornecedores'], faixa = XLSX.utils.decode_range(ws['!ref'])
+  const tudo = (await db.query(`select string_agg(concat_ws(' ', nome, razao, contato, contato2, telefone, celular, email, site, endereco, bairro, cidade, uf, cep, cnpj, ie, qualif_metodo, obs), ' | ') t from public.fornecedores`)).rows[0].t.toLowerCase()
+  const k = (s) => String(s).trim().toLowerCase().replace(/^mailto:/, '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '')
+  const perdidos = []
+  for (let r = 1; r <= faixa.e.r; r++) {
+    const nome = ws[XLSX.utils.encode_cell({ r, c: 0 })]?.v
+    for (let c = 0; c <= faixa.e.c; c++) {
+      const cel = ws[XLSX.utils.encode_cell({ r, c })]; if (!cel) continue
+      const vals = []
+      if (cel.l?.Target && !cel.l.Target.startsWith('#')) vals.push(cel.l.Target)                                  // link escondido
+      if (cel.v !== undefined && cel.v !== null && String(cel.v).trim()) vals.push(String(cel.v).replace(/\s+/g, ' '))   // qualquer valor
+      // "O mesmo" (celular = telefone) é conferido abaixo
+      for (const v of vals) if (!/^o mesmo$/i.test(v) && !tudo.includes(k(v).split('/')[0])) perdidos.push(`${XLSX.utils.encode_cell({ r, c })}${nome ? '' : ' (linha sem nome)'}: ${v}`)
+    }
+  }
+  conf(perdidos.length === 0, 'nenhum valor, e-mail, site ou link da aba Fornecedores ficou de fora', perdidos.slice(0, 10))
+  const oMesmo = XLSX.utils.sheet_to_json(ws, { defval: null }).filter(l => /^o mesmo$/i.test(String(l['CELULAR'] || '').trim())).length
+  const celIgual = (await db.query(`select count(*)::int n from public.fornecedores where celular is not null and celular = telefone`)).rows[0].n
+  conf(celIgual >= oMesmo, '"O mesmo" na coluna Celular vira o celular igual ao telefone', [celIgual, oMesmo])
+}
+
+// campo por campo: cada peça, cada movimentação e cada linha de pedido da planilha está no banco igualzinho
+{
+  const lp = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const n3 = (v) => Number(v || 0).toFixed(3), n2 = (v) => Number(v || 0).toFixed(2), n4 = (v) => Number(v || 0).toFixed(4)
+  const dia = (d) => d instanceof Date ? new Date(d.getTime() + 12 * 3600e3).toISOString().slice(0, 10) : ''
+  const conta = (lista) => { const m = new Map(); for (const x of lista) m.set(x, (m.get(x) || 0) + 1); return m }
+  const iguais = (a, b) => { const A = conta(a), B = conta(b); const dif = []; for (const [x, n] of A) if (B.get(x) !== n) dif.push(x); for (const [x, n] of B) if (A.get(x) !== n) dif.push('banco: ' + x); return dif }
+  // Peças: código, descrição, utilização (sem os espaços de separação), mínimo, máximo
+  const pBanco = (await db.query(`select codigo, descricao, coalesce(replace(utilizacao, ' / ', ' '), '') u, est_min, est_max from public.pecas where ativo`)).rows
+    .map(x => [lp(x.codigo), lp(x.descricao), lp(x.u), n3(x.est_min), n3(x.est_max)].join('|'))
+  const pPlan = abaP.map(l => [lp(l['Código']), lp(l['Descrição']), lp(String(l['Utilização'] ?? '').split(/\s{2,}|\s\/\s|\s+e\s+(?=[A-Z]{2,4}\s?\d)/).join(' ')), n3(l['Estoque Min.']), n3(l['Estoque Máx.'])].join('|'))
+  const dp = iguais(pPlan, pBanco)
+  conf(dp.length === 0, `cada peça igual à planilha em código, descrição, utilização, mínimo e máximo (${pPlan.length} peças)`, dp.slice(0, 6))
+  // Estoque: data, código, entrada/saída, quantidade, preço, documento
+  const mBanco = (await db.query(`select m.data::text d, p.codigo, m.tipo, m.qtd, m.preco_unit, coalesce(m.documento, '') doc from public.movimentos m join public.pecas p on p.id = m.peca_id`)).rows
+    .map(x => [x.d, lp(x.codigo), x.tipo, n3(x.qtd), n4(x.preco_unit), lp(x.doc)].join('|'))
+  const mPlan = linhasQtd.flatMap(l => [l['Entrada'] > 0 && 'entrada', l['Saída'] > 0 && 'saida'].filter(Boolean).map(t =>
+    [dia(l['Data']), lp(l['Código']), t, n3(t === 'entrada' ? l['Entrada'] : l['Saída']), n4(l['R$ Unitário']), lp(l['Documento'])].join('|')))
+  const dm = iguais(mPlan, mBanco)
+  conf(dm.length === 0, `cada movimentação igual à planilha em data, código, tipo, quantidade, preço e documento (${mPlan.length})`, dm.slice(0, 6))
+  // Controle de Pedidos: data, código, quantidade, valor, documento, prazo, situação
+  const cBanco = (await db.query(`select pc.data::text d, p.codigo, i.qtd, i.valor, coalesce(pc.documento, '') doc, coalesce(pc.prazo::text, '') pz, pc.status from public.pedido_itens i join public.pedidos_compra pc on pc.id = i.pedido_id join public.pecas p on p.id = i.peca_id`)).rows
+    .map(x => [x.d, lp(x.codigo), n3(x.qtd), n2(x.valor), lp(x.doc), x.pz, x.status === 'recebido' ? 'entregue' : 'aguardando'].join('|'))
+  const cPlan = wsC.map(l => [dia(l['Data']), lp(l['Código']), n3(l['Qde']), n2(l['Valor']), lp(l['Documento']), dia(l['Prazo']), /entreg/i.test(l['Status'] || '') ? 'entregue' : 'aguardando'].join('|'))
+  const dc = iguais(cPlan, cBanco)
+  conf(dc.length === 0, `cada linha do Controle de Pedidos igual à planilha (${cPlan.length})`, dc.slice(0, 6))
+}
+// anotações da aba escondida e linha sem quantidade chegaram ao banco
+const comObs = r.pecas.filter(p => p.obs).length
+const obsBanco = (await db.query(`select count(*)::int n from public.pecas where obs is not null and obs <> 'Criada na importação: o código só aparecia no Controle de Pedidos'`)).rows[0].n
+conf(comObs > 0 && obsBanco === comObs, 'anotações das peças (aba escondida e linha sem quantidade) gravadas no banco', [comObs, obsBanco])
+const quebra = (await db.query(`select count(*)::int n from public.fornecedores where obs like '%' || chr(10) || '%'`)).rows[0].n
+conf(quebra > 0, 'observações com várias linhas mantêm as quebras de linha', quebra)
+
 console.log(`\n${ok} conferências OK, ${falhas.length} falha(s)`)
 for (const f of falhas) console.log('  ✗ ' + f)
 process.exit(falhas.length ? 1 : 0)

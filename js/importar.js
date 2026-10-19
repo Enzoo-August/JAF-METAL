@@ -16,6 +16,11 @@ const Importar = (() => {
     let cand = cadastro.filter(f => { const tS = tokens(f.nome); return tC.length && tS.length && (contem(tC, tS) || contem(tS, tC) || tS.includes(nC) || tC.includes(norm(f.nome).replace(/ /g, ''))); });
     if (cand.length === 1) return cand[0];
     if (cand.length > 1) return null; // ambíguo: melhor criar novo do que ligar errado
+    // o nome usado nas abas aparece no e-mail de um cadastro (ex.: "João Silva" x joaosilva@…)
+    if (nC.length >= 6) {
+      cand = cadastro.filter(f => norm(f.email || '').replace(/ /g, '').includes(nC));
+      if (cand.length === 1) return cand[0];
+    }
     // última tentativa só para siglas (ex.: "XYZ Afiação" x "XYZ Ferramentas"); nome de pessoa (ex.: "João …") não liga sozinho
     const sigla = String(curto).trim().split(/\s+/)[0];
     if (!/^[A-Z0-9]{2,5}$/.test(sigla)) return null;
@@ -27,6 +32,88 @@ const Importar = (() => {
   const sugerirMaquina = (u) => PARECE_MAQUINA.test(u) && !/[()]/.test(u) && !/doras$/i.test(u) && !/^ta$/i.test(u);
   // "THR 01      Escareadora de tubos" (várias na mesma célula) e "TA 25 e TA 15"
   const separarUtil = (v) => String(v ?? '').split(/\s{2,}|\s\/\s|\s+e\s+(?=[A-Z]{2,4}\s?\d)/).map(x => U.limpa(x)).filter(Boolean);
+
+  // ---------------------------------------------------------------- nada da aba Fornecedores pode se perder
+  // (1) site escrito em OBSERVAÇÕES vai para o campo Site; "mailto:" vira e-mail
+  // (2) links escondidos atrás do texto das células (muitas vezes de OUTRO fornecedor) e
+  // (3) linhas sem nome (só um e-mail/site) vão para o fornecedor dono do endereço (pelo domínio);
+  //     sem dono certo, ficam anotados na própria linha para conferir; sem linha, num cadastro de contatos avulsos.
+  const GENERICOS = new Set(['gmail', 'hotmail', 'outlook', 'yahoo', 'terra', 'uol', 'bol', 'ig', 'superig', 'live', 'msn', 'globo', 'icloud', 'r7', 'zipmail']);
+  const ehUrl = (s) => /^(https?:\/\/|www\.)\S+$/i.test(String(s || '').trim());
+  const semMailto = (s) => String(s || '').trim().replace(/^mailto:/i, '');
+  const chave = (s) => semMailto(s).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+  const dominio = (s) => { const v = chave(s); const d = v.includes('@') ? v.split('@')[1] : v.split('/')[0]; return (d || '').split('.')[0]; };
+
+  function recuperarFornecedores(wb, cadastro, txt) {
+    const nomeAba = wb.SheetNames.find(n => norm(n) === 'fornecedores');
+    const ws = nomeAba && wb.Sheets[nomeAba];
+    const r = { links: 0, aoDono: 0, naLinha: 0, avulsos: [] };
+    for (const f of cadastro) {
+      if (f.email && /^mailto:/i.test(f.email)) f.email = semMailto(f.email);
+      if (f.obs && ehUrl(f.obs)) { f.site = f.obs; f.obs = null; }
+      else if (f.obs && /^mailto:/i.test(f.obs)) { if (!f.email) { f.email = semMailto(f.obs); f.obs = null; } else f.obs = 'Outro e-mail: ' + semMailto(f.obs); }
+    }
+    if (!ws || !ws['!ref']) return r;
+    const faixa = XLSX.utils.decode_range(ws['!ref']);
+    const nomeDaLinha = (lin) => txt(ws[XLSX.utils.encode_cell({ r: lin, c: 0 })]?.v);
+    const porNome = new Map(cadastro.map(f => [U.sem(f.nome), f]));
+    const dono = (valor) => {
+      const d = dominio(valor);
+      if (!d || d.length < 4 || GENERICOS.has(d)) return null;
+      const c = cadastro.filter(f => norm([f.nome, f.razao, f.email, f.site].filter(Boolean).join(' ')).replace(/ /g, '').includes(d));
+      return c.length === 1 ? c[0] : null;
+    };
+    const anotar = (f, valor, nota) => {
+      const v = semMailto(valor), email = v.includes('@') && !/\s/.test(v);
+      if (email && !f.email) { f.email = v.toLowerCase(); return; }
+      if (!email && ehUrl(v) && !f.site) { f.site = v; return; }
+      const ja = [f.email, f.site, f.obs].filter(Boolean).map(chave).join(' | ');
+      if (ja.includes(chave(v))) return;
+      f.obs = [f.obs, `${nota}: ${v}`].filter(Boolean).join('\n');
+    };
+    for (let lin = faixa.s.r + 1; lin <= faixa.e.r; lin++) {
+      const nome = nomeDaLinha(lin);
+      for (let c = 0; c <= faixa.e.c; c++) {
+        const cel = ws[XLSX.utils.encode_cell({ r: lin, c })];
+        if (!cel) continue;
+        const valores = [];
+        // célula de linha sem nome de fornecedor (só e-mail ou site)
+        if (!nome && cel.v !== undefined && cel.v !== null && String(cel.v).trim()) valores.push(String(cel.v));
+        // link escondido diferente do texto que aparece
+        const alvo = cel.l?.Target;
+        if (alvo && !alvo.startsWith('#') && chave(alvo) !== chave(cel.v)) { valores.push(alvo); r.links++; }
+        for (const v of valores) {
+          const f = dono(v);
+          if (f) { anotar(f, v, 'Também na planilha'); r.aoDono++; continue; }
+          const daLinha = nome && porNome.get(U.sem(nome));
+          if (daLinha) { anotar(daLinha, v, 'Link escondido nesta linha da planilha (conferir de quem é)'); r.naLinha++; continue; }
+          r.avulsos.push(semMailto(v));
+        }
+      }
+    }
+    return r;
+  }
+
+  // anotações feitas à mão na aba escondida "Análise Anual de Custos" (máquina/produto de cada código)
+  function anotacoesAnalise(wb, txt) {
+    const nomeAba = wb.SheetNames.find(n => norm(n).startsWith('analise anual'));
+    const ws = nomeAba && wb.Sheets[nomeAba];
+    const notas = new Map();
+    if (!ws || !ws['!ref']) return notas;
+    const faixa = XLSX.utils.decode_range(ws['!ref']);
+    let colNota = -1, linCab = -1;
+    for (let lin = faixa.s.r; lin <= Math.min(faixa.e.r, 10) && colNota < 0; lin++)
+      for (let c = 0; c <= faixa.e.c; c++) if (/m[aá]quina/i.test(String(ws[XLSX.utils.encode_cell({ r: lin, c })]?.v || ''))) { colNota = c; linCab = lin; break; }
+    if (colNota < 0) return notas;
+    for (let lin = linCab + 1; lin <= faixa.e.r; lin++) {
+      const cod = txt(ws[XLSX.utils.encode_cell({ r: lin, c: 0 })]?.v), nota = txt(ws[XLSX.utils.encode_cell({ r: lin, c: colNota })]?.v);
+      if (!cod || !nota) continue;
+      const k = U.sem(cod);
+      if (!notas.has(k)) notas.set(k, new Set());
+      notas.get(k).add(nota);
+    }
+    return notas;
+  }
 
   // wb: planilha já aberta com XLSX.read(..., { cellDates: true })
   function ler(wb, arquivo) {
@@ -46,24 +133,30 @@ const Importar = (() => {
     // fornecedores do cadastro
     const cadastro = (rForn || []).map(l => ({
       nome: txt(col(l, 'FORNECEDOR')), contato: txt(col(l, 'CONTATO')), contato2: txt(col(l, 'Contato 2')), telefone: txt(col(l, 'TELEFONE')),
-      celular: /^o mesmo$/i.test(txt(col(l, 'CELULAR')) || '') ? null : txt(col(l, 'CELULAR')), endereco: txt(col(l, 'ENDEREÇO', 'ENDERECO')), bairro: txt(col(l, 'BAIRRO')),
+      // "O mesmo" na coluna CELULAR = o celular é o mesmo número do telefone
+      celular: /^o mesmo$/i.test(txt(col(l, 'CELULAR')) || '') ? txt(col(l, 'TELEFONE')) : txt(col(l, 'CELULAR')), endereco: txt(col(l, 'ENDEREÇO', 'ENDERECO')), bairro: txt(col(l, 'BAIRRO')),
       cidade: txt(col(l, 'CIDADE')), uf: txt(col(l, 'UF')), cep: txt(col(l, 'CEP')), cnpj: txt(col(l, 'CNPJ')), ie: txt(col(l, 'I.E.', 'IE')),
       qualificacao: /^(ok|sim|aprovado)$/i.test(txt(col(l, 'APROV.', 'APROV')) || '') ? 'Aprovado' : null, qualif_metodo: txt(col(l, 'MÉTODO', 'METODO')),
       qualif_validade: data(col(l, 'VALIDADE')), email: txt(col(l, 'EMAIL', 'E-MAIL')), obs: txt(col(l, 'OBSERVAÇÕES', 'OBSERVACOES')),
     })).filter(f => f.nome);
     for (const f of cadastro) { f.razao = f.nome; if (/eletricista|mec[aâ]nico|pedreiro|t[eé]cnico|desentupidora|conserto|assist[eê]ncia/i.test(f.nome)) f.tipo = 'Serviço'; }
+    const extras = recuperarFornecedores(wb, cadastro, txt);
 
     // nomes usados nas outras abas
     const pecas = (rPecas || []).map(l => ({ codigo: txt(col(l, 'Código', 'Codigo')), descricao: txt(col(l, 'Descrição', 'Descricao')),
       utilizacao: separarUtil(col(l, 'Utilização', 'Utilizacao')).join(' / ') || null, fornecedor: txt(col(l, 'Fornecedor')),
       est_min: num(col(l, 'Estoque Min.', 'Estoque Min')) || 0, est_max: num(col(l, 'Estoque Máx.', 'Estoque Max.', 'Estoque Max')) || 0,
       qtd_planilha: num(col(l, 'Qde Estoque')) })).filter(p => p.codigo);
-    const movs = [], ignoradas = [];
+    const movs = [], ignoradas = [], semQtd = [];
     (rEst || []).forEach((l, n) => {
       const d = data(col(l, 'Data')), cod = txt(col(l, 'Código', 'Codigo')), ent = num(col(l, 'Entrada')), sai = num(col(l, 'Saída', 'Saida'));
       if (!d && !cod) return;
       const base = { data: d, codigo: cod, preco_unit: num(col(l, 'R$ Unitário', 'R$ Unitario')) || 0, fornecedor: txt(col(l, 'Fornecedor')), documento: txt(col(l, 'Documento')) };
-      if (!d || !cod || (!(ent > 0) && !(sai > 0))) { ignoradas.push(`Estoque, linha ${n + 2}: ${cod || 'sem código'} — ${!d ? 'sem data' : 'sem quantidade'}`); return; }
+      if (!d || !cod || (!(ent > 0) && !(sai > 0))) {
+        ignoradas.push(`Estoque, linha ${n + 2}: ${cod || 'sem código'} — ${!d ? 'sem data' : 'sem quantidade'} (guardada como observação da peça)`);
+        if (cod) semQtd.push({ ...base, linha: n + 2 });
+        return;
+      }
       if (ent > 0) movs.push({ ...base, tipo: 'entrada', qtd: ent });
       if (sai > 0) movs.push({ ...base, tipo: 'saida', qtd: sai });
     });
@@ -72,7 +165,7 @@ const Importar = (() => {
       const cod = txt(col(l, 'Código', 'Codigo')); if (!cod) return;
       const d = data(col(l, 'Data')), forn = txt(col(l, 'Fornecedor')), doc = txt(col(l, 'Documento')), st = /entreg/i.test(txt(col(l, 'Status')) || '') ? 'recebido' : 'aguardando';
       const prazo = data(col(l, 'Prazo'));
-      const k = [d, forn, doc, st, st === 'aguardando' ? prazo : ''].join('|');
+      const k = [d, forn, doc, st, prazo].join('|'); // prazo diferente = entrega diferente: nada se perde
       if (!grupos.has(k)) grupos.set(k, { data: d || prazo, fornecedor: forn, documento: doc, prazo, status: st, itens: [] });
       const g = grupos.get(k); if (prazo && (!g.prazo || prazo > g.prazo)) g.prazo = prazo;
       const desc = txt(col(l, 'Descrição', 'Descricao'));
@@ -96,15 +189,36 @@ const Importar = (() => {
       const nomes = porCadastro.get(f);
       // o mais curto entre o nome mais usado nas abas e o do cadastro vira o "nome"; o mais longo, a razão social
       // (se o mais usado for quase do mesmo tamanho do mais curto, fica o mais usado: "Gera Válvulas", não "Gera Válvula")
-      const todos = nomes ? [...nomes, f.nome] : [f.nome];
+      // nome usado sem nenhuma palavra em comum com o cadastro (ex.: o nome da pessoa de contato) não vira o nome da empresa
+      const parece = (u) => { const a = tokens(u), b = tokens(f.nome), j = norm(u).replace(/ /g, '');
+        return a.some(t => b.some(x => x === t || (t.length >= 4 && x.startsWith(t)) || (x.length >= 4 && t.startsWith(x)))) || b.includes(j); };
+      const usaveis = (nomes || []).filter(parece);
+      const todos = [...usaveis, f.nome];
       const curto = todos.slice().sort((a, b) => a.length - b.length)[0];
-      const final = nomes && nomes[0].length <= curto.length + 2 ? nomes[0] : curto;
+      const final = usaveis.length && usaveis[0].length <= curto.length + 2 ? usaveis[0] : curto;
       const razao = todos.slice().sort((a, b) => b.length - a.length)[0];
       if (nomes) nomes.forEach(n => mapa.set(n, final));
       fornecedores.push({ ...f, nome: final, razao: razao !== final ? razao : null });
     }
     const novos = [...new Set([...mapa.entries()].filter(([n, fin]) => n === fin && !fornecedores.some(f => U.sem(f.nome) === U.sem(n))).map(([n]) => n))];
     novos.forEach(n => fornecedores.push({ nome: n, obs: 'Criado na importação (aparecia nas abas, mas não no cadastro de fornecedores)' }));
+    // e-mails/sites que estavam soltos na aba Fornecedores, sem dono identificável: guardados, nada se perde
+    if (extras.avulsos.length) fornecedores.push({ nome: 'Contatos avulsos da planilha', ativo: false,
+      obs: 'Estavam na aba Fornecedores sem nome de fornecedor (ou escondidos em links) e não deu para saber de quem são:\n' + [...new Set(extras.avulsos)].join('\n') });
+    if (extras.links || extras.aoDono || extras.naLinha) avisos.push(`Aba Fornecedores: ${extras.links} links escondidos e linhas sem nome recuperados — ${extras.aoDono} foram para o fornecedor dono do endereço, ${extras.naLinha} ficaram anotados na própria linha para conferir${extras.avulsos.length ? `, ${extras.avulsos.length} em "Contatos avulsos da planilha"` : ''}.`);
+
+    // peças: anotações da aba escondida e linhas do Estoque sem quantidade viram observação (nada se perde)
+    const notas = anotacoesAnalise(wb, txt);
+    let nNotas = 0;
+    for (const p of pecas) {
+      const obs = [];
+      const n = notas.get(U.sem(p.codigo));
+      if (n) { const dif = [...n].filter(x => !U.sem(p.utilizacao || '').includes(U.sem(x))); if (dif.length) { obs.push('Anotado na planilha (Análise Anual de Custos): ' + dif.join(', ')); nNotas++; } }
+      for (const s of semQtd.filter(x => U.sem(x.codigo) === U.sem(p.codigo)))
+        obs.push(`Linha ${s.linha} do Estoque sem quantidade: ${U.data(s.data)}${s.fornecedor ? ' · ' + s.fornecedor : ''}${s.documento ? ' · ' + s.documento : ''}${s.preco_unit ? ' · R$ ' + U.dec(s.preco_unit) + ' cada' : ''}`);
+      if (obs.length) p.obs = obs.join('\n');
+    }
+    if (nNotas) avisos.push(`${nNotas} peças com anotação de máquina/produto diferente na aba escondida "Análise Anual de Custos" (guardadas na observação da peça).`);
     // nomes repetidos depois do casamento (dois cadastros viraram o mesmo nome curto)
     const vistos = new Set();
     for (const f of fornecedores) { let k = U.sem(f.nome), n = 2; while (vistos.has(k)) { f.nome = `${f.razao || f.nome} (${n++})`; k = U.sem(f.nome); } vistos.add(k); }
