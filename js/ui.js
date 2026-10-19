@@ -214,7 +214,7 @@ const UI = (() => {
         j.erro('');
         if (b.validar !== false) {
           const inval = [...form.querySelectorAll('[required]')].find(c => c.dataset.comboId !== undefined ? !c.dataset.comboId : !String(c.value || '').trim());
-          if (inval) { j.erro('Preencha: ' + (inval.closest('.campo')?.querySelector('label')?.textContent.replace('*', '').trim() || 'campo obrigatório')); inval.focus(); return; }
+          if (inval) { j.erro('Preencha: ' + (inval.closest('.campo')?.querySelector('label')?.textContent.replace(/\*/g, '').trim() || 'campo obrigatório')); inval.focus(); return; }
         }
         try {
           const r = await b.acao(form, j);
