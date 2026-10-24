@@ -1,0 +1,38 @@
+{
+  "name": "jaf-metal-gestao",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Gestão da JAF Metal: estoque, compras, produção, máquinas, equipe e financeiro.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "vite",
+    "tipos": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "build:teste": "vite build --mode teste",
+    "preview": "vite preview",
+    "teste:banco": "node testes/banco.mjs",
+    "teste:telas": "node testes/ui-ci.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.2",
+    "jspdf": "4.2.1",
+    "jspdf-autotable": "5.0.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "playwright": "1.59.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.2"
+  }
+}

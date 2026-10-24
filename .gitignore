@@ -5,8 +5,9 @@
 *.csv
 testes/_privado/
 
-# gerado pelo publicar.sh
-publicar/
+# gerado pelo build (npm run build / build:teste)
+dist/
+dist-teste/
 
 # dependências e lixo do sistema
 node_modules/

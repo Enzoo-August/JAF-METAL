@@ -6,12 +6,12 @@ Sistema web (funciona no computador, tablet e celular, e pode ser instalado como
 
 | Pasta / arquivo | O que é |
 |---|---|
-| `index.html`, `css/`, `js/`, `assets/`, `manifest.webmanifest`, `sw.js` | o site (HTML/JS puro, sem build) |
-| `js/config.js` | endereço e chave **publishable** do Supabase da JAF. Em branco = modo teste |
+| `index.html`, `src/`, `public/` | o site: React 19 + TypeScript, montado pelo Vite |
+| `src/config.ts` | endereço e chave **publishable** do Supabase da JAF |
 | `supabase/schema.sql` | o banco inteiro: tabelas, segurança por perfil e funções. Pode rodar de novo sem perder dados |
 | `supabase/auth-simulado.sql` | só para o modo teste (imita o login do Supabase). **Nunca** rodar no Supabase |
-| `js/demo.js` | dados **inventados** do modo teste (arquivo público: nunca pôr dado real aqui) |
-| `js/importar.js` | leitura da planilha Almoxarifado (usada na tela de importação e nos testes) |
+| `src/lib/teste.ts`, `src/lib/demo.ts` | modo teste e dados **inventados** (arquivos públicos: nunca pôr dado real aqui). Só entram no build de teste |
+| `src/lib/importar.ts` | leitura da planilha Almoxarifado (usada na tela de importação e nos testes) |
 | `testes/` | testes automáticos (não precisa publicar) |
 
 ## Regras que o sistema segue
@@ -34,9 +34,10 @@ Sistema web (funciona no computador, tablet e celular, e pode ser instalado como
 ## Rodar no computador (teste)
 
 ```bash
-python -m http.server 5319 --directory JAF-Metal
+npm install
+npm run dev
 ```
-Abrir `http://localhost:5319/?modo=teste` (ou com `config.js` vazio). O modo teste roda um Postgres de verdade dentro do navegador (PGlite) com o **mesmo** `schema.sql`, com dados inventados. Logins: `dono`, `escritorio`, `almox`, `operador` — senha `teste1234`. `?banco=memoria` começa do zero a cada recarga.
+Abrir `http://localhost:5173/?modo=teste`. O modo teste roda um Postgres de verdade dentro do navegador (PGlite) com o **mesmo** `schema.sql`, com dados inventados. Logins: `dono`, `escritorio`, `almox`, `operador` — senha `teste1234`. `&banco=memoria` começa do zero a cada recarga.
 
 ## Situação do banco real
 
@@ -50,18 +51,13 @@ Não importar a planilha de novo depois que o sistema virar o oficial (a importa
 ## Testes
 
 ```bash
-# banco (126 conferências): perfis, estoque, PEPS, pedidos, financeiro, importação, segurança
-PGLITE=<pasta com node_modules/@electric-sql/pglite> node testes/banco.mjs
-# planilha real (fica só no computador): estoque peça por peça e valores por ano iguais à planilha
-PGLITE=<...> PLANILHA=<caminho do .xlsm> node testes/importacao-real.mjs
+npm run tipos                 # TypeScript: nenhum erro de tipo
+npm run teste:banco           # banco (134 conferências): perfis, estoque, PEPS, pedidos, financeiro, importação, segurança
+npm run build:teste && npm run teste:telas   # roteiro pelas telas (105 × 2 tamanhos) e layout (4 tamanhos × 4 perfis)
+# planilha real (fica só no computador): cada peça, movimentação, pedido e contato igual à planilha
+PLANILHA=<caminho do .xlsm> node testes/importacao-real.mjs
 ```
-No navegador (modo teste), console:
-```js
-fetch('testes/roteiro-ui.js').then(r => r.text()).then(eval); roteiro()   // usa as telas como uma pessoa → window.__r
-fetch('testes/auditoria.js').then(r => r.text()).then(eval); auditarPerfis({ sat: 47 })  // botão cortado/coberto, rolagem lateral
-```
-A cada mudança: trocar o `?v=` no `index.html` e o `CACHE` no `sw.js` (senão o navegador usa o arquivo velho).
 
 ## Publicar
 
-`sh publicar.sh` monta a pasta `publicar/` só com o sistema real (sem testes e sem a demonstração) e o arquivo `_headers` de segurança. Publicar essa pasta. O modo teste só liga em `localhost`; no endereço publicado é impossível abrir.
+`npm run build` monta a pasta `dist/` só com o sistema real (sem testes e sem o modo teste — o código dele nem entra) e o arquivo `_headers` de segurança. Publicar essa pasta. Os arquivos do app têm nome com "impressão digital": a cada versão o navegador pega o novo sozinho.

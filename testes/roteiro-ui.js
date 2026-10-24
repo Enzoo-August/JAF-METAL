@@ -9,7 +9,9 @@ window.roteiro = async function roteiro(filtro) {
   const espera = async (fn, ms = 4000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = fn(); if (v) return v; } catch (e) {} await dorme(40); } return null; };
   const janela = () => [...document.querySelectorAll('.janela-fundo:not(.confirmar)')].at(-1);
   const ir = async (h) => { location.hash = h; await dorme(120); };
-  const digitar = (el, v) => { el.focus(); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+  // como uma pessoa digitando: o valor entra pelo "setter" nativo (o React percebe a mudança) e dispara input/change
+  const digitar = (el, v) => { el.focus(); const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
   const botao = (txt, raiz = document) => { const l = [...raiz.querySelectorAll('button, a.btn')].filter(b => !b.disabled && b.offsetParent); const t = (b) => b.textContent.trim().replace(/\s+/g, ' ');
     return l.find(b => t(b) === txt) || l.find(b => t(b).startsWith(txt)); };
   const clicar = async (txt, raiz) => { const b = typeof txt === 'string' ? botao(txt, raiz) : txt; if (!b) throw new Error('botão não achado: ' + txt); b.click(); await dorme(60); return b; };
@@ -27,13 +29,13 @@ window.roteiro = async function roteiro(filtro) {
   const aviso = () => [...document.querySelectorAll('#avisos .aviso')].at(-1);
   async function como(login) {
     await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await dorme(700);
-    document.querySelectorAll('.janela-fundo').forEach(j => j.remove()); document.body.classList.remove('com-janela');
+    UI.fecharTodas();
   }
   const passo = async (nome, fn) => {
     if (filtro && !nome.includes(filtro)) return;
     R.log.push('▶ ' + nome);
     try { await fn(); } catch (e) { R.falhas.push(nome + ': ERRO ' + e.message); console.error(e); }
-    document.querySelectorAll('.janela-fundo').forEach(j => j.remove()); document.body.classList.remove('com-janela');
+    UI.fecharTodas();
     await dorme(100);
   };
 
@@ -410,7 +412,7 @@ window.roteiro = async function roteiro(filtro) {
       toque(); await dorme(intervalo); toque(); await dorme(1200);
       conf(est(p.codigo) === antes - 1, `dois toques com ${intervalo} ms de intervalo tiram 1 só`, [antes, est(p.codigo)]);
       conf(document.querySelectorAll('.janela-fundo').length === 0, `o 2º toque (${intervalo} ms) não abre outra janela`);
-      document.querySelectorAll('.janela-fundo').forEach(j => j.remove()); document.body.classList.remove('com-janela'); await dorme(500);
+      UI.fecharTodas(); await dorme(500);
     }
   });
   R.fim = true;

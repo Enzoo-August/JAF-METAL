@@ -1,6 +1,7 @@
 name: Testes
 
-# Roda a cada envio: banco de dados, telas (num navegador de verdade, em modo teste) e proteção do repositório.
+# Roda a cada envio: proteção do repositório, tipos (TypeScript), build, banco de dados e telas
+# (num navegador de verdade, no build de teste com dados inventados).
 on:
   push:
     branches: [main]
@@ -21,9 +22,25 @@ jobs:
           if git ls-files | grep -iE '\.(xls|xlsx|xlsm|csv)$'; then echo "::error::Planilha no repositório"; exit 1; fi
       - name: Nenhuma chave secreta do Supabase no código
         run: |
-          if grep -rInE 'sb_secret_[A-Za-z0-9_-]{10,}' --exclude-dir=.git .; then echo "::error::Chave secreta no código"; exit 1; fi
-      - name: Sintaxe de todos os arquivos JavaScript
-        run: for f in js/*.js js/telas/*.js testes/*.js testes/*.mjs; do node --check "$f" || exit 1; done
+          if grep -rInE 'sb_secret_[A-Za-z0-9_-]{10,}|service_role' --exclude-dir=.git --exclude-dir=node_modules --exclude=testes.yml .; then echo "::error::Chave secreta no código"; exit 1; fi
+
+  codigo:
+    name: Tipos e build do site de verdade
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --no-audit --no-fund
+      - name: TypeScript (sem nenhum erro de tipo)
+        run: npm run tipos
+      - name: Build do site publicado
+        run: npx vite build
+      - name: O site publicado não leva o modo teste
+        run: |
+          if grep -rlE 'pglite|teste1234|entrar_teste' dist; then echo "::error::Código do modo teste no site publicado"; exit 1; fi
 
   banco:
     name: Banco (perfis, estoque, compras, financeiro, segurança)
@@ -33,25 +50,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Instalar o Postgres de teste (PGlite)
-        run: mkdir -p /tmp/pg && cd /tmp/pg && npm init -y > /dev/null && npm i @electric-sql/pglite@0.5.8 --no-audit --no-fund
+          cache: npm
+      - run: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --no-audit --no-fund
       - name: Testes do banco
-        run: PGLITE=/tmp/pg node testes/banco.mjs
+        run: npm run teste:banco
 
   telas:
     name: Telas (roteiro e layout em celular, tablet e computador)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
       - name: Instalar o navegador de teste
-        run: |
-          mkdir -p /tmp/pw && cd /tmp/pw && npm init -y > /dev/null && npm i playwright@1.59.1 --no-audit --no-fund
-          npx playwright install --with-deps chromium
-      - name: Servir o site
-        run: python3 -m http.server 8000 > /dev/null 2>&1 &
+        run: npx playwright install --with-deps chromium
+      - name: Build de teste (dados inventados)
+        run: npm run build:teste
       - name: Roteiro pelas telas e varredura de layout (4 perfis)
-        run: PLAYWRIGHT_DIR=/tmp/pw URL=http://localhost:8000 node testes/ui-ci.mjs
+        run: npm run teste:telas

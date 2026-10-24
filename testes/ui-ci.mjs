@@ -1,31 +1,50 @@
-// Roda os testes de tela num navegador de verdade (sem ninguém clicando).
-// Usado pelo GitHub Actions; também roda no computador.
-//   URL=http://localhost:8000 node testes/ui-ci.mjs
-// Precisa do pacote "playwright" (ou "playwright-core" com um Chrome/Edge instalado: CANAL=msedge).
-import { createRequire } from 'node:module'
+// Roda os testes de tela num navegador de verdade (sem ninguém clicando), no build de TESTE (dados inventados).
+// Usado pelo GitHub Actions; também roda no computador:
+//   npm run build:teste && node testes/ui-ci.mjs
+// Opcional: CANAL=msedge (ou chrome) para usar o navegador já instalado em vez do Chromium do Playwright.
+import { createServer } from 'node:http'
+import { readFileSync, existsSync, statSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { chromium } from 'playwright'
 
-const req = createRequire(path.join(process.env.PLAYWRIGHT_DIR || process.cwd(), 'package.json'))
-let pw
-try { pw = req('playwright') } catch (e) { pw = req('playwright-core') }
-const URL_BASE = process.env.URL || 'http://localhost:8000'
-const navegador = await pw.chromium.launch(process.env.CANAL ? { channel: process.env.CANAL } : {})
+const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const pasta = path.join(raiz, 'dist-teste')
+if (!existsSync(path.join(pasta, 'index.html'))) { console.log('Falta o build de teste: rode "npm run build:teste" antes.'); process.exit(2) }
+
+// servidor simples só para esta pasta
+const TIPOS = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.wasm': 'application/wasm', '.webmanifest': 'application/manifest+json', '.data': 'application/octet-stream', '.tar.gz': 'application/gzip' }
+const servidor = createServer((req, res) => {
+  let p = decodeURIComponent(new URL(req.url, 'http://x').pathname)
+  if (p.endsWith('/')) p += 'index.html'
+  const arq = path.join(pasta, path.normalize(p))
+  if (!arq.startsWith(pasta) || !existsSync(arq) || !statSync(arq).isFile()) { res.writeHead(404); res.end(); return }
+  res.writeHead(200, { 'Content-Type': TIPOS[path.extname(arq)] || 'application/octet-stream' })
+  res.end(readFileSync(arq))
+}).listen(0, '127.0.0.1')
+await new Promise(ok => servidor.once('listening', ok))
+const URL_BASE = `http://localhost:${servidor.address().port}`
+
+const roteiro = readFileSync(path.join(raiz, 'testes', 'roteiro-ui.js'), 'utf8')
+const auditoria = readFileSync(path.join(raiz, 'testes', 'auditoria.js'), 'utf8')
+const navegador = await chromium.launch(process.env.CANAL ? { channel: process.env.CANAL } : {})
 let falhou = false
 
 async function abrir(largura, altura, toque) {
   const ctx = await navegador.newContext({ viewport: { width: largura, height: altura }, hasTouch: !!toque, isMobile: !!toque, deviceScaleFactor: 1 })
   const p = await ctx.newPage()
   p.on('pageerror', (e) => { console.log('  ERRO NA PÁGINA:', e.message); falhou = true })
-  await p.goto(URL_BASE + '/?modo=teste&banco=memoria', { waitUntil: 'load' })
-  await p.waitForFunction(() => document.querySelector('#fLogin') || document.querySelector('.casca'), null, { timeout: 120000 })
+  p.on('console', (m) => { if (m.type() === 'error' && !/favicon|Failed to load resource/.test(m.text())) console.log('  console:', m.text().slice(0, 300)) })
+  await p.goto(URL_BASE + '/?banco=memoria', { waitUntil: 'load' })
+  await p.waitForFunction(() => document.querySelector('#fLogin') || document.querySelector('.casca'), null, { timeout: 180000 })
   return { ctx, p }
 }
 
 // 1) roteiro completo pelas telas: computador e celular (com toque)
 for (const [w, h, toque] of [[1366, 768, false], [375, 812, true]]) {
   const { ctx, p } = await abrir(w, h, toque)
-  await p.evaluate(async () => { eval(await fetch('testes/roteiro-ui.js').then(r => r.text())); window.roteiro(); })
-  await p.waitForFunction(() => window.__r?.fim, null, { timeout: 300000 })
+  await p.evaluate((codigo) => { (0, eval)(codigo); window.roteiro() }, roteiro)
+  await p.waitForFunction(() => window.__r?.fim, null, { timeout: 400000 })
   const r = await p.evaluate(() => window.__r)
   console.log(`Roteiro pelas telas (${w}x${h}): ${r.ok} OK, ${r.falhas.length} falha(s)`)
   r.falhas.forEach(f => console.log('  ✗ ' + f))
@@ -36,7 +55,7 @@ for (const [w, h, toque] of [[1366, 768, false], [375, 812, true]]) {
 // 2) varredura de layout, 4 perfis, celular / tablet / computador
 for (const [w, h, toque, sat] of [[375, 812, true, 47], [360, 640, true, 24], [768, 1024, true, 0], [1366, 768, false, 0]]) {
   const { ctx, p } = await abrir(w, h, toque)
-  await p.evaluate(async () => { eval(await fetch('testes/auditoria.js').then(r => r.text())); })
+  await p.evaluate((codigo) => { (0, eval)(codigo) }, auditoria)
   const r = await p.evaluate(async (opt) => window.auditarPerfis(opt), { sat, toque })
   const total = Object.values(r.res).reduce((s, l) => s + l.length, 0)
   console.log(`Layout ${r.tam}: ${total} problema(s)`)
@@ -46,4 +65,5 @@ for (const [w, h, toque, sat] of [[375, 812, true, 47], [360, 640, true, 24], [7
 }
 
 await navegador.close()
+servidor.close()
 process.exit(falhou ? 1 : 0)

@@ -56,7 +56,7 @@ window.auditar = async function auditar(opt = {}) {
     conferir(nome, j);
     // rola até o fim e confere de novo (botões no fim do formulário)
     corpo.scrollTop = corpo.scrollHeight; await dorme(60); conferir(nome + ' (fim)', j);
-    j.remove(); document.body.classList.remove('com-janela');
+    UI.fecharTodas(); await dorme(60);
   }
 
   const rotas = ['#/inicio', '#/pecas', '#/movimentos', '#/compras', '#/compras/lista', '#/fornecedores', '#/producao', '#/maquinas', '#/financeiro', '#/financeiro/fluxo',
@@ -106,11 +106,11 @@ window.auditarPerfis = async function (opt = {}) {
   const res = {};
   for (const login of ['dono', 'escritorio', 'almox', 'operador']) {
     await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await new Promise(ok => setTimeout(ok, 700));
-    document.querySelectorAll('.janela-fundo').forEach(j => j.remove()); document.body.classList.remove('com-janela');
+    UI.fecharTodas();
     const a = await window.auditar(opt);
     res[login] = a.problemas;
   }
   await API.sair(); await API.entrar('dono', 'teste1234'); await App.entrarNoSistema();
-  document.querySelectorAll('.janela-fundo').forEach(j => j.remove()); document.body.classList.remove('com-janela');
+  UI.fecharTodas();
   return { tam: Math.round(visualViewport?.width || innerWidth) + 'x' + Math.round(visualViewport?.height || innerHeight) + ' (página ' + innerWidth + ')', res };
 };

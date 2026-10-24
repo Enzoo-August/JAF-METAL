@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="JAF Metal" width="360">
+<img src="public/assets/logo.png" alt="JAF Metal" width="360">
 
 # JAF Metal · Gestão
 
@@ -8,7 +8,10 @@
 
 [![Testes](https://github.com/Enzoo-August/JAF-METAL/actions/workflows/testes.yml/badge.svg)](https://github.com/Enzoo-August/JAF-METAL/actions/workflows/testes.yml)
 [![CodeQL](https://github.com/Enzoo-August/JAF-METAL/actions/workflows/codeql.yml/badge.svg)](https://github.com/Enzoo-August/JAF-METAL/security/code-scanning)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-1.0.0-3f66a1)
+![Versão](https://img.shields.io/badge/vers%C3%A3o-2.0.0-3f66a1)
+![React](https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-7-3178c6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)
 ![Feito para](https://img.shields.io/badge/celular%20%C2%B7%20tablet%20%C2%B7%20computador-instal%C3%A1vel-1c2a3d)
 
 </div>
@@ -51,7 +54,7 @@ Essas regras estão **dentro do banco de dados** (Row Level Security + funções
 ```mermaid
 flowchart LR
     subgraph Aparelho["Celular · tablet · computador"]
-        A["Site / app instalado<br/>(HTML + JavaScript puro)"]
+        A["Site / app instalado<br/>(React + TypeScript)"]
     end
     subgraph Supabase["Supabase (banco da JAF)"]
         L["Login<br/>(usuário + senha)"]
@@ -82,7 +85,9 @@ flowchart LR
 - Senha criada pelo Dono é **provisória**: a pessoa cria a própria no primeiro acesso (mínimo 8 caracteres, senhas fáceis recusadas).
 - Produção não vê preços nem dados de fornecedores; salários e financeiro só para Dono e Escritório.
 - Histórico de alterações com quem, quando e o que mudou.
-- A chave que aparece em `js/config.js` é a **publishable** (pública por natureza); a chave secreta nunca entra no código.
+- A chave que aparece em `src/config.ts` é a **publishable** (pública por natureza); a chave secreta nunca entra no código.
+- O **modo teste** (banco inventado dentro do navegador) só existe no build de teste: o site publicado nem tem esse código — o GitHub confere isso a cada envio.
+- O React escapa todo texto na tela sozinho: o que alguém digita nunca vira código.
 
 ## Qualidade
 
@@ -93,40 +98,55 @@ A cada envio para este repositório, o GitHub roda sozinho ([Actions](https://gi
 | **Banco** — 134 conferências | Perfis e permissões, estoque e PEPS, desfazer, pedidos de compra (parcial, total, cancelado), financeiro (parcelas, baixas), produção, importação, senha provisória, cadastro bloqueado |
 | **Telas** — 105 conferências × 2 tamanhos | O sistema usado como uma pessoa usaria: abre janelas, digita, escolhe, toca nos botões — inclusive toque duplo e troca de usuário |
 | **Layout** — 4 tamanhos × 4 perfis | Nenhum botão cortado, coberto ou fora da tela; nada de rolagem para o lado (celular, tablet e computador) |
+| **Tipos** — TypeScript estrito | Nenhum erro de tipo em todo o código; o build do site publicado sai sem o modo teste |
 | **Repositório** | Nenhuma planilha e nenhuma chave secreta no código |
 | **CodeQL** | Análise de segurança do código pelo GitHub |
 
-A importação da planilha real também tem teste próprio (`testes/importacao-real.mjs`), que roda só no computador — a planilha nunca vem para cá. Ele confere peça por peça que o estoque do sistema é igual ao da planilha.
+A importação da planilha real também tem teste próprio (`testes/importacao-real.mjs`), que roda só no computador — a planilha nunca vem para cá. Ele confere **campo por campo** (cada peça, cada movimentação, cada linha de pedido, cada contato de fornecedor — inclusive links escondidos, linhas sem quantidade e anotações da aba oculta) que nada da planilha ficou de fora.
+
+## Tecnologia
+
+| Parte | Escolha |
+|---|---|
+| Telas | **React 19** com **TypeScript 7** (modo estrito) |
+| Montagem | **Vite 8** — gera o site publicado (`dist/`) e o de teste (`dist-teste/`) |
+| Banco, login e regras | **Supabase** (Postgres + Row Level Security + funções) |
+| PDF e Excel | jsPDF + autoTable · SheetJS (carregados só quando alguém pede um arquivo) |
+| Testes | Postgres real em memória (PGlite) · Playwright num navegador de verdade |
 
 ## Rodar no computador
 
-O sistema não precisa de instalação nem de "build": é só servir a pasta.
+Precisa do [Node.js](https://nodejs.org) 22.18 ou mais novo.
 
 ```bash
-python -m http.server 8000
+npm install
+npm run dev
 ```
 
-- `http://localhost:8000` — sistema real (pede login).
-- `http://localhost:8000/?modo=teste&banco=memoria` — **modo teste**: um Postgres de verdade roda dentro do navegador (PGlite) com o mesmo `schema.sql` e dados de exemplo. Só funciona em `localhost`; no endereço publicado é impossível abrir. Logins: `dono`, `escritorio`, `almox`, `operador` — senha `teste1234`.
+- `http://localhost:5173` — sistema real (pede login).
+- `http://localhost:5173/?modo=teste&banco=memoria` — **modo teste**: um Postgres de verdade roda dentro do navegador (PGlite) com o mesmo `schema.sql` e dados inventados. Logins: `dono`, `escritorio`, `almox`, `operador` — senha `teste1234`. O site publicado não tem esse modo.
 
-Testes no computador:
-
-```bash
-PGLITE=<pasta com @electric-sql/pglite instalado> node testes/banco.mjs
-PLAYWRIGHT_DIR=<pasta com playwright> URL=http://localhost:8000 node testes/ui-ci.mjs
-```
+| Comando | O que faz |
+|---|---|
+| `npm run tipos` | confere os tipos (TypeScript) |
+| `npm run build` | monta o site publicado em `dist/` |
+| `npm run build:teste` | monta o site de teste em `dist-teste/` |
+| `npm run teste:banco` | 134 conferências do banco |
+| `npm run teste:telas` | roteiro pelas telas e varredura de layout (precisa do `build:teste`) |
 
 ## Estrutura
 
 ```
-index.html · manifest.webmanifest · sw.js   o app (instalável, abre sem internet para consulta)
-css/app.css                                  visual (claro/escuro, celular/tablet/computador)
-js/                                          núcleo: dados, telas, PDF, importação da planilha
-js/telas/                                    uma tela por arquivo (estoque, compras, produção…)
-supabase/schema.sql                          o banco inteiro: tabelas, segurança e funções
-testes/                                      testes automáticos (banco, telas, layout)
-docs/LEIAME.md                               anotações técnicas
-publicar.sh                                  monta a pasta de publicação (sem testes nem modo teste)
+index.html                 entrada do app
+public/                    logo, ícones, manifest e sw.js (instalável, abre sem internet para consulta)
+src/main.tsx               ponto de partida
+src/app/                   login, primeiro acesso, troca de senha, menu e rotas
+src/telas/                 uma tela por arquivo (estoque, compras, produção, financeiro…)
+src/ui/                    janelas, campos, avisos, PDF/Excel — com as proteções contra toque duplo
+src/lib/                   banco, dados, cálculos (PEPS, compras, férias), permissões, leitura da planilha
+src/estilo.css             visual (claro/escuro, celular/tablet/computador)
+supabase/schema.sql        o banco inteiro: tabelas, segurança e funções
+testes/                    testes automáticos (banco, telas, layout, importação da planilha)
 ```
 
 ## Situação

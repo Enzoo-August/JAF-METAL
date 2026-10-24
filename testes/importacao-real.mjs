@@ -1,28 +1,22 @@
 // Importa a planilha REAL num banco local (PGlite) e confere peça por peça.
 // Nada sai do computador. Os dados reais não são gravados em arquivo nenhum.
-// Rodar:  PGLITE=<pasta com node_modules> PLANILHA=<caminho do .xlsm> node testes/importacao-real.mjs
+// Rodar (depois do npm install):  PLANILHA=<caminho do .xlsm> node testes/importacao-real.mjs
 import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { createRequire } from 'node:module'
+import * as XLSX from 'xlsx'
+import { PGlite } from '@electric-sql/pglite'
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 import path from 'node:path'
-import vm from 'node:vm'
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const base = process.env.PGLITE || '.'
-const req = createRequire(path.join(base, 'package.json'))
-const XLSX = req('xlsx')
-const imp = (p) => import(pathToFileURL(path.join(base, 'node_modules', '@electric-sql', 'pglite', 'dist', p)).href)
-const { PGlite } = await imp('index.js')
-const { pgcrypto } = await imp('contrib/pgcrypto.js')
 process.on('unhandledRejection', e => { console.log('ERRO:', e.message, '|', e.where || ''); process.exit(2) })
 
-// carrega util.js e importar.js como o navegador faria
-const ctx = vm.createContext({ XLSX, console, Intl, Date, Math, Number, String, Object, Array, Set, Map, JSON, RegExp, Error, isFinite, crypto: globalThis.crypto })
-for (const f of ['js/util.js', 'js/importar.js']) vm.runInContext(readFileSync(path.join(raiz, f), 'utf8') + '\n;this.U = typeof U !== "undefined" ? U : this.U; this.Importar = typeof Importar !== "undefined" ? Importar : this.Importar;', ctx)
-const { U, Importar } = ctx
+// o MESMO código de leitura que o site usa (TypeScript; o Node 22.18+ roda direto)
+const Importar = await import(pathToFileURL(path.join(raiz, 'src', 'lib', 'importar.ts')).href)
+const U = await import(pathToFileURL(path.join(raiz, 'src', 'lib', 'util.ts')).href)
 
 const wb = XLSX.read(readFileSync(process.env.PLANILHA), { cellDates: true })
-const r = Importar.ler(wb, path.basename(process.env.PLANILHA))
+const r = Importar.ler(XLSX, wb, path.basename(process.env.PLANILHA))
 
 let ok = 0; const falhas = []
 const conf = (c, nome, extra) => { if (c) ok++; else falhas.push(nome + (extra !== undefined ? ' → ' + JSON.stringify(extra) : '')) }

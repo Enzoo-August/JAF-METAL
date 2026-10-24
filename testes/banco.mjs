@@ -1,14 +1,12 @@
 // Testes do banco (schema.sql) com Postgres de verdade rodando local (PGlite).
-// Rodar:  PGLITE=<pasta com node_modules/@electric-sql/pglite> node testes/banco.mjs
+// Rodar (depois do npm install):  node testes/banco.mjs
 import { readFileSync } from 'node:fs'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { PGlite } from '@electric-sql/pglite'
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 
 const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const base = process.env.PGLITE || '.'
-const imp = (p) => import(pathToFileURL(path.join(base, 'node_modules', '@electric-sql', 'pglite', 'dist', p)).href)
-const { PGlite } = await imp('index.js')
-const { pgcrypto } = await imp('contrib/pgcrypto.js')
 
 process.on('unhandledRejection', e => { console.log('ERRO:', e.message, '|', e.where || ''); process.exit(2) })
 const db = await PGlite.create({ extensions: { pgcrypto } })
