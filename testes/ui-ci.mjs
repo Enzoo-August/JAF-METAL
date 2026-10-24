@@ -3,7 +3,7 @@
 //   npm run build:teste && node testes/ui-ci.mjs
 // Opcional: CANAL=msedge (ou chrome) para usar o navegador já instalado em vez do Chromium do Playwright.
 import { createServer } from 'node:http'
-import { readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { chromium } from 'playwright'
@@ -18,9 +18,11 @@ const servidor = createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname)
   if (p.endsWith('/')) p += 'index.html'
   const arq = path.join(pasta, path.normalize(p))
-  if (!arq.startsWith(pasta) || !existsSync(arq) || !statSync(arq).isFile()) { res.writeHead(404); res.end(); return }
+  if (!arq.startsWith(pasta)) { res.writeHead(404); res.end(); return }
+  let corpo // lê direto (sem conferir antes e ler depois): não existe = 404
+  try { corpo = readFileSync(arq) } catch { res.writeHead(404); res.end(); return }
   res.writeHead(200, { 'Content-Type': TIPOS[path.extname(arq)] || 'application/octet-stream' })
-  res.end(readFileSync(arq))
+  res.end(corpo)
 }).listen(0, '127.0.0.1')
 await new Promise(ok => servidor.once('listening', ok))
 const URL_BASE = `http://localhost:${servidor.address().port}`
