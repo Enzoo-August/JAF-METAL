@@ -17,3 +17,7 @@ desktop.ini
 .netlify/
 .env
 .env.*
+
+# cargas do RH (dados pessoais)
+*carga*.json
+rh-import*.json

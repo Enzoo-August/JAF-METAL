@@ -299,7 +299,7 @@ window.roteiro = async function roteiro(filtro) {
   });
 
   await passo('equipe e acessos', async () => {
-    await ir('#/equipe'); await clicar('Novo funcionário', document.getElementById('view'));
+    await ir('#/rh'); await clicar('Nova pessoa', document.getElementById('view'));
     let j = await espera(janela);
     digitar(j.querySelector('[name=nome]'), 'Zeca Teste'); digitar(j.querySelector('[name=admissao]'), U.somaMeses(U.hoje(), -25)); digitar(j.querySelector('[name=salario]'), '2.500,00');
     await okJanela('Cadastrar');
@@ -325,6 +325,188 @@ window.roteiro = async function roteiro(filtro) {
     const v = (await ir('#/relatorios?r=estoque'), document.getElementById('view'));
     const val = Number(v.querySelector('.kpi b').textContent.replace(/[^\d,]/g, '').replace(',', '.'));
     conf(Math.abs(val - Math.round(C.valorEstoque())) <= 1, 'valor do estoque igual ao cálculo', [val, C.valorEstoque()]);
+  });
+
+
+  // ================================================================ RH (como Dono)
+  const cpfOk = (base) => { const d = String(base).padStart(9, '0').split('').map(Number); for (const n of [9, 10]) { let s = 0; for (let i = 0; i < n; i++) s += d[i] * (n + 1 - i); d.push((s * 10) % 11 % 10) } return d.join('') };
+  const pessoa = (nome) => S.lista('funcionarios').find(x => x.nome === nome);
+  await passo('RH: cadastro, CPF e ficha', async () => {
+    await ir('#/rh'); await clicar('Nova pessoa', document.getElementById('view'));
+    let j = await espera(janela);
+    digitar(j.querySelector('[name=nome]'), 'Rita Nova'); digitar(j.querySelector('[name=admissao]'), U.somaDias(U.hoje(), -10)); digitar(j.querySelector('[name=salario]'), '2.300,00');
+    await clicar(j.querySelector('[data-parte-btn=documentos]'));
+    digitar(j.querySelector('[name=cpf]'), '111.444.777-00');
+    await okJanela('Cadastrar');
+    conf(/CPF inválido/.test(erroJanela(j) || ''), 'CPF errado é recusado', erroJanela(j));
+    const cpf = cpfOk(987654321);
+    digitar(j.querySelector('[name=cpf]'), cpf);
+    await clicar(j.querySelector('[data-parte-btn=trabalho]'));
+    conf(j.querySelector('[name=nome]').value === 'Rita Nova', 'trocar de parte do cadastro não apaga o que foi digitado');
+    await okJanela('Cadastrar');
+    const f = pessoa('Rita Nova');
+    conf(!!f && S.get('funcionarios_privado', f.id)?.salario === 2300, 'pessoa cadastrada com salário', erroJanela(j));
+    conf(location.hash.includes('#/funcionario/' + f?.id), 'depois de cadastrar abre a ficha', location.hash);
+    conf(S.lista('rh_historico').some(h => h.funcionario_id === f?.id && h.motivo === 'Admissão'), 'admissão abre a linha do tempo');
+    conf(!!document.querySelector('#view .tag') && document.getElementById('view').textContent.includes('Experiência até'), 'ficha mostra a experiência (30 + 30)');
+    Telas.rh.formPessoa(); j = await espera(janela);
+    digitar(j.querySelector('[name=nome]'), 'Rita Repetida'); digitar(j.querySelector('[name=admissao]'), U.hoje());
+    await clicar(j.querySelector('[data-parte-btn=documentos]')); digitar(j.querySelector('[name=cpf]'), cpf);
+    await okJanela('Cadastrar');
+    conf(/Já existe um funcionário com o CPF/.test(erroJanela(j) || ''), 'CPF repetido é recusado', erroJanela(j));
+  });
+
+  await passo('RH: alterar cargo e salário', async () => {
+    const f = pessoa('Rita Nova');
+    await ir('#/funcionario/' + f.id); await clicar('Alterar cargo ou salário', document.getElementById('view'));
+    const j = await espera(janela);
+    j.querySelector('[name=motivo][value="Dissídio"]').click();
+    digitar(j.querySelector('[name=salario]'), '2.500');
+    await okJanela('Registrar');
+    conf(S.get('funcionarios_privado', f.id)?.salario === 2500, 'salário novo (2.500 = dois mil e quinhentos)', [erroJanela(j), S.get('funcionarios_privado', f.id)?.salario]);
+    await ir('#/funcionario/' + f.id + '?aba=cargo');
+    conf(document.querySelectorAll('.linha-tempo li').length === 2 && document.getElementById('view').textContent.includes('Dissídio'), 'linha do tempo com a admissão e o dissídio');
+  });
+
+  await passo('RH: programar férias e aviso', async () => {
+    const f = pessoa('Beto Silva');
+    const antes = S.lista('rh_ausencias').filter(a => a.funcionario_id === f.id && a.tipo === 'ferias').length;
+    Telas.rh.programarFerias(f); const j = await espera(janela);
+    conf(j.querySelector('[name=aquisitivo_inicio]').options.length >= 1, 'mostra o período aquisitivo com saldo');
+    digitar(j.querySelector('[name=inicio]'), U.somaDias(U.hoje(), 35)); digitar(j.querySelector('[name=dias]'), '20');
+    conf(/volta ao trabalho/.test(j.textContent), 'mostra a data de volta');
+    await okJanela('Programar');
+    conf(S.lista('rh_ausencias').filter(a => a.funcionario_id === f.id && a.tipo === 'ferias').length === antes + 1, 'férias gravadas', erroJanela(j));
+    const ps = C.periodosFerias(f); conf(ps.some(p => p.saldo === 10), 'saldo do período baixou para 10 dias', ps.map(p => p.saldo));
+    Telas.rh.programarFerias(f); const k = await espera(janela);
+    digitar(k.querySelector('[name=inicio]'), U.somaDias(U.hoje(), 36)); digitar(k.querySelector('[name=dias]'), '10');
+    await okJanela('Programar');
+    conf(/Já existe férias/.test(erroJanela(k) || ''), 'não deixa férias em cima de férias', erroJanela(k));
+  });
+
+  await passo('RH: ponto, horas extras e fechamento', async () => {
+    const f = pessoa('Gil Prado'), m = U.hoje().slice(0, 7);
+    await ir(`#/rh/ponto?f=${f.id}&m=${m}`); await espera(() => document.querySelector('#gradePonto'));
+    await clicar('Preencher horário padrão', document.getElementById('view'));
+    const uteis = [...document.querySelectorAll('.ponto-dia.sujo')].length;
+    conf(uteis > 0, 'preencheu os dias úteis', uteis);
+    const dia = [...document.querySelectorAll('.ponto-dia.sujo')].map(x => x.dataset.dia).filter(d => { const w = new Date(d + 'T12:00').getDay(); return w >= 1 && w <= 4 }).at(-1);
+    digitar(document.querySelector(`[data-dia="${dia}"] [data-campo=s2]`), '19:00');
+    await dorme(60);
+    conf(document.querySelector(`[data-dia="${dia}"] .pd-x`).textContent.startsWith('2h'), 'mostra 2 h de extra na hora', document.querySelector(`[data-dia="${dia}"] .pd-x`).textContent);
+    await clicar(document.querySelector('[data-ponto=salvar]'));
+    await espera(() => S.lista('rh_ponto').filter(p => p.funcionario_id === f.id && p.data.startsWith(m)).length >= uteis, 6000);
+    conf(S.lista('rh_ponto').filter(p => p.funcionario_id === f.id && p.data.startsWith(m)).length >= uteis, 'ponto gravado');
+    const p = S.lista('rh_ponto').find(x => x.funcionario_id === f.id && x.data === dia);
+    conf(p && String(p.s2).startsWith('19:00'), 'horário editado foi gravado', p);
+    conf(![...document.querySelectorAll(`[data-dia]`)].some(x => x.querySelector('[data-campo=e1]') && x.classList.contains('ausencia') && x.querySelector('[data-campo=e1]').value), 'dia de atestado não foi preenchido');
+    // dia de saída antes da entrada é recusado
+    const d2 = [...document.querySelectorAll('.ponto-dia.trabalho')].find(x => x.dataset.dia !== dia && x.dataset.dia <= U.hoje())?.dataset.dia;
+    digitar(document.querySelector(`[data-dia="${d2}"] [data-campo=e1]`), '12:00'); digitar(document.querySelector(`[data-dia="${d2}"] [data-campo=s1]`), '08:00');
+    await clicar(document.querySelector('[data-ponto=salvar]')); await dorme(500);
+    conf(/fora de ordem/.test(aviso()?.textContent || ''), 'horário fora de ordem é recusado', aviso()?.textContent);
+    await ir(`#/rh/ponto?m=${m}`); await dorme(100);
+    await ir(`#/rh/ponto?f=${f.id}&m=${m}`); await dorme(150);
+    await clicar('Fechar o mês', document.getElementById('view')); await confirmar(true);
+    await espera(() => S.lista('rh_ponto_meses').some(x => x.funcionario_id === f.id), 4000); await dorme(200);
+    conf(S.lista('rh_ponto_meses').some(x => x.funcionario_id === f.id), 'mês fechado');
+    conf(document.querySelector('[data-dia] [data-campo=e1]')?.disabled === true, 'mês fechado: não dá para editar');
+    await ir(`#/rh/ponto?m=${m}`); await dorme(150);
+    conf(document.querySelectorAll('#tPonto tbody tr').length >= 10 && !!document.querySelector('[data-ponto=exportar]'), 'fechamento de todos com exportação para a contabilidade');
+  });
+
+  await passo('RH: falta, atestado e afastamento', async () => {
+    const f = pessoa('Rita Nova');
+    Telas.rh.formAusencia(f); const j = await espera(janela);
+    j.querySelector('[name=tipo][value=falta]').click(); await dorme(60);
+    conf(j.querySelector('[name=abona]').checked === false, 'falta: já vem como "desconta"');
+    conf(!j.querySelector('[name=cid]'), 'falta não pede CID');
+    j.querySelector('[name=tipo][value=atestado]').click(); await dorme(60);
+    conf(!!j.querySelector('[name=cid]') && j.querySelector('[name=abona]').checked, 'atestado: pede CID e abona');
+    digitar(j.querySelector('#ausIni'), U.somaDias(U.hoje(), -2)); digitar(j.querySelector('#ausFim'), U.somaDias(U.hoje(), -1)); digitar(j.querySelector('[name=cid]'), 'j11');
+    await okJanela('Lançar');
+    const a = S.lista('rh_ausencias').find(x => x.funcionario_id === f.id && x.tipo === 'atestado');
+    conf(a && a.cid === 'J11' && a.abona, 'atestado gravado (CID em maiúsculas)', [erroJanela(j), a]);
+    Telas.rh.formAusencia(f); const k = await espera(janela);
+    k.querySelector('[name=tipo][value=licenca]').click(); await dorme(60);
+    digitar(k.querySelector('[name=motivo]'), 'Casamento (gala)'); await dorme(60);
+    conf(k.querySelector('#ausFim').value === U.somaDias(k.querySelector('#ausIni').value, 2), 'licença casamento preenche 3 dias', k.querySelector('#ausFim').value);
+  });
+
+  await passo('RH: exame, EPI e advertência', async () => {
+    const f = pessoa('Rita Nova');
+    const na = S.lista('rh_asos').length, ne = S.lista('rh_epis').length;
+    Telas.rh.formAso(f); let j = await espera(janela);
+    j.querySelector('[name=tipo][value=Admissional]').click();
+    await okJanela('Salvar');
+    conf(S.lista('rh_asos').length === na + 1, 'ASO gravado', erroJanela(j));
+    Telas.rh.formEpi(f); j = await espera(janela);
+    const ins = j.querySelectorAll('.item-matriz input'); digitar(ins[0], 'Luva de vaqueta'); digitar(ins[1], '12345'); digitar(ins[3], '3');
+    await clicar(j.querySelector('[data-seg=addEpi]'));
+    const ins2 = j.querySelectorAll('.item-matriz')[1].querySelectorAll('input'); digitar(ins2[0], 'Óculos de proteção');
+    await okJanela('Registrar entrega');
+    conf(S.lista('rh_epis').length === ne + 2, 'dois EPI de uma vez', erroJanela(j));
+    Telas.rh.formOcorrencia(f); j = await espera(janela);
+    j.querySelector('[name=tipo][value=suspensao]').click(); await dorme(60);
+    digitar(j.querySelector('[name=dias]'), '2'); digitar(j.querySelector('#ocIni'), U.somaDias(U.hoje(), 5)); digitar(j.querySelector('#ocDesc'), 'Teste de suspensão');
+    digitar(j.querySelector('[name=status]'), 'recusado'); await dorme(60);
+    await okJanela('Salvar');
+    conf(/2 testemunhas|Testemunha 1/.test(erroJanela(j) || ''), 'recusou assinar sem testemunhas é recusado', erroJanela(j));
+    digitar(j.querySelector('[name=testemunha1]'), 'Ana'); digitar(j.querySelector('[name=testemunha2]'), 'Bia');
+    await okJanela('Salvar');
+    const o = S.lista('rh_ocorrencias').find(x => x.funcionario_id === f.id);
+    conf(o && o.tipo === 'suspensao' && o.recusou, 'suspensão gravada', erroJanela(j));
+    conf(S.lista('rh_ausencias').some(a => a.ocorrencia_id === o?.id && a.tipo === 'suspensao' && !a.abona), 'suspensão trava os dias no ponto (sem pagamento)');
+  });
+
+  await passo('RH: matriz de treinamento', async () => {
+    await ir('#/rh/treinamentos?aba=matrizes'); await dorme(150);
+    const cel = document.querySelector('button.nivel[data-cel]');
+    const [fid, item] = cel.dataset.cel.split('|');
+    cel.click(); const j = await espera(janela);
+    const ops = j.querySelectorAll('[name=nivel]'); ops[0].click();
+    await okJanela('Salvar');
+    const n = S.lista('rh_matriz_niveis').find(x => x.funcionario_id === fid && x.item_id === item);
+    conf(n && n.nivel === Number(ops[0].value), 'nível gravado pelo quadradinho', [erroJanela(j), n?.nivel]);
+  });
+
+  await passo('RH: todas as telas abrem', async () => {
+    const f = pessoa('Beto Silva');
+    const rotas = ['#/rh', '#/rh?f=experiencia', '#/rh?f=fora', '#/rh?f=desligados', '#/rh/ponto', '#/rh/ferias', '#/rh/ferias?aba=ausencias', '#/rh/ferias?aba=fora', '#/rh/treinamentos?aba=plano',
+      '#/rh/treinamentos?aba=reciclagem', '#/rh/treinamentos?aba=metas', '#/rh/seguranca', '#/rh/seguranca?f=epi', '#/rh/disciplina', '#/rh/processos', '#/rh/organograma', '#/rh/relatorios', '#/rh/ajustes?aba=cargos',
+      '#/rh/ajustes?aba=setores', '#/rh/ajustes?aba=feriados', '#/rh/ajustes?aba=jornada', ...['resumo', 'dados', 'cargo', 'ferias', 'ponto', 'treinos', 'seguranca', 'disciplina', 'documentos'].map(a => `#/funcionario/${f.id}?aba=${a}`)]
+    for (const r of rotas) { await ir(r); await dorme(60); const v = document.getElementById('view').textContent; conf(!/Algo deu errado|Sem acesso|não encontrad/.test(v), 'abre ' + r, v.slice(0, 80)) }
+    for (const r of ['quadro', 'turnover', 'absenteismo', 'he', 'custo']) { await ir('#/rh/relatorios'); document.querySelector(`[data-rr="${r}"]`)?.click(); await dorme(80); conf(!!document.querySelector('#tRelRh tbody tr'), 'relatório do RH ' + r) }
+  });
+
+  await passo('Início personalizável', async () => {
+    await ir('#/inicio'); await clicar(document.querySelector('[data-acao=personalizar]'));
+    const j = await espera(janela);
+    j.querySelector('[data-perso=clientes] input').click(); await dorme(40);
+    j.querySelector('[data-perso=numeros] input').click(); await dorme(40);
+    await okJanela('Salvar'); await dorme(200);
+    conf(!!document.querySelector('[data-atalho=clientes]') && !document.querySelector('[data-bloco=numeros]'), 'pôs Clientes e tirou os números do mês', erroJanela(j));
+    conf(!document.querySelector('[data-atalho=chamado]'), 'o padrão do Dono não tem "Máquina com problema"');
+    await clicar(document.querySelector('[data-acao=personalizar]')); const k = await espera(janela);
+    await okJanela('Voltar ao padrão'); await dorme(200);
+    conf(!document.querySelector('[data-atalho=clientes]') && !!document.querySelector('[data-bloco=numeros]') && !!document.querySelector('[data-atalho=fornecedores]'), 'voltar ao padrão (com Fornecedores)', erroJanela(k));
+  });
+
+  await passo('ajuda pesquisável e busca do topo', async () => {
+    await ir('#/ajuda?q=f%C3%A9rias'); await dorme(150);
+    const a = document.querySelector('.artigo');
+    conf(a && a.open && /férias/i.test(a.querySelector('summary').textContent), 'pesquisar "férias" mostra o artigo de férias aberto', a?.querySelector('summary').textContent);
+    await ir('#/ajuda?q=rh'); await dorme(100);
+    conf(document.querySelectorAll('.artigo').length >= 5, 'pesquisar "rh" acha tudo do RH', document.querySelectorAll('.artigo').length);
+    const b = document.querySelector('[data-mostrar]'); b?.click(); await dorme(900);
+    conf(!!document.querySelector('.tour-balao'), '"Me mostre na tela" destaca o botão');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); await dorme(80);
+    conf(!document.querySelector('.tour-balao'), 'Esc fecha a demonstração');
+    const inp = document.getElementById('buscaGeral'); inp.focus(); digitar(inp, 'ferias'); await dorme(120);
+    conf(!!document.querySelector('.busca-res a[data-tipo=tela]'), 'lupa do topo acha a tela de férias');
+    digitar(inp, 'beto'); await dorme(120);
+    conf(!!document.querySelector('.busca-res a[data-tipo=pessoa]'), 'lupa do topo acha pessoa');
+    digitar(inp, '');
   });
 
   // ================================================================ PRODUÇÃO
@@ -375,6 +557,39 @@ window.roteiro = async function roteiro(filtro) {
     await ir('#/admin'); const t = document.getElementById('view').textContent;
     conf(!t.includes('Novo acesso') && !t.includes('Importar planilha') && t.includes('Empresa'), 'escritório: sem acessos/importação, com empresa', t.slice(0, 120));
     await ir('#/financeiro'); conf(!document.getElementById('view').textContent.includes('Sem acesso'), 'escritório vê financeiro');
+  });
+
+  // ================================================================ RH (perfil próprio)
+  await passo('perfil RH', async () => {
+    await como('helena');
+    const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
+    conf(menu.join('|') === 'Início|RH|Ajuda', 'menu do RH: só Início, RH e Ajuda', menu);
+    conf(!document.querySelector('.lateral [data-acao=retirar]'), 'RH não tem "Retirar peça"');
+    conf(S.lista('pecas').length === 0 && S.lista('lancamentos').length === 0 && S.lista('movimentos').length === 0, 'banco não manda estoque nem financeiro para o RH');
+    await ir('#/pecas'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'estoque bloqueado para o RH');
+    await ir('#/financeiro'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'financeiro bloqueado para o RH');
+    conf(S.lista('funcionarios_privado').length > 0 && S.lista('rh_historico').length > 0, 'RH vê salários e documentos');
+    const f = S.lista('funcionarios').find(x => x.nome === 'Beto Silva');
+    await ir('#/funcionario/' + f.id + '?aba=dados'); conf(document.getElementById('view').textContent.includes('CPF'), 'RH abre os dados pessoais');
+    conf(!!document.querySelector('[data-atalho=novaPessoa]') || (await ir('#/inicio'), !!document.querySelector('[data-atalho=novaPessoa]')), 'início do RH com "Nova pessoa"');
+    Telas.rh.formAso(f); const j = await espera(janela); await okJanela('Salvar');
+    conf(!erroJanela(j), 'RH grava exame', erroJanela(j));
+  });
+
+  await passo('perfil gerente de fábrica', async () => {
+    await como('gerente');
+    conf(S.lista('funcionarios_privado').length === 0 && S.lista('rh_historico').length === 0 && S.lista('rh_anexos').length === 0, 'gerente não recebe salário, documentos nem anexos');
+    conf(S.lista('rh_ausencias').length > 0 && S.lista('rh_ausencias').every(a => a.cid === undefined || a.cid === null), 'gerente vê quem está fora, sem CID');
+    const f = S.lista('funcionarios').find(x => x.nome === 'Beto Silva');
+    await ir('#/funcionario/' + f.id);
+    const abas = [...document.querySelectorAll('.abas-tela a')].map(a => a.textContent);
+    conf(!abas.includes('Dados pessoais') && !abas.includes('Cargo e salário') && abas.includes('Ponto'), 'ficha do gerente sem dados pessoais e salário', abas);
+    conf(!botao('Editar', document.getElementById('view')), 'gerente não edita pessoa');
+    await ir(`#/rh/ponto?f=${f.id}&m=${U.hoje().slice(0, 7)}`); await dorme(100);
+    conf(!document.querySelector('[data-ponto=salvar]') && document.querySelector('[data-dia] [data-campo=e1]')?.disabled, 'gerente só consulta o ponto');
+    conf(!document.getElementById('view').textContent.includes('R$'), 'ponto do gerente sem valores em R$');
+    await ir('#/rh/ajustes'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'gerente não abre os ajustes do RH');
+    await ir('#/pecas'); conf(!document.getElementById('view').textContent.includes('Sem acesso'), 'gerente vê o estoque');
   });
 
   await passo('senha provisória', async () => {

@@ -21,6 +21,8 @@ const DESC_PERFIL: Record<string, string> = {
   escritorio: 'Tudo do dia a dia: financeiro, salários, compras, estoque e produção. Não cria acessos.',
   almoxarife: 'Estoque, compras, fornecedores, máquinas e ordens. Não vê financeiro nem salários.',
   producao: 'Retirar peça, ver estoque (sem preços), ordens de produção e chamados de máquina.',
+  rh: 'Só o RH: pessoas, documentos, salários, ponto, férias, treinamentos, exames e advertências. Não vê estoque nem financeiro.',
+  gerente: 'Fábrica (estoque, retirar, ordens, máquinas) e consulta do RH da equipe — sem salários, documentos pessoais nem CID.',
 }
 
 export function TelaAdmin({ r }: { r: Rota }) {
@@ -34,7 +36,7 @@ export function TelaAdmin({ r }: { r: Rota }) {
     <nav className="abas-tela">{abas.map(([k, t]) => <button key={k} type="button" data-aba={k} className={k === atual ? 'on' : ''} onClick={() => setAba(k)}>{t}</button>)}</nav>
     {atual === 'acessos' && <Acessos />}
     {atual === 'empresa' && <Empresa />}
-    {atual === 'importar' && <Importar />}
+    {atual === 'importar' && <><Importar /><ImportarRH /></>}
     {atual === 'copia' && <Copia />}
     {atual === 'historico' && <HistoricoAlt />}
   </>
@@ -131,6 +133,52 @@ function Empresa() {
       <div className="linha-campos"><Campo nome="pagar" rotulo="Despesas (a pagar)" tipo="area" linhas={10} valor={cats.pagar.join('\n')} /><Campo nome="receber" rotulo="Receitas (a receber)" tipo="area" linhas={10} valor={cats.receber.join('\n')} /></div>
       <Btn txt="Salvar categorias" icone="ok" cls="pri" data-salvar="categorias" onClick={() => salvar('categorias')} /></form>
   </>
+}
+
+// ---------------------------------------------------------------- importar as planilhas do RH (arquivo de carga montado a partir das 9 planilhas)
+interface CargaRH { pessoas: { situacao: string }[]; ponto: unknown[]; matrizes: { nome: string; niveis: unknown[] }[]; feriados: unknown[]; asos: unknown[]; ocorrencias: unknown[]; processos: unknown[]; cargos: unknown[]; setores: unknown[]; plano: unknown[]; avisos?: string[] }
+function ImportarRH() {
+  const tem = S.lista('funcionarios').length
+  const [carga, setCarga] = useState<CargaRH | null>(null)
+  const [erroArq, setErroArq] = useState('')
+  const [feito, setFeito] = useState<Record<string, number> | null>(null)
+  const escolher = async (arq: File | undefined) => {
+    if (!arq) return
+    setErroArq(''); setFeito(null)
+    try {
+      const d = JSON.parse(await arq.text()) as CargaRH
+      if (!Array.isArray(d.pessoas) || !Array.isArray(d.ponto)) throw new Error('Esse arquivo não é a carga do RH.')
+      setCarga(d)
+    } catch (e) { setCarga(null); setErroArq((e as Error).message) }
+  }
+  const importar = async () => {
+    if (!carga) return
+    if (tem) {
+      const ok = await modal({ titulo: 'Substituir as pessoas?', corpo: <><p>Já existem {U.plural(tem, 'pessoa')} cadastradas. Isto apaga o RH atual e coloca o das planilhas.</p><Campo nome="conf" rotulo="Digite SUBSTITUIR para confirmar" req /></>,
+        botoes: [{ txt: 'Substituir', cls: 'perigo', acao: (f) => { if (String(lerForm(f).conf).toUpperCase() !== 'SUBSTITUIR') throw new ErroApp('Digite SUBSTITUIR.'); return true } }] })
+      if (!ok) return
+    }
+    const { avisos: _a, ...p } = carga
+    const res = await API.rpc<Record<string, number>>('importar_rh', { p, p_substituir: !!tem })
+    await S.carregar(); setFeito(res); setCarga(null); aviso('RH importado.')
+  }
+  const at = carga?.pessoas.filter(x => x.situacao === 'ativo').length || 0
+  return <section className="card mt"><h2>Importar as planilhas do RH</h2>
+    <p>Traz de uma vez a <b>Relação de funcionários</b> (todas as abas, inclusive Banco de dados, Consolidado e Processos), a <b>Planilha de horas extras</b>, o <b>Plano de treinamentos</b>, os <b>Procedimentos do SGQ</b> e as <b>5 matrizes de versatilidade</b>.</p>
+    <p className="sub">Use o arquivo <b>JAF - carga do RH.json</b> (montado a partir das planilhas, na pasta “Sobre JAF”). Nada é gravado antes de você confirmar.</p>
+    <label className="btn sec mt" style={{ cursor: 'pointer' }}><Ic n="enviar" /><span>Escolher o arquivo da carga</span>
+      <input type="file" id="arqRH" accept=".json,application/json" hidden onChange={(e) => { void escolher(e.target.files?.[0]); e.target.value = '' }} /></label>
+    {erroArq && <p className="nota vermelha mt">{erroArq}</p>}
+    {carga && <div className="mt">
+      <Dl pares={[['Pessoas', `${carga.pessoas.length} (${at} trabalhando, ${carga.pessoas.length - at} desligadas)`], ['Dias de ponto', carga.ponto.length], ['Cargos / setores', `${carga.cargos.length} / ${carga.setores.length}`],
+        ['Matrizes', carga.matrizes.map(m => m.nome.replace(/^.*— /, '')).join(', ')], ['Marcações nas matrizes', U.soma(carga.matrizes, m => m.niveis.length)], ['Feriados', carga.feriados.length],
+        ['Exames (ASO)', carga.asos.length], ['Advertências', carga.ocorrencias.length], ['Processos trabalhistas', carga.processos.length], ['Plano de treinamentos', carga.plano.length]]} />
+      {!!carga.avisos?.length && <details className="duvida mt"><summary>{U.plural(carga.avisos.length, 'ponto', 'pontos')} para conferir depois (datas digitadas erradas, CPF que não confere…)</summary>
+        <ul>{carga.avisos.map((x, i) => <li key={i} className="sub">{x}</li>)}</ul></details>}
+      <div className="grupo-btn mt"><Btn txt="Importar agora" icone="ok" cls="pri" data-imp="rh" onClick={() => importar()} /><button type="button" className="btn fantasma" onClick={() => setCarga(null)}>Cancelar</button></div>
+    </div>}
+    {feito && <p className="nota verde mt">Importado: {feito.pessoas} pessoas, {feito.ponto} dias de ponto, {feito.matrizes} matrizes ({feito.niveis} marcações), {feito.feriados} feriados, {feito.asos} exames, {feito.ocorrencias} advertências, {feito.processos} processos.</p>}
+  </section>
 }
 
 // ---------------------------------------------------------------- importar planilha
@@ -236,9 +284,26 @@ function Copia() {
       abas.push(['Clientes', S.lista('clientes').map(c => ({ 'Nome': c.nome, 'Razão social': c.razao, 'CNPJ': c.cnpj, 'Contato': c.contato, 'Telefone': c.telefone, 'E-mail': c.email, 'Cidade': c.cidade, 'UF': c.uf, 'Obs.': c.obs }))])
     }
     const sal = Perm.pode('salarios')
-    abas.push(['Equipe', S.lista('funcionarios').map(f => { const p = sal ? S.get('funcionarios_privado', f.id) : null
-      return { 'Nome': f.nome, 'Função': f.funcao, 'Setor': f.setor, 'Telefone': f.telefone, 'Admissão': d(f.admissao), 'Ativo': f.ativo ? 'sim' : 'não',
-        ...(sal ? { 'Salário': p?.salario, 'Nascimento': d(p?.nascimento), 'CPF': p?.cpf, 'RG': p?.rg, 'Pix': p?.pix, 'Endereço': p?.endereco, 'Férias': (p?.ferias || []).map(x => U.data(x.inicio) + '–' + U.data(x.fim)).join('; '), 'Obs.': p?.obs } : {}) } })])
+    const nf = (id: string | null) => S.get('funcionarios', id)?.nome || ''
+    // RH: o cadastro completo e cada tabela do RH numa aba
+    abas.push(['RH - Pessoas', S.lista('funcionarios').map(f => { const p = sal ? S.get('funcionarios_privado', f.id) : null
+      const { id: _i, criado_em: _c, atualizado_em: _a, cargo_id: _g, superior_id: _s, ...fx } = f
+      const { funcionario_id: _f, atualizado_em: _pa, ferias: _fe, ...px } = (p || {}) as Record<string, unknown>
+      return { ...fx, 'superior': nf(f.superior_id), ...(sal ? px : {}) } })])
+    if (Perm.pode('rh_ver')) {
+      const lim = (l: Record<string, unknown>[]) => l.map(({ id: _i, atualizado_em: _a, ...x }) => { const o: Record<string, unknown> = {}
+        for (const [k, v] of Object.entries(x)) o[k === 'funcionario_id' ? 'pessoa' : k] = k === 'funcionario_id' ? nf(v as string) : v
+        return o })
+      const pares: [string, Record<string, unknown>[]][] = [['RH - Ponto', S.lista('rh_ponto') as unknown as Record<string, unknown>[]], ['RH - Ausências', S.lista('rh_ausencias') as unknown as Record<string, unknown>[]],
+        ['RH - Exames ASO', S.lista('rh_asos') as unknown as Record<string, unknown>[]], ['RH - EPI', S.lista('rh_epis') as unknown as Record<string, unknown>[]],
+        ['RH - Advertências', S.lista('rh_ocorrencias') as unknown as Record<string, unknown>[]], ['RH - Metas', S.lista('rh_metas') as unknown as Record<string, unknown>[]],
+        ['RH - Plano treinos', S.lista('rh_plano_treinos') as unknown as Record<string, unknown>[]], ['RH - Cargos', S.lista('rh_cargos') as unknown as Record<string, unknown>[]],
+        ['RH - Setores', S.lista('rh_setores') as unknown as Record<string, unknown>[]], ['RH - Feriados', S.lista('rh_feriados') as unknown as Record<string, unknown>[]]]
+      if (sal) pares.push(['RH - Cargo e salário', S.lista('rh_historico') as unknown as Record<string, unknown>[]])
+      for (const [n, l] of pares) abas.push([n, lim(l)])
+      abas.push(['RH - Matrizes', S.lista('rh_matriz_niveis').map(n => { const it = S.get('rh_matriz_itens', n.item_id)
+        return { matriz: S.get('rh_matrizes', it?.matriz_id)?.nome || '', item: it?.nome || '', pessoa: nf(n.funcionario_id), nivel: n.nivel, data: d(n.data), obs: n.obs } })])
+    }
     await excel(`JAF Metal - copia dos dados ${U.hoje()}.xlsx`, abas, true)
     try { localStorage.setItem('jaf.ultimaCopia', U.hoje()) } catch { /* modo privado */ }
     setUlt(U.hoje())
@@ -253,7 +318,9 @@ function Copia() {
 // ---------------------------------------------------------------- histórico de alterações
 const TAB: Record<string, string> = { pecas: 'Peça', fornecedores: 'Fornecedor', movimentos: 'Movimentação', pedidos_compra: 'Pedido de compra', pedido_itens: 'Item de pedido', maquinas: 'Máquina',
   manutencoes: 'Manutenção', ordens: 'Ordem de produção', lancamentos: 'Conta', funcionarios: 'Funcionário', funcionarios_privado: 'Dados pessoais', clientes: 'Cliente',
-  config: 'Configuração', perfis: 'Acesso', importacao: 'Importação da planilha' }
+  config: 'Configuração', perfis: 'Acesso', importacao: 'Importação da planilha', rh_setores: 'Setor (RH)', rh_cargos: 'Cargo (RH)', rh_historico: 'Cargo e salário',
+  rh_ausencias: 'Férias / ausência', rh_ponto: 'Ponto', rh_ponto_meses: 'Fechamento do ponto', rh_feriados: 'Feriado', rh_matrizes: 'Matriz de treinamento', rh_matriz_itens: 'Item de matriz',
+  rh_matriz_niveis: 'Nível de treinamento', rh_plano_treinos: 'Plano de treinamento', rh_metas: 'Meta', rh_epis: 'Entrega de EPI', rh_asos: 'Exame (ASO)', rh_ocorrencias: 'Advertência', rh_anexos: 'Anexo' }
 const ACAO: Record<string, string> = { insert: 'criou', update: 'alterou', delete: 'apagou', importar: 'importou' }
 function HistoricoAlt() {
   const [hist, setHist] = useState<Historico[] | null>(null)

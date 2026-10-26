@@ -40,7 +40,7 @@ async function carregarLogo(): Promise<string | null> {
 // já deixa o gerador pronto (no iPhone o "compartilhar" precisa ser rápido depois do toque)
 export const prepararPdf = (): void => { void import('jspdf').catch(() => null); void import('jspdf-autotable').catch(() => null) }
 
-type Doc = JsPDF & { lastAutoTable: { finalY: number } }
+export type Doc = JsPDF & { lastAutoTable: { finalY: number } }
 async function novo(orientacao: 'p' | 'l' = 'p'): Promise<{ doc: Doc; tabela: (o: UserOptions) => void }> {
   const [{ jsPDF }, { autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
   const doc = new jsPDF({ orientation: orientacao, unit: 'mm', format: 'a4' }) as Doc
@@ -142,6 +142,45 @@ export async function pdfTabela(titulo: string, sub: string, colunas: ColunaPdf[
   } else {
     tabela({ ...estiloTabela, startY: y + 2, head: [colunas.map(c => c.t)], body: linhas, foot: opt.totais ? [opt.totais] : undefined, footStyles: pe, columnStyles: cs })
   }
+  rodape(doc)
+  return doc.output('blob')
+}
+
+// ---------------------------------------------------------------- documento livre (ficha, aviso de férias, advertência…)
+export interface CtxDoc {
+  doc: Doc; tabela: (o: UserOptions) => void; estilo: UserOptions; W: number; H: number; y: number
+  // escreve um parágrafo quebrando a linha e devolve o y de baixo (pula de página se precisar)
+  texto: (t: string, y: number, opt?: { tam?: number; negrito?: boolean; x?: number; largura?: number; cor?: number; alinhar?: 'left' | 'center' | 'right' | 'justify' }) => number
+  assinatura: (nome: string, sub: string, x: number, y: number, largura?: number) => void
+}
+export async function pdfDocumento(titulo: string, sub: string, desenhar: (c: CtxDoc) => void, deitado = false): Promise<Blob> {
+  await carregarLogo().catch(() => null)
+  const { doc, tabela } = await novo(deitado ? 'l' : 'p')
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight()
+  const y = cabecalho(doc, titulo, sub)
+  const texto: CtxDoc['texto'] = (t, y0, o = {}) => {
+    const tam = o.tam || 10, x = o.x ?? 14, larg = o.largura ?? W - 28
+    doc.setFontSize(tam); doc.setFont('helvetica', o.negrito ? 'bold' : 'normal'); doc.setTextColor(o.cor ?? 25)
+    // a fonte do PDF não tem alguns símbolos: troca por parecidos
+    const linhas = doc.splitTextToSize(t.replace(/−/g, '-').replace(/→/g, '>').replace(/★/g, '*').replace(/✓/g, 'ok'), larg) as string[]
+    const alt = tam * 0.42
+    let yy = y0
+    for (const l of linhas) {
+      if (yy > H - 20) { doc.addPage(); yy = 20 }
+      if (o.alinhar === 'center') doc.text(l, x + larg / 2, yy, { align: 'center' })
+      else if (o.alinhar === 'right') doc.text(l, x + larg, yy, { align: 'right' })
+      else doc.text(l, x, yy)
+      yy += alt
+    }
+    doc.setFont('helvetica', 'normal')
+    return yy + 1.5
+  }
+  const assinatura: CtxDoc['assinatura'] = (nome, s2, x, y0, larg = 80) => {
+    doc.setDrawColor(60); doc.setLineWidth(0.3); doc.line(x, y0, x + larg, y0)
+    doc.setFontSize(9); doc.setTextColor(25); doc.text(nome, x + larg / 2, y0 + 4.5, { align: 'center' })
+    if (s2) { doc.setFontSize(8); doc.setTextColor(110); doc.text(s2, x + larg / 2, y0 + 8.5, { align: 'center' }) }
+  }
+  desenhar({ doc, tabela, estilo: estiloTabela, W, H, y, texto, assinatura })
   rodape(doc)
   return doc.output('blob')
 }

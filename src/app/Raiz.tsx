@@ -57,7 +57,7 @@ function Login({ msg, primeiro }: { msg: string; primeiro: boolean }) {
   })
   const demo = (perfil: string) => {
     const f = form.current!
-    ;(f.elements.namedItem('login') as HTMLInputElement).value = ({ dono: 'dono', escritorio: 'escritorio', almoxarife: 'almox', producao: 'operador' } as Record<string, string>)[perfil]
+    ;(f.elements.namedItem('login') as HTMLInputElement).value = ({ dono: 'dono', escritorio: 'escritorio', almoxarife: 'almox', producao: 'operador', rh: 'helena', gerente: 'gerente' } as Record<string, string>)[perfil]
     ;(f.elements.namedItem('senha') as HTMLInputElement).value = 'teste1234'
     f.requestSubmit()
   }
@@ -88,7 +88,7 @@ function Login({ msg, primeiro }: { msg: string; primeiro: boolean }) {
             <button className={`btn pri grande${ocup ? ' carregando' : ''}`} disabled={ocup} type="submit"><span>Entrar</span></button>
           </form>
           {teste && <div className="login-teste"><b>Modo teste</b> — dados inventados, nada vai para o banco de verdade.
-            <div className="login-perfis">{(['dono', 'escritorio', 'almoxarife', 'producao'] as const).map(p =>
+            <div className="login-perfis">{(['dono', 'escritorio', 'almoxarife', 'producao', 'rh', 'gerente'] as const).map(p =>
               <button key={p} type="button" className="btn sec" data-demo={p} onClick={() => demo(p)}>{Perm.nome(p)}</button>)}</div>
             <small>Senha de todos: <code>teste1234</code></small></div>}
         </>}

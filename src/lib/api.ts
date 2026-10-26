@@ -6,11 +6,11 @@
  * Gravação: só por funções do banco (API.rpc). Leitura: API.ler(tabela). */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { CONFIG } from '../config.ts'
-import type { NomeTabela, Perfil, PerfilAcesso, Tabelas } from './tipos.ts'
+import type { NomeTabela, Perfil, PerfilAcesso, Preferencias, Tabelas } from './tipos.ts'
 import { gravarLocal, iso, lerLocal } from './util.ts'
 import type { PGlite, Transaction } from '@electric-sql/pglite'
 
-export interface Sessao { uid: string; login: string; nome: string; perfil: Perfil; funcionario_id: string | null; trocar_senha: boolean }
+export interface Sessao { uid: string; login: string; nome: string; perfil: Perfil; funcionario_id: string | null; trocar_senha: boolean; preferencias: Preferencias }
 
 export class ErroApp extends Error {
   rede = false
@@ -30,7 +30,7 @@ export const API = {
   online: navigator.onLine,
   precisaDemo: false,
   _pg: null as PGlite | null,
-  iniciar, entrar, sair, conferirSessao, rpc, ler, ultimos, chamarTabela, zerarTeste, traduzir,
+  iniciar, entrar, sair, conferirSessao, rpc, ler, lerOnde, ultimos, chamarTabela, zerarTeste, traduzir,
 }
 
 let sb: SupabaseClient | null = null
@@ -82,7 +82,7 @@ async function carregarPerfil(uid: string): Promise<Sessao | null> {
   const linhas = await lerBruto('perfis', (q) => q.eq('user_id', uid), { sql: 'where user_id = $1', vals: [uid] }, uid) as unknown as PerfilAcesso[]
   const p = linhas[0]
   if (!p || !p.ativo) { API.sessao = null; return null }
-  API.sessao = { uid, login: p.login, nome: p.nome, perfil: p.perfil, funcionario_id: p.funcionario_id, trocar_senha: !!p.trocar_senha }
+  API.sessao = { uid, login: p.login, nome: p.nome, perfil: p.perfil, funcionario_id: p.funcionario_id, trocar_senha: !!p.trocar_senha, preferencias: p.preferencias || {} }
   return API.sessao
 }
 
@@ -151,6 +151,14 @@ async function ler<K extends NomeTabela>(tabela: K, opt: { campo?: string; desde
     const filtro = opt.desde !== undefined && opt.campo
     return await lerBruto(tabela, (q) => filtro ? q.gt(opt.campo!, opt.desde!) : q,
       filtro ? { sql: `where ${opt.campo} > $1`, vals: [opt.desde] } : undefined) as unknown as Tabelas[K][]
+  } catch (e) { throw traduzir(e) }
+}
+
+// só as linhas em que campo = valor (ex.: o ponto de uma pessoa)
+async function lerOnde<K extends NomeTabela>(tabela: K, campo: string, valor: string): Promise<Tabelas[K][]> {
+  if (!/^[a-z_]+$/.test(campo)) throw new ErroApp('Campo inválido')
+  try {
+    return await lerBruto(tabela, (q) => q.eq(campo, valor), { sql: `where ${campo} = $1`, vals: [valor] }) as unknown as Tabelas[K][]
   } catch (e) { throw traduzir(e) }
 }
 

@@ -52,7 +52,7 @@ export const temDl = (pares: ([string, ReactNode] | null | false | undefined)[])
 export const Texto = ({ t }: { t: string | null | undefined }) => <>{String(t || '').split('\n').map((l, n, a) => <span key={n}>{l}{n < a.length - 1 && <br />}</span>)}</>
 
 // ------------------------------------------------------------------ campos de formulário (não controlados: o React não apaga o que foi digitado)
-type TipoCampo = 'text' | 'tel' | 'email' | 'date' | 'password' | 'search' | 'num' | 'dinheiro' | 'qtd' | 'select' | 'area' | 'check'
+type TipoCampo = 'text' | 'tel' | 'email' | 'date' | 'time' | 'month' | 'password' | 'search' | 'num' | 'dinheiro' | 'qtd' | 'select' | 'area' | 'check'
 export interface PropsCampo {
   nome: string
   rotulo: string

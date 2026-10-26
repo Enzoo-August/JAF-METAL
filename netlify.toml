@@ -1,0 +1,7 @@
+# Publicação no Netlify: monta o site (sem o modo teste) e publica a pasta dist/
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22.19.0"

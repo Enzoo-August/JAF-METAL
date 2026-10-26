@@ -2,6 +2,7 @@
  * Só entra no "npm run dev" e no build de teste. */
 import { API } from './api.ts'
 import { S } from './dados.ts'
+import * as R from './rh.ts'
 import * as U from './util.ts'
 
 // gerador pseudoaleatório fixo (a demonstração sai sempre igual)
@@ -57,6 +58,14 @@ const PECAS: LinhaPeca[] = [
   ['ALARG-8.17', 'Alargador máquina HSS Ø8,17 mm', 'Torno CNC', 'Alfa Ferramentas', 0, 2, 295.5, 0.1],
 ]
 
+// CPF inventado com dígitos verificadores certos (o banco confere)
+function cpfTeste(base: number): string {
+  const d = String(base).padStart(9, '0').slice(0, 9).split('').map(Number)
+  for (const n of [9, 10]) { let s = 0; for (let i = 0; i < n; i++) s += d[i] * (n + 1 - i); d.push((s * 10) % 11 % 10) }
+  const x = d.join('')
+  return `${x.slice(0, 3)}.${x.slice(3, 6)}.${x.slice(6, 9)}-${x.slice(9)}`
+}
+
 interface Mov { data: string; codigo: string; tipo: 'entrada' | 'saida'; qtd: number; preco_unit: number; fornecedor: string; documento: string }
 
 function historico(dia: (n: number) => string) {
@@ -98,26 +107,59 @@ export async function criarDemo(): Promise<void> {
   const senha = 'teste1234'
   await API.rpc('primeiro_dono', { p_login: 'dono', p_senha: senha, p_nome: 'Dono (teste)' })
   await API.entrar('dono', senha)
-  const funcs: [string, string, string, string, number][] = [
-    ['Beto Silva', 'Torneiro CNC', 'Usinagem', '2019-03-11', 3600], ['Caio Souza', 'Operador de torno automático', 'Usinagem', '2021-08-02', 3100],
-    ['Denise Lima', 'Auxiliar administrativo', 'Escritório', '2022-01-17', 2800], ['Edu Rocha', 'Almoxarife', 'Almoxarifado', U.somaMeses(hoje, -23), 2900],
-    ['Fábio Nunes', 'Fresador', 'Usinagem', '2018-05-07', 3500], ['Gil Prado', 'Ajudante geral', 'Produção', U.somaMeses(hoje, -5), 2100],
+  // RH: setores e cargos (organograma) antes das pessoas
+  for (const nome of ['Usinagem', 'Produção', 'Almoxarifado', 'Escritório', 'Qualidade', 'RH']) await API.rpc('rh_salvar_setor', { p: { nome } })
+  const cargo: Record<string, string> = {}
+  const novoCargo = async (nome: string, setor: string, sup: string | null, cbo: string) => { cargo[nome] = await API.rpc<string>('rh_salvar_cargo', { p: { nome, setor, cbo, superior_id: sup ? cargo[sup] : null } }) }
+  await novoCargo('Gerente geral', 'Escritório', null, '1421-05')
+  await novoCargo('Gerente de produção', 'Produção', 'Gerente geral', '1412-05')
+  await novoCargo('Líder de produção', 'Produção', 'Gerente de produção', '7201-10')
+  await novoCargo('Torneiro CNC', 'Usinagem', 'Líder de produção', '7212-15')
+  await novoCargo('Operador de torno automático', 'Usinagem', 'Líder de produção', '7214-20')
+  await novoCargo('Fresador', 'Usinagem', 'Líder de produção', '7212-10')
+  await novoCargo('Ajudante geral', 'Produção', 'Líder de produção', '7842-05')
+  await novoCargo('Coordenador de logística', 'Almoxarifado', 'Gerente geral', '1416-15')
+  await novoCargo('Almoxarife', 'Almoxarifado', 'Coordenador de logística', '4141-05')
+  await novoCargo('Assistente de RH', 'RH', 'Gerente geral', '4110-30')
+  await novoCargo('Auxiliar administrativo', 'Escritório', 'Gerente geral', '4110-05')
+  await novoCargo('Inspetor de qualidade', 'Qualidade', 'Gerente geral', '3912-05')
+  // [nome, cargo, setor, admissão, salário, registro]
+  const funcs: [string, string, string, string, number, string][] = [
+    ['Beto Silva', 'Torneiro CNC', 'Usinagem', '2019-03-11', 3000, 'Matriz'], ['Caio Souza', 'Operador de torno automático', 'Usinagem', '2021-08-02', 3100, 'Matriz'],
+    ['Denise Lima', 'Auxiliar administrativo', 'Escritório', '2022-01-17', 2800, 'Matriz'], ['Edu Rocha', 'Almoxarife', 'Almoxarifado', U.somaMeses(hoje, -23), 2900, 'Filial'],
+    ['Fábio Nunes', 'Fresador', 'Usinagem', '2018-05-07', 3500, 'Filial'], ['Gil Prado', 'Ajudante geral', 'Produção', U.somaMeses(hoje, -5), 2100, 'Filial'],
+    ['Helena Costa', 'Assistente de RH', 'RH', '2020-02-03', 3900, 'Matriz'], ['Ivo Martins', 'Gerente de produção', 'Produção', '2016-09-12', 7800, 'Matriz'],
+    ['Júlia Alves', 'Inspetor de qualidade', 'Qualidade', U.somaDias(U.somaMeses(hoje, -21), -15), 3300, 'Matriz'],
+    ['Kleber Dias', 'Líder de produção', 'Produção', U.somaDias(U.somaMeses(hoje, -22), -10), 4600, 'Filial'],
+    ['Lia Ramos', 'Operador de torno automático', 'Usinagem', '2023-04-10', 2700, 'Upgrade'], ['Nina Barros', 'Ajudante geral', 'Produção', U.somaDias(hoje, -12), 2000, 'Filial'],
+    ['Otávio Reis', 'Torneiro CNC', 'Usinagem', '2017-06-19', 3700, 'Matriz'], ['Paulo Gomes', 'Ajudante geral', 'Produção', '2024-02-05', 2100, 'Sem registro'],
   ]
   const ids: Record<string, string> = {}
-  for (const [n, [nome, funcao, setor, adm, sal]] of funcs.entries()) {
-    // férias em dia para quase todos; um com período para vencer, para mostrar o aviso
-    const anos = Math.floor(U.dias(adm, hoje) / 365.25)
-    const tiradas = n === 1 ? Math.max(0, anos - 2) : Math.max(0, anos - 1)
-    const ferias = Array.from({ length: tiradas }, (_, k) => { const ini = U.somaMeses(adm, 12 * (k + 1) + 3); return { inicio: ini, fim: U.somaDias(ini, 29) } })
-    ids[nome] = await API.rpc('salvar_funcionario', { p: { nome, funcao, setor, admissao: adm, telefone: '(11) 95555-' + entre(1000, 9999),
-      privado: { salario: sal, nascimento: `19${entre(70, 99)}-${String(entre(1, 12)).padStart(2, '0')}-${String(entre(1, 28)).padStart(2, '0')}`, ferias } } })
+  for (const [n, [nome, cg, setor, adm, sal, registro]] of funcs.entries()) {
+    const [nm, ...sob] = nome.split(' ')
+    ids[nome] = await API.rpc('salvar_funcionario', { p: { nome, cargo_id: cargo[cg], setor, admissao: adm, registro, matricula: 'JAF' + String(100 + n), horario: '07:00 às 17:00',
+      descanso: 'Sábado e domingo', telefone: '(11) 95555-' + entre(1000, 9999),
+      privado: { salario: sal, cpf: cpfTeste(123450000 + n * 7919), rg: String(entre(10000000, 49999999)) + '-X', pis: '1' + entre(1000000000, 9999999999),
+        nascimento: `19${entre(70, 99)}-${String(entre(1, 12)).padStart(2, '0')}-${String(entre(1, 28)).padStart(2, '0')}`, sexo: ['Helena', 'Júlia', 'Lia', 'Nina', 'Denise'].includes(nm) ? 'Feminino' : 'Masculino',
+        estado_civil: n % 3 ? 'Casado(a)' : 'Solteiro(a)', nacionalidade: 'Brasileira', naturalidade: 'São Paulo', uf_nascimento: 'SP', mae: 'Maria ' + sob.join(' ') + ' (exemplo)',
+        instrucao: n % 2 ? 'Médio completo' : 'Técnico', celular: '(11) 9' + entre(4000, 9999) + '-' + entre(1000, 9999), endereco: 'Rua Exemplo', numero: String(entre(10, 999)), bairro: 'Centro',
+        cidade: 'São Paulo', cep: '01000-000', banco: 'Banco Exemplo ag. 0001 c/c ' + entre(10000, 99999), uniforme: ['P', 'M', 'G', 'GG'][n % 4], calcado: String(37 + (n % 8)),
+        emergencia_nome: 'Contato de ' + nm + ' (exemplo)', emergencia_fone: '(11) 9' + entre(4000, 9999) + '-' + entre(1000, 9999) } } })
   }
+  // chefes diretos e gestores de setor
+  const chefe = async (quem: string, de: string) => { await API._pg!.query('update public.funcionarios set superior_id = $1 where id = $2', [ids[de], ids[quem]]) }
+  for (const q of ['Beto Silva', 'Caio Souza', 'Fábio Nunes', 'Gil Prado', 'Lia Ramos', 'Nina Barros', 'Otávio Reis', 'Paulo Gomes']) await chefe(q, 'Kleber Dias')
+  await chefe('Kleber Dias', 'Ivo Martins')
   await API.rpc('criar_acesso', { p_login: 'escritorio', p_senha: senha, p_nome: 'Denise (teste)', p_perfil: 'escritorio', p_func: ids['Denise Lima'] })
   await API.rpc('criar_acesso', { p_login: 'almox', p_senha: senha, p_nome: 'Edu (teste)', p_perfil: 'almoxarife', p_func: ids['Edu Rocha'] })
   await API.rpc('criar_acesso', { p_login: 'operador', p_senha: senha, p_nome: 'Beto (teste)', p_perfil: 'producao', p_func: ids['Beto Silva'] })
+  await API.rpc('criar_acesso', { p_login: 'helena', p_senha: senha, p_nome: 'Helena (teste)', p_perfil: 'rh', p_func: ids['Helena Costa'] })
+  await API.rpc('criar_acesso', { p_login: 'gerente', p_senha: senha, p_nome: 'Ivo (teste)', p_perfil: 'gerente', p_func: ids['Ivo Martins'] })
 
   // na demonstração as senhas já são as definitivas (no sistema real o Dono cria provisórias)
   await API._pg!.query(`update public.perfis set trocar_senha = false`)
+  // o almoxarifado da demonstração sai igual ao de antes do RH (mesma sequência de sorteios)
+  semente = 20261019; for (let i = 0; i < 24; i++) rnd()
   const { movs, pedidos } = historico(dia)
   await API.rpc('importar_planilha', { p: {
     fornecedores: FORN(dia), maquinas: MAQ,
@@ -171,7 +213,106 @@ export async function criarDemo(): Promise<void> {
   await API.rpc('baixar_lancamento', { p_id: pago2, p_data: dia(-13), p_valor: 18000, p_forma: 'Transferência' })
   await API.rpc('salvar_config', { p_chave: 'empresa', p_valor: { nome: 'JAF Metal (teste)', cidade: 'São Paulo', uf: 'SP' } })
   await API.rpc('salvar_config', { p_chave: 'saldo_inicial', p_valor: { valor: 25000, data: dia(-30) } })
+  await demoRH(ids, cargo, dia)
 
   await API.sair()
   API.precisaDemo = false
+}
+
+// ------------------------------------------------------------------ RH (tudo inventado)
+async function demoRH(ids: Record<string, string>, cargo: Record<string, string>, dia: (n: number) => string): Promise<void> {
+  const hoje = U.hoje(), ano = Number(hoje.slice(0, 4))
+  const rpc = (f: string, p: unknown) => API.rpc(f, { p })
+  await S.carregar()
+  for (const s of ['Usinagem', 'Produção']) { const st = S.lista('rh_setores').find(x => x.nome === s); if (st) await rpc('rh_salvar_setor', { id: st.id, nome: s, gestor_id: ids[s === 'Usinagem' ? 'Kleber Dias' : 'Ivo Martins'] }) }
+  // feriados do ano
+  for (const [d, n] of [['01-01', 'Confraternização Universal'], ['04-21', 'Tiradentes'], ['05-01', 'Dia do Trabalho'], ['09-07', 'Independência do Brasil'], ['10-12', 'Nossa Senhora Aparecida'],
+    ['11-02', 'Finados'], ['11-15', 'Proclamação da República'], ['11-20', 'Dia da Consciência Negra'], ['12-25', 'Natal']]) await API.rpc('rh_salvar_feriado', { p_data: `${ano}-${d}`, p_nome: n, p_excluir: false })
+  // promoção e dissídio na linha do tempo
+  await rpc('rh_alterar_cargo_salario', { funcionario_id: ids['Beto Silva'], vigencia: U.somaMeses(hoje, -14), motivo: 'Promoção', cargo_id: cargo['Torneiro CNC'], salario: 3400, obs: 'Era operador de torno automático' })
+  await rpc('rh_alterar_cargo_salario', { funcionario_id: ids['Beto Silva'], vigencia: U.somaMeses(hoje, -6), motivo: 'Dissídio', salario: 3600 })
+  // férias: períodos antigos tirados; Edu vencido, Kleber vence em 30 dias, Júlia em 60, Denise de férias agora, Fábio programado
+  await S.carregar()
+  const ferias = async (nome: string, deixar: number, extra?: (ps: R.PeriodoFerias[]) => Promise<void>) => {
+    const f = S.get('funcionarios', ids[nome])!
+    const ps = R.periodosFerias(f, []).filter(p => p.adquirido)
+    for (const p of ps.slice(0, Math.max(0, ps.length - deixar))) {
+      const ini = U.somaDias(p.fim, 70)
+      if (U.somaDias(ini, 29) < hoje) await rpc('rh_salvar_ausencia', { funcionario_id: f.id, tipo: 'ferias', inicio: ini, fim: U.somaDias(ini, 29), aquisitivo_inicio: p.inicio })
+    }
+    await extra?.(ps)
+  }
+  await ferias('Beto Silva', 1); await ferias('Caio Souza', 1); await ferias('Helena Costa', 1); await ferias('Ivo Martins', 1); await ferias('Otávio Reis', 1); await ferias('Lia Ramos', 1); await ferias('Paulo Gomes', 1)
+  await ferias('Edu Rocha', 1); await ferias('Kleber Dias', 1); await ferias('Júlia Alves', 1)
+  await ferias('Denise Lima', 1, async (ps) => { const p = ps.at(-1); if (p) await rpc('rh_salvar_ausencia', { funcionario_id: ids['Denise Lima'], tipo: 'ferias', inicio: dia(-5), fim: dia(9), aquisitivo_inicio: p.inicio }) })
+  await ferias('Fábio Nunes', 1, async (ps) => { const p = ps.at(-1); if (p) await rpc('rh_salvar_ausencia', { funcionario_id: ids['Fábio Nunes'], tipo: 'ferias', inicio: dia(40), fim: dia(59), aquisitivo_inicio: p.inicio }) })
+  // atestado, afastamento pelo INSS e falta
+  await rpc('rh_salvar_ausencia', { funcionario_id: ids['Gil Prado'], tipo: 'atestado', inicio: dia(-8), fim: dia(-7), cid: 'J11', motivo: 'Dr. Exemplo' })
+  await rpc('rh_salvar_ausencia', { funcionario_id: ids['Otávio Reis'], tipo: 'afastamento', inicio: dia(-40), fim: null, motivo: 'Auxílio-doença (exemplo)' })
+  // ponto: horas extras, sábado, domingo e um atraso (mês passado e este)
+  const util = (d: string) => { const w = R.diaSemana(d); return w > 0 && w < 6 }
+  const dias = (m: number) => { const ini = U.somaMeses(hoje.slice(0, 8) + '01', m), fim = m === 0 ? hoje : U.somaDias(U.somaMeses(ini, 1), -1); const l: string[] = []; for (let d = ini; d <= fim; d = U.somaDias(d, 1)) l.push(d); return l }
+  for (const [nome, desloc] of [['Beto Silva', 0], ['Caio Souza', 1], ['Lia Ramos', 2], ['Kleber Dias', 3]] as [string, number][]) {
+    for (const m of [-1, 0]) {
+      const l = dias(m), ponto: Record<string, unknown>[] = []
+      const uteis = l.filter(util)
+      for (const [i, d] of uteis.entries()) if ((i + desloc) % 4 === 0) ponto.push({ data: d, e1: '07:00', s1: '12:00', e2: '13:00', s2: R.diaSemana(d) === 5 ? '18:00' : '19:00' })
+      const sab = l.filter(d => R.diaSemana(d) === 6)[desloc % 2]; if (sab) ponto.push({ data: sab, e1: '07:00', s1: '12:00' })
+      const dom = l.filter(d => R.diaSemana(d) === 0)[1]; if (dom && desloc < 2) ponto.push({ data: dom, e1: '07:00', s1: '11:00' })
+      const atr = uteis[uteis.length - 2]; if (atr && nome === 'Caio Souza' && !ponto.some(x => x.data === atr)) ponto.push({ data: atr, e1: '07:40', s1: '12:00', e2: '13:00', s2: '17:00' })
+      const falta = uteis[3]; if (falta && nome === 'Lia Ramos' && m === -1 && !ponto.some(x => x.data === falta)) ponto.push({ data: falta, justificativa: 'falta' })
+      if (ponto.length) await rpc('rh_salvar_ponto', { funcionario_id: ids[nome], dias: ponto })
+    }
+  }
+  await API.rpc('rh_fechar_mes', { p_func: ids['Beto Silva'], p_competencia: U.somaMeses(hoje.slice(0, 8) + '01', -1), p_fechar: true })
+  // matrizes
+  const usin = ['Beto Silva', 'Caio Souza', 'Fábio Nunes', 'Kleber Dias', 'Lia Ramos', 'Otávio Reis']
+  const mT = await API.rpc<string>('rh_salvar_matriz', { p: { nome: 'Treinamentos e competências — Produção', tipo: 'treinamento', setor: 'Usinagem', gestor: 'Ivo Martins', aprovado_por: 'Helena Costa', aprovado_em: dia(-30),
+    legenda: [{ nivel: 0, txt: 'Não requer' }, { nivel: 1, txt: 'Planejado' }, { nivel: 2, txt: 'Realizado' }],
+    itens: [{ nome: 'Leitura e interpretação de desenhos', carga_horaria: 8 }, { nome: 'Paquímetro', carga_horaria: 4 }, { nome: 'Micrômetro', carga_horaria: 4 },
+      { nome: 'NR-12 Segurança em máquinas', carga_horaria: 8, validade_meses: 24, obrigatorio: true }, { nome: 'Operador de empilhadeira', carga_horaria: 16, validade_meses: 12, obrigatorio: true }] } })
+  const mV = await API.rpc<string>('rh_salvar_matriz', { p: { nome: 'Versatilidade — Usinagem', tipo: 'versatilidade', setor: 'Usinagem', gestor: 'Kleber Dias',
+    legenda: [{ nivel: 1, txt: 'Em treinamento' }, { nivel: 2, txt: 'Opera' }, { nivel: 3, txt: 'Prepara e opera' }, { nivel: 4, txt: 'Prepara, opera e libera' }],
+    itens: ['Torno CNC 01', 'Torno CNC 02', 'TA 25', 'Fresadora FS 01', 'Serra Automática SR 03'].map(nome => ({ nome })) } })
+  const mP = await API.rpc<string>('rh_salvar_matriz', { p: { nome: 'Procedimentos do SGQ', tipo: 'procedimento', legenda: [{ nivel: 0, txt: 'Não se aplica' }, { nivel: 1, txt: 'Em treinamento' }, { nivel: 2, txt: 'Treinado' }],
+    itens: ['PQ-7.1 Recursos', 'PQ-7.2 Competência', 'PQ-8.5 Produção', 'PQ-10.2 Não conformidade'].map(nome => ({ nome })) } })
+  await S.carregar()
+  const itens = (m: string) => S.lista('rh_matriz_itens').filter(i => i.matriz_id === m).sort((a, b) => a.ordem - b.ordem)
+  for (const [k, nome] of usin.entries()) {
+    for (const [j, it] of itens(mT).entries()) {
+      const nivel = j === 4 ? (k < 2 ? 2 : 0) : (k + j) % 3 === 0 ? 1 : 2
+      const data = j === 3 ? (k === 0 ? U.somaMeses(hoje, -25) : k === 1 ? U.somaDias(U.somaMeses(hoje, -24), 20) : U.somaMeses(hoje, -6)) : j === 4 ? U.somaMeses(hoje, -11) : U.somaMeses(hoje, -(k + j + 2))
+      await rpc('rh_definir_nivel', { item_id: it.id, funcionario_id: ids[nome], nivel, data: nivel === 2 ? data : null })
+    }
+    for (const [j, it] of itens(mV).entries()) await rpc('rh_definir_nivel', { item_id: it.id, funcionario_id: ids[nome], nivel: 1 + ((k + j * 2) % 4) })
+  }
+  for (const [k, nome] of ['Beto Silva', 'Júlia Alves', 'Kleber Dias', 'Helena Costa', 'Edu Rocha'].entries())
+    for (const [j, it] of itens(mP).entries()) await rpc('rh_definir_nivel', { item_id: it.id, funcionario_id: ids[nome], nivel: (k + j) % 3, data: (k + j) % 3 === 2 ? U.somaMeses(hoje, -3) : null })
+  await rpc('rh_salvar_plano', { treinamento: 'Leitura e interpretação de desenhos', data: dia(-60), modalidade: 'Presencial', instituicao: 'Instrutor interno', status: 'realizado', matriz_id: mT })
+  await rpc('rh_salvar_plano', { treinamento: 'Micrômetro', data: dia(20), modalidade: 'Presencial', instituicao: 'Escola técnica (exemplo)', matriz_id: mT })
+  await rpc('rh_salvar_plano', { treinamento: 'FMEA', data: dia(45), modalidade: 'EAD', instituicao: 'Curso online (exemplo)' })
+  await rpc('rh_salvar_meta', { funcionario_id: ids['Gil Prado'], objetivo: 'Operar a serra automática sozinho', acao: 'Acompanhar o Kleber por 2 semanas', prazo: dia(30) })
+  await rpc('rh_salvar_meta', { funcionario_id: ids['Lia Ramos'], objetivo: 'Preparar o torno CNC 02', acao: 'Curso de programação CNC', prazo: dia(-5) })
+  // exames (ASO): um vencido, um vencendo, o resto em dia
+  for (const [k, nome] of Object.keys(ids).entries()) {
+    if (nome === 'Gil Prado') continue
+    const data = nome === 'Caio Souza' ? U.somaMeses(hoje, -13) : nome === 'Fábio Nunes' ? U.somaDias(U.somaMeses(hoje, -11), 10) : nome === 'Nina Barros' ? dia(-13) : U.somaMeses(hoje, -(1 + k % 9))
+    await rpc('rh_salvar_aso', { funcionario_id: ids[nome], tipo: nome === 'Nina Barros' ? 'Admissional' : 'Periódico', data_exame: data, periodicidade_meses: 12, resultado: 'Apto', medico: 'Dr. Exemplo', crm: '000000-SP' })
+  }
+  // EPI
+  for (const nome of ['Beto Silva', 'Caio Souza', 'Lia Ramos', 'Nina Barros']) {
+    const ent = nome === 'Nina Barros' ? dia(-12) : U.somaMeses(hoje, -8)
+    await rpc('rh_salvar_epi', { funcionario_id: ids[nome], epi: 'Óculos de proteção', ca: '12345', entrega: ent, vida_util_meses: 6, quantidade: 1, motivo: nome === 'Nina Barros' ? 'Admissional' : 'Troca por desgaste' })
+    await rpc('rh_salvar_epi', { funcionario_id: ids[nome], epi: 'Protetor auricular tipo plug', ca: '54321', entrega: ent, vida_util_meses: 3, quantidade: 2, motivo: nome === 'Nina Barros' ? 'Admissional' : 'Troca por desgaste' })
+    await rpc('rh_salvar_epi', { funcionario_id: ids[nome], epi: 'Botina de segurança', ca: '11111', entrega: ent, vida_util_meses: 12, validade_ca: nome === 'Caio Souza' ? dia(-20) : dia(400), quantidade: 1, motivo: nome === 'Nina Barros' ? 'Admissional' : 'Troca por desgaste' })
+  }
+  // medidas disciplinares
+  await rpc('rh_salvar_ocorrencia', { funcionario_id: ids['Gil Prado'], tipo: 'verbal', data_ocorrencia: dia(-50), status: 'assinado', categoria: 'Descumprimento de regras de segurança (EPI)', assunto: 'Sem óculos de proteção',
+    descricao: 'Foi visto operando a esmerilhadeira sem os óculos de proteção (exemplo).', aplicador: 'Kleber Dias', aplicador_cargo: 'Líder de produção' })
+  await rpc('rh_salvar_ocorrencia', { funcionario_id: ids['Caio Souza'], tipo: 'escrita', data_ocorrencia: dia(-3), status: 'pendente', categoria: 'Desídia (atrasos, faltas sem justificativa, baixa produção)', assunto: 'Atrasos repetidos',
+    descricao: 'Chegou atrasado 3 vezes no mês sem justificativa (exemplo).', aplicador: 'Helena Costa', aplicador_cargo: 'Assistente de RH' })
+  await rpc('rh_salvar_processo', { autor: 'Paulo Gomes', funcionario_id: ids['Paulo Gomes'], numero: '0000000-00.2026.5.02.0000 (exemplo)', data_autuacao: dia(-5), advogado: 'Escritório Exemplo' })
+  // um desligado
+  const p = S.get('funcionarios', ids['Paulo Gomes'])!
+  await rpc('salvar_funcionario', { ...p, situacao: 'desligado', demissao: dia(-20), motivo_demissao: 'Pedido de demissão', privado: { ...(S.get('funcionarios_privado', p.id) || {}) } })
 }

@@ -37,6 +37,12 @@ async function erro(uid, nome, ...args) {
   try { await rpc(uid, nome, ...args); return null } catch (e) { return e.message }
 }
 async function ver(uid, sql, params) { return como(uid, () => q(sql, params)) }
+// CPF inventado, mas com os dígitos verificadores certos (nunca usar CPF de gente de verdade aqui: o repositório é público)
+function cpfTeste(base) {
+  const d = String(base).padStart(9, '0').slice(0, 9).split('').map(Number)
+  for (const n of [10, 11]) { const s = d.reduce((a, x, i) => a + x * (n - i), 0); const r = (s * 10) % 11; d.push(r === 10 ? 0 : r) }
+  return d.join('').replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
+}
 
 // ---------------------------------------------------------------- fuso
 {
@@ -116,7 +122,7 @@ conf((await erro(prod, 'salvar_peca', { codigo: 'X1', descricao: 'x' })) !== nul
 conf((await ver(prod, 'select * from public.pecas')).length === 2, 'produção vê as peças')
 
 const maq = await rpc(alm, 'salvar_maquina', { nome: 'Torno CNC 02', preventiva_dias: 90 })
-const func = await rpc(esc, 'salvar_funcionario', { nome: 'Beto Silva', funcao: 'Torneiro', admissao: '2020-03-01', privado: { salario: '3500,50', cpf: '123' } })
+const func = await rpc(esc, 'salvar_funcionario', { nome: 'Beto Silva', funcao: 'Torneiro', admissao: '2020-03-01', privado: { salario: '3500,50', cpf: cpfTeste(111222333) } })
 await rpc(dono, 'editar_acesso', prod, 'Beto Torno', 'producao', true, func)
 conf((await ver(alm, 'select * from public.funcionarios_privado')).length === 0, 'almoxarife não vê salário')
 conf(Number((await ver(esc, 'select salario from public.funcionarios_privado'))[0].salario) === 3500.5, 'salário com vírgula gravado')
@@ -264,7 +270,8 @@ conf((await q(`select concluida_em is not null as ok from public.manutencoes whe
 // ---------------------------------------------------------------- histórico
 const h = await ver(dono, `select tabela, acao, quem from public.historico where tabela = 'fornecedores' and acao = 'insert' order by id limit 1`)
 conf(h[0]?.quem === 'José Almox', 'histórico guarda quem fez', h)
-conf((await ver(esc, 'select * from public.historico')).length === 0, 'histórico só para o dono')
+conf((await ver(esc, "select * from public.historico where tabela not like 'rh\_%' and tabela not in ('funcionarios','funcionarios_privado')")).length === 0, 'histórico do almoxarifado e do financeiro só para o dono')
+conf((await ver(alm, 'select * from public.historico')).length === 0, 'almoxarife não vê histórico')
 
 // ---------------------------------------------------------------- configuração
 await rpc(esc, 'salvar_config', 'empresa', { nome: 'JAF Metal' })
@@ -300,6 +307,125 @@ conf((await q(`select count(*)::int n from public.historico where tabela = 'movi
 const p1 = (await q(`select id from public.pecas where codigo='P1'`))[0].id
 const s2 = await mov(alm, { tipo: 'saida', peca_id: p1, qtd: 1 })
 conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depois da importação usa o lote importado', s2)
+
+// ---------------------------------------------------------------- RH
+{
+  const rh = await rpc(dono, 'criar_acesso', 'rita.rh', 'senha-forte-7', 'Rita RH', 'rh', null)
+  const ger = await rpc(dono, 'criar_acesso', 'gil.ger', 'senha-forte-8', 'Gil Gerente', 'gerente', null)
+  conf(!!rh && !!ger, 'acessos de RH e de gerente criados')
+  conf((await erro(dono, 'criar_acesso', 'xx.yy', 'senha-forte-9', 'Xis', 'chefe', null))?.includes('Perfil inválido'), 'perfil desconhecido recusado')
+  // quem vê o quê
+  conf((await ver(rh, 'select * from public.pecas')).length === 0, 'RH não vê o estoque')
+  conf((await ver(rh, 'select * from public.lancamentos')).length === 0, 'RH não vê o financeiro')
+  conf((await ver(ger, 'select * from public.pecas')).length > 0, 'gerente vê o estoque')
+  conf((await ver(ger, 'select * from public.funcionarios_privado')).length === 0, 'gerente não vê dados pessoais nem salário')
+  conf((await ver(rh, 'select * from public.funcionarios_privado')).length === 1, 'RH vê os dados pessoais')
+  // cargos e organograma
+  const cGer = await rpc(rh, 'rh_salvar_cargo', { nome: 'Gerente de Produção', cbo: '141205' })
+  const cLid = await rpc(rh, 'rh_salvar_cargo', { nome: 'Líder de Produção', superior_id: cGer })
+  const cOp = await rpc(rh, 'rh_salvar_cargo', { nome: 'Operador de Máquina A', cbo: '721420', superior_id: cLid, setor: 'Produção' })
+  conf((await erro(rh, 'rh_salvar_cargo', { id: cGer, nome: 'Gerente de Produção', superior_id: cOp }))?.includes('círculo'), 'organograma não aceita círculo')
+  conf((await erro(rh, 'rh_salvar_cargo', { nome: 'operador de máquina a' }))?.includes('Já existe'), 'cargo repetido recusado')
+  conf((await erro(ger, 'rh_salvar_cargo', { nome: 'Novo' }))?.includes('perfil não pode'), 'gerente não altera nada')
+  await rpc(rh, 'rh_salvar_setor', { nome: 'Produção' })
+  // cadastro: CPF validado e sem repetir
+  conf((await erro(rh, 'salvar_funcionario', { nome: 'Teste', privado: { cpf: '111.111.111-11' } }))?.includes('CPF inválido'), 'CPF inválido recusado')
+  conf((await erro(rh, 'salvar_funcionario', { nome: 'Teste', privado: { cpf: cpfTeste(111222333) } }))?.includes('Já existe um funcionário com o CPF'), 'CPF repetido recusado')
+  conf((await erro(rh, 'salvar_funcionario', { nome: 'Teste', registro: 'Outra' }))?.includes('Registro inválido'), 'registro (Matriz/Filial/Upgrade) conferido')
+  const ana = await rpc(rh, 'salvar_funcionario', { nome: 'Ana Operadora', cargo_id: cOp, setor: 'Produção', admissao: '2024-02-05', registro: 'Filial', matricula: 'T-01',
+    privado: { salario: '2.932,03', cpf: cpfTeste(222333444), banco: 'Banco 0001/12345-6', calcado: '38', uniforme: 'm' } })
+  const fa = (await ver(rh, 'select f.funcao, f.situacao, p.salario::float s, p.uniforme from public.funcionarios f join public.funcionarios_privado p on p.funcionario_id = f.id where f.id = $1', [ana]))[0]
+  conf(fa.funcao === 'Operador de Máquina A' && fa.situacao === 'ativo' && fa.s === 2932.03 && fa.uniforme === 'M', 'funcionário com cargo, salário e uniforme', fa)
+  const h0 = await ver(rh, 'select motivo, salario::float s, cargo from public.rh_historico where funcionario_id = $1', [ana])
+  conf(h0.length === 1 && h0[0].motivo === 'Admissão' && h0[0].s === 2932.03, 'admissão abre a linha do tempo', h0)
+  conf((await ver(ger, 'select * from public.rh_historico')).length === 0, 'gerente não vê a linha do tempo de salário')
+  // editar o cadastro não muda o salário (só pela alteração de cargo/salário)
+  await rpc(rh, 'salvar_funcionario', { id: ana, nome: 'Ana Operadora', cargo_id: cOp, setor: 'Produção', admissao: '2024-02-05', registro: 'Filial', privado: { salario: '9999', cpf: cpfTeste(222333444) } })
+  conf(Number((await ver(rh, 'select salario from public.funcionarios_privado where funcionario_id = $1', [ana]))[0].salario) === 2932.03, 'editar cadastro não muda o salário escondido')
+  await rpc(rh, 'rh_alterar_cargo_salario', { funcionario_id: ana, vigencia: '2025-03-01', salario: 3200, motivo: 'Dissídio' })
+  await rpc(rh, 'rh_alterar_cargo_salario', { funcionario_id: ana, vigencia: '2099-01-01', salario: '5000', cargo_id: cLid, motivo: 'Promoção' })
+  const fa2 = (await ver(rh, 'select f.funcao, p.salario::float s from public.funcionarios f join public.funcionarios_privado p on p.funcionario_id = f.id where f.id = $1', [ana]))[0]
+  conf(fa2.s === 3200 && fa2.funcao === 'Operador de Máquina A', 'aumento vale na vigência; o do futuro ainda não', fa2)
+  conf((await ver(rh, 'select * from public.rh_historico where funcionario_id = $1', [ana])).length === 3, 'linha do tempo com 3 marcos')
+  conf((await erro(rh, 'rh_alterar_cargo_salario', { funcionario_id: ana, vigencia: '2025-01-01', motivo: 'Mérito' }))?.includes('Informe'), 'alteração vazia recusada')
+  // férias (CLT): mínimo 5 dias, até 3 partes, uma com 14+
+  const ferias = (ini, fim, aq = '2024-02-05') => rpc(rh, 'rh_salvar_ausencia', { funcionario_id: ana, tipo: 'ferias', inicio: ini, fim, aquisitivo_inicio: aq })
+  conf((await erro(rh, 'rh_salvar_ausencia', { funcionario_id: ana, tipo: 'ferias', inicio: '2025-06-01', fim: '2025-06-03', aquisitivo_inicio: '2024-02-05' }))?.includes('menos de 5'), 'férias de menos de 5 dias recusadas')
+  await ferias('2025-06-02', '2025-06-11')   // 10
+  await ferias('2025-07-01', '2025-07-10')   // 10
+  conf((await erro(rh, 'rh_salvar_ausencia', { funcionario_id: ana, tipo: 'ferias', inicio: '2025-08-01', fim: '2025-08-10', aquisitivo_inicio: '2024-02-05' }))?.includes('14 dias'), 'sem uma parte de 14 dias recusado')
+  conf((await erro(rh, 'rh_salvar_ausencia', { funcionario_id: ana, tipo: 'ferias', inicio: '2025-06-05', fim: '2025-06-20', aquisitivo_inicio: '2025-02-05' }))?.includes('Já existe'), 'férias em cima de outra recusadas')
+  conf((await erro(rh, 'rh_salvar_ausencia', { funcionario_id: ana, tipo: 'ferias', inicio: '2025-08-01', fim: '2025-08-12', aquisitivo_inicio: '2024-02-05' }))?.includes('30 dias'), 'mais de 30 dias no período recusado')
+  // ponto
+  const ponto = (dias) => rpc(rh, 'rh_salvar_ponto', { funcionario_id: ana, dias })
+  conf(await ponto([{ data: '2025-09-01', e1: '07:00', s1: '12:00', e2: '13:00', s2: '19:00' }, { data: '2025-09-02', justificativa: 'atestado' }]) === 2, 'ponto gravado')
+  conf((await erro(rh, 'rh_salvar_ponto', { funcionario_id: ana, dias: [{ data: '2025-09-03', e1: '12:00', s1: '07:00' }] }))?.includes('fora de ordem'), 'horário fora de ordem recusado')
+  conf((await erro(rh, 'rh_salvar_ponto', { funcionario_id: ana, dias: [{ data: '2025-09-03', e1: '07:00' }] }))?.includes('saída'), 'entrada sem saída recusada')
+  conf((await erro(rh, 'rh_salvar_ponto', { funcionario_id: ana, dias: [{ data: '2025-06-05', e1: '07:00', s1: '12:00' }] }))?.includes('travado'), 'dia de férias travado no ponto')
+  conf((await erro(rh, 'rh_salvar_ponto', { funcionario_id: ana, dias: [{ data: '2025-09-04', e1: '7h', s1: '12:00' }] }))?.includes('Horário inválido'), 'horário inválido recusado')
+  await rpc(rh, 'rh_fechar_mes', ana, '2025-09-15', true)
+  conf((await erro(rh, 'rh_salvar_ponto', { funcionario_id: ana, dias: [{ data: '2025-09-05', e1: '07:00', s1: '12:00' }] }))?.includes('fechado'), 'mês fechado não aceita mudança')
+  await rpc(rh, 'rh_fechar_mes', ana, '2025-09-01', false)
+  conf(await ponto([{ data: '2025-09-01' }]) === 1 && (await ver(rh, 'select * from public.rh_ponto where funcionario_id = $1', [ana])).length === 1, 'dia apagado quando fica vazio; mês reaberto aceita')
+  conf((await ver(ger, 'select * from public.rh_ponto')).length === 1 && (await erro(ger, 'rh_salvar_ponto', { funcionario_id: ana, dias: [] }))?.includes('perfil não pode'), 'gerente vê o ponto e não altera')
+  conf((await ver(prod, 'select * from public.rh_ponto')).length === 0 && (await ver(alm, 'select * from public.rh_ponto')).length === 0, 'produção e almoxarifado não veem o ponto')
+  // afastamento: situação e CID protegido
+  await rpc(rh, 'rh_salvar_ausencia', { funcionario_id: ana, tipo: 'afastamento', inicio: '2025-12-01', motivo: 'Doença', cid: 'm54.5' })
+  conf((await ver(rh, "select cid from public.rh_ausencias where tipo = 'afastamento'"))[0].cid === 'M54.5', 'afastamento com CID')
+  conf((await ver(ger, 'select * from public.rh_ausencias')).length === 0, 'gerente não lê o CID')
+  conf((await ver(ger, 'select * from public.rh_ausencias_resumo()')).length === 3, 'gerente sabe quem está fora (sem CID)')
+  conf((await ver(rh, 'select situacao from public.funcionarios where id = $1', [ana]))[0].situacao === 'afastado', 'afastado hoje fica "afastado"')
+  // medidas disciplinares
+  conf((await erro(rh, 'rh_salvar_ocorrencia', { funcionario_id: ana, tipo: 'suspensao', data_ocorrencia: '2025-10-01', descricao: 'x', dias: 31, inicio: '2025-10-02' }))?.includes('30 dias'), 'suspensão acima de 30 dias recusada')
+  conf((await erro(rh, 'rh_salvar_ocorrencia', { funcionario_id: ana, tipo: 'escrita', data_ocorrencia: '2025-10-01', descricao: 'x', recusou: true, testemunha1: 'A' }))?.includes('2 testemunhas'), 'recusa de assinatura exige 2 testemunhas')
+  const oc = await rpc(rh, 'rh_salvar_ocorrencia', { funcionario_id: ana, tipo: 'suspensao', data_ocorrencia: '2025-10-01', descricao: 'Briga', categoria: 'j', dias: 3, inicio: '2025-10-02' })
+  const sus = await ver(rh, "select inicio::text, fim::text, abona from public.rh_ausencias where tipo = 'suspensao'")
+  conf(oc.numero >= 1 && sus.length === 1 && sus[0].fim === '2025-10-04' && sus[0].abona === false, 'suspensão trava 3 dias no ponto, sem pagamento', sus)
+  await rpc(rh, 'rh_salvar_ocorrencia', { id: oc.id, funcionario_id: ana, tipo: 'suspensao', data_ocorrencia: '2025-10-01', descricao: 'Briga', dias: 3, inicio: '2025-10-02', status: 'cancelado' })
+  conf((await ver(rh, "select * from public.rh_ausencias where tipo = 'suspensao'")).length === 0, 'suspensão cancelada libera os dias')
+  // treinamentos e matrizes
+  const mz = await rpc(rh, 'rh_salvar_matriz', { nome: 'Treinamentos Produção', tipo: 'treinamento', legenda: [{ nivel: 1, txt: 'Planejado' }],
+    itens: [{ nome: 'Paquímetro', validade_meses: 24, obrigatorio: false }, { nome: 'NR-12', validade_meses: 12, obrigatorio: true }] })
+  const itens = await ver(rh, 'select id, nome from public.rh_matriz_itens where matriz_id = $1 order by ordem', [mz])
+  await rpc(rh, 'rh_definir_nivel', { item_id: itens[1].id, funcionario_id: ana, nivel: 2, data: '2025-01-10' })
+  await rpc(rh, 'rh_definir_nivel', { item_id: itens[1].id, funcionario_id: ana, nivel: 4 })
+  const nv = (await ver(ger, 'select nivel, data::text from public.rh_matriz_niveis'))[0]
+  conf(nv.nivel === 4 && nv.data === '2025-01-10', 'nível muda e a data de realização fica', nv)
+  await rpc(rh, 'rh_salvar_matriz', { id: mz, nome: 'Treinamentos Produção', tipo: 'treinamento', itens: [{ id: itens[1].id, nome: 'NR-12' }] })
+  conf((await ver(rh, 'select ativo from public.rh_matriz_itens where id = $1', [itens[0].id]))[0].ativo === false, 'coluna tirada some, mas fica guardada')
+  // anexos
+  conf((await erro(rh, 'rh_anexar', { tabela: 'rh_asos', registro_id: ana, nome: 'x.exe', tipo: 'application/x-msdownload', conteudo: 'AAAAAAAAAAAA' }))?.includes('PDF'), 'anexo só PDF/JPG/PNG')
+  const ax = await rpc(rh, 'rh_anexar', { tabela: 'funcionarios', registro_id: ana, nome: 'rg.pdf', tipo: 'application/pdf', conteudo: 'JVBERi0xLjQKJcfsj6IKJSVFT0YK' })
+  conf((await rpc(rh, 'rh_baixar_anexo', ax)).conteudo.startsWith('JVBER'), 'anexo guardado e baixado')
+  conf((await erro(ger, 'rh_baixar_anexo', ax))?.includes('perfil não pode') && (await ver(ger, 'select * from public.rh_anexos')).length === 0, 'gerente não abre documentos')
+  conf(/permission denied/i.test((await como(rh, async () => { try { await q('select * from public.rh_anexos_conteudo'); return '' } catch (e) { return e.message } })) || ''), 'conteúdo dos anexos só pela função')
+  // EPI e ASO
+  await rpc(rh, 'rh_salvar_epi', { funcionario_id: ana, epi: 'Botina com biqueira', ca: '12345', entrega: '2025-01-05', vida_util_meses: 6, motivo: 'Admissional' })
+  await rpc(rh, 'rh_salvar_aso', { funcionario_id: ana, tipo: 'Periódico', data_exame: '2025-01-05', periodicidade_meses: 12, resultado: 'Apto' })
+  conf((await ver(ger, 'select * from public.rh_epis')).length === 1 && (await ver(ger, 'select * from public.rh_asos')).length === 1, 'EPI e ASO gravados (gerente consulta)')
+  conf((await erro(rh, 'rh_salvar_epi', { funcionario_id: ana, epi: 'Luva', entrega: '2025-01-05', motivo: 'Outro' })) !== null, 'motivo de entrega de EPI conferido')
+  // histórico (auditoria) com quem fez
+  const hist = await ver(rh, "select quem from public.historico where tabela = 'rh_ponto'")
+  conf(hist.length > 0 && hist.every(h => h.quem === 'Rita RH'), 'auditoria do ponto mostra quem mudou')
+  conf((await ver(rh, "select * from public.historico where tabela = 'pecas'")).length === 0, 'RH não vê o histórico do estoque')
+  // preferências da própria pessoa
+  await rpc(ger, 'salvar_preferencias', { inicio: { atalhos: ['retirar'] } })
+  conf((await ver(ger, 'select preferencias from public.perfis where user_id = auth.uid()'))[0].preferencias.inicio.atalhos[0] === 'retirar', 'cada pessoa guarda o próprio Início')
+  // feriados e regras do RH
+  await rpc(rh, 'rh_salvar_feriado', '2025-12-25', 'Natal', false)
+  conf((await ver(prod, 'select * from public.rh_feriados')).length === 1, 'feriados gravados')
+  await rpc(rh, 'salvar_config', 'rh', { jornada: { divisor: 220 } })
+  conf((await erro(rh, 'salvar_config', 'empresa', { nome: 'X' }))?.includes('perfil não pode'), 'RH só mexe na configuração do RH')
+  // processos trabalhistas: só RH, Escritório e Dono
+  await rpc(rh, 'rh_salvar_processo', { autor: 'Fulano Exemplo', numero: '0000000-00.2024.5.02.0000', data_autuacao: '2024-05-02' })
+  conf((await ver(rh, 'select * from public.rh_processos')).length === 1, 'RH registra processo trabalhista')
+  conf((await ver(ger, 'select * from public.rh_processos')).length === 0, 'gerente não vê processos trabalhistas')
+  conf((await erro(ger, 'rh_salvar_processo', { autor: 'X' }))?.includes('perfil não pode'), 'gerente não registra processo')
+  // importação das planilhas do RH: só o Dono, e não por cima do que já existe
+  conf((await erro(rh, 'importar_rh', { pessoas: [] }, false))?.includes('perfil não pode'), 'só o Dono importa as planilhas do RH')
+  conf((await erro(dono, 'importar_rh', { pessoas: [] }, false))?.includes('Já existem funcionários'), 'importação do RH não passa por cima sem "substituir"')
+  conf((await erro(dono, 'importar_rh', { pessoas: [] }, true))?.includes('ligados a retiradas'), 'não substitui quem já está ligado a retiradas e acessos')
+}
 
 // ---------------------------------------------------------------- funções liberadas
 const livres = await q(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace

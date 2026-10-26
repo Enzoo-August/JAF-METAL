@@ -1,38 +1,40 @@
-/* Casca do sistema: menu lateral, topo (busca e avisos), barra de baixo no celular e a tela da rota atual */
-import { Component, Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+/* Casca do sistema: menu de ÁREAS (lateral), topo (busca e avisos), abas da área, barra de baixo no celular e a tela da rota atual */
+import { Component, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { API } from '../lib/api.ts'
 import { C, S } from '../lib/dados.ts'
-import { Perm, type Acao } from '../lib/perm.ts'
+import { Perm } from '../lib/perm.ts'
 import * as U from '../lib/util.ts'
 import { aviso, erro, ocupado } from '../ui/avisos.ts'
 import { Vazio } from '../ui/base.tsx'
 import { useDados, useRota } from '../ui/ganchos.ts'
-import { Ic, type NomeIcone } from '../ui/icones.tsx'
+import { Ic } from '../ui/icones.tsx'
 import { confirmar, modal, useJanela } from '../ui/janelas.tsx'
 import { ROTAS, Telas } from '../telas/index.ts'
+import { abasDeBaixo, areaDaRota, areasVisiveis, chaveDaRota, ondeEstou, subsDe } from './areas.ts'
 import { App } from './controle.tsx'
 
-// menu: [rota, rótulo, ícone, permissão, grupo]
-const MENU: [string, string, NomeIcone, Acao, string][] = [
-  ['inicio', 'Início', 'inicio', 'todos', ''],
-  ['pecas', 'Estoque', 'estoque', 'todos', 'Almoxarifado'],
-  ['movimentos', 'Movimentações', 'historico', 'historico_mov', 'Almoxarifado'],
-  ['compras', 'Pedidos de compra', 'compras', 'compras', 'Almoxarifado'],
-  ['compras/lista', 'Lista de compras', 'lista', 'compras', 'Almoxarifado'],
-  ['fornecedores', 'Fornecedores', 'fornecedor', 'compras', 'Almoxarifado'],
-  ['producao', 'Ordens de produção', 'producao', 'todos', 'Fábrica'],
-  ['maquinas', 'Máquinas e manutenção', 'maquina', 'todos', 'Fábrica'],
-  ['financeiro', 'Contas a pagar e receber', 'dinheiro', 'financeiro', 'Gestão'],
-  ['financeiro/fluxo', 'Fluxo de caixa', 'relatorio', 'financeiro', 'Gestão'],
-  ['clientes', 'Clientes', 'cliente', 'clientes', 'Gestão'],
-  ['equipe', 'Equipe', 'equipe', 'todos', 'Gestão'],
-  ['relatorios', 'Relatórios', 'relatorio', 'relatorios', 'Gestão'],
-  ['admin', 'Administração', 'admin', 'config', 'Sistema'],
-  ['ajuda', 'Ajuda', 'ajuda', 'todos', 'Sistema'],
-]
-const DETALHE: Record<string, string> = { peca: 'pecas', pedido: 'compras', fornecedor: 'fornecedores', maquina: 'maquinas', cliente: 'clientes', funcionario: 'equipe' }
-
 const classeCorpo = (cls: string, on: boolean) => document.body.classList.toggle(cls, on)
+
+// números vermelhos ao lado das abas (o que está atrasado/vencido)
+function contadores(): Record<string, number> {
+  const hoje = U.hoje()
+  const c: Record<string, number> = {}
+  if (Perm.pode('compras')) {
+    c['compras/lista'] = C.listaCompras().filter(x => !x.jaPedido).length
+    c.compras = S.lista('pedidos_compra').filter(p => p.status === 'aguardando' && p.prazo && p.prazo < hoje).length
+  }
+  if (Perm.pode('financeiro')) c.financeiro = S.lista('lancamentos').filter(l => !l.pago_em && l.vencimento <= hoje).length
+  if (Perm.pode('fabrica')) {
+    c.producao = S.lista('ordens').filter(o => (o.status === 'fila' || o.status === 'producao') && o.prazo && o.prazo < hoje).length
+    c.maquinas = S.lista('manutencoes').filter(m => m.status !== 'concluida' && m.tipo === 'corretiva').length
+  }
+  if (Perm.pode('rh_ver')) for (const a of C.alertasRH()) {
+    if (a.nivel !== 'alto') continue
+    const k = a.rota.replace(/^#\//, '').split('?')[0]
+    c[k] = (c[k] || 0) + a.n
+  }
+  return c
+}
 
 export function Casca() {
   useDados()
@@ -53,37 +55,21 @@ export function Casca() {
   // ---------------------------------------------------------------- rota → tela
   const def = ROTAS[r.nome]
   const permitida = !def?.perm || Perm.pode(def.perm)
-  const ativo = (r.nome === 'compras' && r.sub === 'lista') ? 'compras/lista' : (r.nome === 'financeiro' && r.sub === 'fluxo') ? 'financeiro/fluxo' : DETALHE[r.nome] || r.nome || 'inicio'
+  const chave = chaveDaRota(r)
+  const { area } = ondeEstou(r)
+  const subs = area ? subsDe(area) : []
   useLayoutEffect(() => { window.scrollTo(0, 0) }, [r.nome, r.id])
   useEffect(() => {
     const t = def && permitida ? (typeof def.titulo === 'function' ? def.titulo(r) : def.titulo) : ''
     document.title = (t ? t + ' · ' : '') + 'JAF Metal'
   })
 
-  // ---------------------------------------------------------------- menu
-  const grupos: { nome: string; itens: (typeof MENU)[number][] }[] = []
-  for (const m of MENU) {
-    if (!Perm.pode(m[3])) continue
-    if (m[0] === 'equipe' && !Perm.pode('equipe_editar') && s.perfil === 'producao') continue
-    let g = grupos.find(x => x.nome === m[4])
-    if (!g) grupos.push(g = { nome: m[4], itens: [] })
-    g.itens.push(m)
-  }
-  const abas: [string, string, NomeIcone][] = ({
-    producao: [['inicio', 'Início', 'inicio'], ['pecas', 'Estoque', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['producao', 'Ordens', 'producao'], ['menu', 'Menu', 'menu']],
-    almoxarife: [['inicio', 'Início', 'inicio'], ['pecas', 'Estoque', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['compras', 'Compras', 'compras'], ['menu', 'Menu', 'menu']],
-  } as Record<string, [string, string, NomeIcone][]>)[s.perfil] || [['inicio', 'Início', 'inicio'], ['pecas', 'Estoque', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['financeiro', 'Contas', 'dinheiro'], ['menu', 'Menu', 'menu']]
-
-  const hoje = U.hoje()
-  const cont: Record<string, number> = {
-    'compras/lista': Perm.pode('compras') ? C.listaCompras().filter(x => !x.jaPedido).length : 0,
-    compras: S.lista('pedidos_compra').filter(p => p.status === 'aguardando' && p.prazo && p.prazo < hoje).length,
-    financeiro: Perm.pode('financeiro') ? S.lista('lancamentos').filter(l => !l.pago_em && l.vencimento <= hoje).length : 0,
-    producao: S.lista('ordens').filter(o => (o.status === 'fila' || o.status === 'producao') && o.prazo && o.prazo < hoje).length,
-    maquinas: S.lista('manutencoes').filter(m => m.status !== 'concluida' && m.tipo === 'corretiva').length,
-  }
+  const cont = contadores()
+  const areas = areasVisiveis()
   const al = C.alertas()
   const urgentes = al.some(a => a.nivel === 'alto')
+  const fabrica = Perm.pode('retirar')
+  const baixo = abasDeBaixo(s.perfil)
 
   const fecharMenu = () => classeCorpo('menu-aberto', false)
   const retirar = () => { fecharMenu(); void Telas.movimentos.retirar() }
@@ -93,15 +79,15 @@ export function Casca() {
     <div className="casca">
       <aside className="lateral" id="lateral">
         <div className="lateral-marca"><a href="#/inicio" onClick={fecharMenu}><img src="./assets/logo.png" alt="JAF Metal" /></a>{API.modo === 'teste' && <span className="selo-teste">teste</span>}</div>
-        <div className="lateral-acoes">
+        {fabrica && <div className="lateral-acoes">
           <button type="button" className="btn pri" data-acao="retirar" onClick={retirar}><Ic n="retirar" /><span>Retirar peça</span></button>
           {Perm.pode('entrada') && <button type="button" className="btn sec-escuro" data-acao="entrada" onClick={() => { fecharMenu(); void Telas.movimentos.entrada() }}><Ic n="entrada" /><span>Dar entrada</span></button>}
-        </div>
-        <nav className="lateral-menu">{grupos.map(g => <Fragment key={g.nome}>
-          {g.nome && <p className="grupo">{g.nome}</p>}
-          {g.itens.map(([rota, rot, ic]) => <a key={rota} href={'#/' + rota} data-rota={rota} className={rota === ativo ? 'on' : ''} onClick={fecharMenu}>
-            <Ic n={ic} /><span>{rot}</span><b className="cont" data-cont={rota} hidden={!cont[rota]}>{cont[rota] || ''}</b></a>)}
-        </Fragment>)}</nav>
+        </div>}
+        <nav className="lateral-menu" aria-label="Áreas do sistema">{areas.map(a => {
+          const ss = subsDe(a), n = ss.reduce((t, x) => t + (cont[x.rota] || 0), 0)
+          return <a key={a.id} href={'#/' + ss[0].rota} data-rota={ss[0].rota} data-area={a.id} className={a.id === area?.id ? 'on' : ''} onClick={fecharMenu}>
+            <Ic n={a.ic} /><span>{a.rot}</span><b className="cont" data-cont={a.id} hidden={!n}>{n || ''}</b></a>
+        })}</nav>
         <div className="lateral-usuario">
           <a href="#/conta" className="usuario" onClick={fecharMenu}><span className="avatar">{(s.nome || '?').trim().charAt(0).toUpperCase()}</span>
             <span><b>{s.nome}</b><small>{Perm.nome(s.perfil)}</small></span></a>
@@ -122,6 +108,11 @@ export function Casca() {
               <b className={`bolinha${urgentes ? ' urgente' : ''}`} hidden={!al.length}>{al.length > 9 ? '9+' : String(al.length)}</b></button>
           </div>
         </header>
+        {subs.length > 1 && <nav className="subabas" aria-label={'Abas de ' + area!.rot}>
+          <div className="subabas-lista">{subs.map(x => <a key={x.rota} href={'#/' + x.rota} data-sub={x.rota} className={x.rota === chave ? 'on' : ''} aria-current={x.rota === chave ? 'page' : undefined}>
+            {x.rot}{cont[x.rota] ? <b className="cont">{cont[x.rota]}</b> : null}</a>)}</div>
+          <a className="subabas-ajuda" href={'#/ajuda?q=' + encodeURIComponent(area!.rot)} title={'Ajuda sobre ' + area!.rot} aria-label={'Ajuda sobre ' + area!.rot}><Ic n="ajuda" /></a>
+        </nav>}
         <div id="semRede" className="faixa-rede" hidden={!semRede}><Ic n="alerta" /> Sem internet. Você pode consultar, mas nada é salvo até a conexão voltar.</div>
         <main id="conteudo">
           <div id="view" className="view">
@@ -131,10 +122,10 @@ export function Casca() {
           </div>
         </main>
       </div>
-      <nav className="abas">{abas.map(([rt, t, ic]) => rt === 'retirar'
+      <nav className="abas" aria-label="Atalhos">{baixo.filter(([rt]) => rt !== 'retirar' || fabrica).map(([rt, t, ic]) => rt === 'retirar'
         ? <button key={rt} type="button" className="aba aba-central" data-acao="retirar" onClick={retirar}><Ic n={ic} /><span>{t}</span></button>
         : rt === 'menu' ? <button key={rt} type="button" className="aba" data-acao="menu" onClick={() => document.body.classList.toggle('menu-aberto')}><Ic n={ic} /><span>{t}</span></button>
-        : <a key={rt} className={`aba ${rt === ativo ? 'on' : ''}`} href={'#/' + rt} data-rota={rt} onClick={fecharMenu}><Ic n={ic} /><span>{t}</span></a>)}</nav>
+        : <a key={rt} className={`aba ${rt === chave || (!baixo.some(x => x[0] === chave) && areaDaRota(rt) === area?.id) ? 'on' : ''}`} href={'#/' + rt} data-rota={rt} onClick={fecharMenu}><Ic n={ic} /><span>{t}</span></a>)}</nav>
     </div>)
 }
 
@@ -149,30 +140,47 @@ class Protecao extends Component<{ children: ReactNode }, { erro: Error | null }
   }
 }
 
-// ---------------------------------------------------------------- busca rápida de peça no topo
+// ---------------------------------------------------------------- busca do topo: telas, pessoas e peças
+interface Achado { k: string; href: string; tipo: 'tela' | 'pessoa' | 'peca'; t: string; d: string; e?: string }
+function achar(t: string): Achado[] {
+  if (!t.trim()) return []
+  const telas = areasVisiveis().flatMap(a => subsDe(a).map(x => ({ a, x })))
+  const r: Achado[] = U.buscar(telas, t, ({ a, x }) => [x.rot, a.rot, a.desc, x.chaves || ''], 3)
+    .map(({ a, x }) => ({ k: 't' + x.rota, href: '#/' + x.rota, tipo: 'tela', t: x.rot === a.rot ? a.rot : `${a.rot} › ${x.rot}`, d: 'Abrir a tela' }))
+  if (Perm.pode('rh_ver') || Perm.pode('fabrica')) {
+    const pessoas = U.buscar(S.lista('funcionarios'), t, f => [f.nome, f.funcao || '', f.setor || '', f.matricula || ''], 4)
+    r.push(...pessoas.map(f => ({ k: 'f' + f.id, href: '#/funcionario/' + f.id, tipo: 'pessoa' as const, t: f.nome, d: [f.funcao, f.setor].filter(Boolean).join(' · ') || 'Pessoa', e: f.ativo ? '' : 'desligado' })))
+  }
+  if (Perm.pode('fabrica')) {
+    const pecas = U.buscar(S.lista('pecas'), t, p => [p.codigo, p.descricao, p.utilizacao || ''], 6)
+    r.push(...pecas.map(p => ({ k: 'p' + p.id, href: '#/peca/' + p.id, tipo: 'peca' as const, t: p.codigo, d: p.descricao, e: U.qtd(p.estoque) })))
+  }
+  return r
+}
 function BuscaGeral() {
   const [t, setT] = useState('')
   const [aberta, setAberta] = useState(false)
   const [sel, setSel] = useState(0)
   const inp = useRef<HTMLInputElement>(null)
-  const itens = t.trim() ? U.buscar(S.lista('pecas'), t, p => [p.codigo, p.descricao, p.utilizacao || ''], 8) : []
+  const itens = achar(t)
   const fim = () => { setT(''); setAberta(false); inp.current?.blur(); classeCorpo('busca-aberta', false) }
+  const dica = [Perm.pode('fabrica') && 'peça', (Perm.pode('rh_ver') || Perm.pode('fabrica')) && 'pessoa', 'tela'].filter(Boolean).join(', ')
   return (
     <div className="topo-busca"><span><Ic n="busca" /></span>
-      <input ref={inp} id="buscaGeral" type="search" placeholder="Buscar peça pelo código ou nome…" autoComplete="off" aria-label="Buscar peça" value={t}
+      <input ref={inp} id="buscaGeral" type="search" placeholder={`Buscar ${dica}…`} autoComplete="off" aria-label="Buscar" value={t}
         onChange={(e) => { setT(e.target.value); setSel(0); setAberta(true) }}
         onFocus={() => setAberta(true)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && itens[sel]) { location.hash = '#/peca/' + itens[sel].id; fim() }
+          if (e.key === 'Enter' && itens[sel]) { location.hash = itens[sel].href; fim() }
           else if (e.key === 'ArrowDown') { setSel(Math.min(sel + 1, itens.length - 1)); e.preventDefault() }
           else if (e.key === 'ArrowUp') { setSel(Math.max(sel - 1, 0)); e.preventDefault() }
           else if (e.key === 'Escape') fim()
         }}
         onBlur={() => setTimeout(() => { setAberta(false); classeCorpo('busca-aberta', false) }, 150)} />
       <div className="busca-res" hidden={!aberta || !t.trim()} onPointerDown={(e) => e.preventDefault()}>
-        {itens.length ? itens.map((p, n) => <a key={p.id} href={'#/peca/' + p.id} className={n === sel ? 'sel' : ''} onClick={() => setTimeout(fim, 0)}>
-          <b>{p.codigo}</b><span>{p.descricao}</span><em>{U.qtd(p.estoque)}</em></a>)
-          : <p>Nenhuma peça com “{t.trim()}”.</p>}
+        {itens.length ? itens.map((x, n) => <a key={x.k} href={x.href} data-tipo={x.tipo} className={n === sel ? 'sel' : ''} onClick={() => setTimeout(fim, 0)}>
+          <Ic n={x.tipo === 'tela' ? 'seta' : x.tipo === 'pessoa' ? 'equipe' : 'estoque'} /><b>{x.t}</b><span>{x.d}</span><em>{x.e || ''}</em></a>)
+          : <p>Nada encontrado com “{t.trim()}”.</p>}
       </div>
     </div>)
 }
@@ -184,6 +192,6 @@ function painelAlertas() {
 function PainelAlertas() {
   const j = useJanela()
   const al = C.alertas()
-  if (!al.length) return <Vazio icone="ok" titulo="Nada pendente" texto="Quando algo precisar de atenção (peça para comprar, pedido atrasado, conta vencendo…), aparece aqui." />
-  return <div className="alertas">{al.map(a => <a key={a.txt} className={`alerta n-${a.nivel}`} href={a.rota} onClick={() => j.fechar()}><Ic n="alerta" /><span>{a.txt}</span><Ic n="seta" /></a>)}</div>
+  if (!al.length) return <Vazio icone="ok" titulo="Nada pendente" texto="Quando algo precisar de atenção (peça para comprar, férias vencendo, exame vencido…), aparece aqui." />
+  return <div className="alertas">{al.map(a => <a key={a.txt} className={`alerta n-${a.nivel}${a.pisca ? ' pisca' : ''}`} href={a.rota} onClick={() => j.fechar()}><Ic n="alerta" /><span>{a.txt}</span><Ic n="seta" /></a>)}</div>
 }

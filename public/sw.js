@@ -2,7 +2,7 @@
  * Arquivos do site: busca na rede primeiro (sempre a versão nova); sem rede, usa a cópia guardada.
  * Bibliotecas externas (versão fixa): guardadas.
  * Banco (Supabase): nunca guardado aqui. */
-const CACHE = 'jaf-2.0.0';
+const CACHE = 'jaf-2.1.0';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {

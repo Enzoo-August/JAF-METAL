@@ -1,7 +1,7 @@
 {
   "name": "jaf-metal-gestao",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Gestão da JAF Metal: estoque, compras, produção, máquinas, equipe e financeiro.",
   "license": "MIT",
   "type": "module",

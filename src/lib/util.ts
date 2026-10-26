@@ -18,7 +18,9 @@ export const num = (v: unknown): number | null => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   let t = String(v).trim().replace(/[R$\s]/g, '')
   if (!t) return null
+  // vírgula = decimal (1.234,50); sem vírgula, ponto com 3 dígitos depois = milhar (3.200 = três mil e duzentos)
   if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.')
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '')
   const n = Number(t)
   return Number.isFinite(n) ? n : null
 }

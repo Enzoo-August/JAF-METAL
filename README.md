@@ -34,7 +34,7 @@ Um sistema web, instalável como aplicativo, que **substitui a planilha do almox
 | ⚙️ **Máquinas** | Situação de cada máquina · chamado de "máquina com problema" · preventiva com prazo e aviso · custo de peças e serviços por máquina · horas paradas |
 | 🏭 **Produção** | Ordens de produção em quadro (*Na fila → Produzindo → Pronta → Entregue*) · apontamento de quantidade · prioridade e prazo · entrega já lança a conta a receber |
 | 💰 **Financeiro** | Contas a pagar e a receber com parcelas · baixa com juros/desconto · **fluxo de caixa** com saldo projetado para 7, 30 e 90 dias · receitas e despesas por categoria |
-| 👥 **Equipe** | Funcionários, salários e dados pessoais (só para quem pode ver) · controle de férias pela CLT · peças retiradas por pessoa |
+| 👥 **RH** | Substitui as planilhas do RH: ficha completa de cada pessoa (documentos com máscara LGPD, PDF) · linha do tempo de cargo e salário · **ponto e horas extras** (50/60/80/100%, tolerância da CLT, fechamento do mês e Excel para a contabilidade) · **férias** com data limite, regras da CLT e aviso em PDF · atestados e afastamentos · **matrizes** de treinamento, procedimentos (SGQ) e versatilidade · ASO e EPI com ficha NR-6 · advertências e suspensões com documento pronto (art. 482) · organograma · processos trabalhistas · relatórios (turnover, absenteísmo, custo por setor) |
 | 📊 **Relatórios** | Os mesmos da planilha (estoque, consumo anual, análise de custos) e novos: *dinheiro parado*, custo por máquina, pontualidade de fornecedor — tudo exporta para Excel e PDF |
 | 🛡️ **Administração** | Acessos por pessoa · histórico de alterações · cópia de segurança completa em Excel (no mesmo formato da planilha antiga) · importação da planilha |
 
@@ -46,6 +46,8 @@ Um sistema web, instalável como aplicativo, que **substitui a planilha do almox
 | **Escritório** | Tudo do dia a dia (financeiro, salários, compras, estoque, produção); não cria acessos |
 | **Almoxarifado** | Estoque, compras, fornecedores, máquinas e ordens; **sem** financeiro e salários |
 | **Produção** | Retirar peça, ver estoque **sem preços**, ordens de produção e chamados de máquina |
+| **RH** | Só o RH (pessoas, documentos, salários, ponto, férias, treinamentos, exames, advertências) |
+| **Gerente de fábrica** | Fábrica e consulta do RH da equipe, **sem** salários, documentos pessoais nem CID |
 
 Essas regras estão **dentro do banco de dados** (Row Level Security + funções que conferem o perfil): não dependem do aparelho nem do navegador.
 
@@ -154,7 +156,9 @@ testes/                    testes automáticos (banco, telas, layout, importaç�
 - ✅ Banco da JAF criado e conferido (idêntico à versão testada).
 - ✅ Dados da planilha do almoxarifado importados e conferidos peça por peça.
 - ✅ Logins dos donos criados com senha provisória.
-- ⏳ **Publicação do endereço** — aguardando a conferência passo a passo.
+- ✅ RH no banco (versão 2.1): estrutura conferida pela impressão digital; carga das planilhas pronta para o Dono importar em Administração.
+- ✅ Menu reorganizado por áreas, Início personalizável e ajuda pesquisável (com manual em PDF).
+- ✅ Publicado no Netlify.
 
 ### Próximas ideias
 
