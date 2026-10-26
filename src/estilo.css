@@ -686,6 +686,9 @@ mark { background: color-mix(in srgb, #f0c063 55%, transparent); color: inherit;
   .ponto-dia .pd-h { grid-area: h; } .ponto-dia .pd-x { grid-area: x; }
   .ponto-dia .pd-trava { grid-column: 1 / -1; grid-row: 2; }
   .ponto-dia input, .ponto-dia select { height: 40px; font-size: 16px; padding: 0 3px; }
+  .ponto-dia input[type=time] { text-align: center; }
+  .ponto-dia input[type=time]::-webkit-calendar-picker-indicator { display: none; }
+  .topo, .subabas { background: var(--fundo); backdrop-filter: none; -webkit-backdrop-filter: none; }
   .barra-salvar { bottom: calc(var(--abas-h) + var(--sab) + 10px); }
   .linha-tempo li { grid-template-columns: 82px minmax(0, 1fr) auto; gap: 8px; }
   .item-matriz, .item-matriz.epi { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
