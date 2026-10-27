@@ -28,7 +28,7 @@ def toks(s): return [re.sub(r'th', 't', t).replace('y', 'i') for t in norm(s).sp
 def limpo(v):
     if v is None: return None
     s = re.sub(r'\s+', ' ', str(v)).strip()
-    return s or None
+    return None if s in ('', '0', '0.0', '-') else s   # "0" na planilha = campo vazio
 def nome_bonito(s):
     s = limpo(s)
     if not s: return s
@@ -70,7 +70,7 @@ def hora(v):
 
 def numero(v):
     if v is None or v == '': return None
-    if isinstance(v, (int, float)): return round(float(v), 2)
+    if isinstance(v, (int, float)): return round(float(v), 2) or None
     s = str(v).replace('R$', '').strip()
     s = s.replace('.', '').replace(',', '.') if ',' in s else s
     try: return round(float(s), 2)
@@ -115,9 +115,13 @@ def funcao(v):
         out.append(x2 if x2 != x or (x in PART and i) else (x2 if x2.isupper() else x2.capitalize()))
     r = ' '.join(out).replace(' De ', ' de ').replace(' Da ', ' da ').replace(' Do ', ' do ')
     return re.sub(r'\b([abc])$', lambda m: m[1].upper(), r)
+SETORES = {'administracao': 'Administrativo', 'administrativo': 'Administrativo', 'logistica': 'Logística', 'pcp': 'PCP', 'expedicao': 'Expedição',
+           'producao': 'Produção', 'manutencao': 'Manutenção', 'almoxarifado': 'Almoxarifado', 'qualidade': 'Qualidade', 'montagem': 'Montagem',
+           'engenharia': 'Engenharia', 'copa': 'Copa', 'upgrade': 'Upgrade'}
 def setor(v):
     v = limpo(v)
-    return None if not v else nome_bonito(v.title() if v.isupper() else v)
+    if not v or re.search(r'\d{1,2}:\d{2}', v) or registro(v) in ('Matriz', 'Filial', 'Sem registro'): return None   # turno ou registro na coluna errada
+    return SETORES.get(norm(v)) or nome_bonito(v.title() if v.isupper() else v)
 
 # ------------------------------------------------------------------ pessoas
 pessoas = []          # cada uma: dict com 'nome', 'tk', 'cpf', campos e 'privado'
@@ -241,7 +245,7 @@ for r in linhas(wb['Relação_inativos'])[1:]:
     p = casar(r[4]) or nova(r[4], 'relacao_inativos')
     if 'relacao_inativos' not in p['origens']: p['origens'].append('relacao_inativos')
     if p.get('situacao') != 'ativo': p['situacao'] = 'desligado'
-    poe(p, 'registro', registro(r[0])); poe(p, 'setor', setor(r[1])); poe(p, 'horario', horario(r[2])); poe(p, 'funcao', funcao(r[5]))
+    poe(p, 'registro', registro(r[0])); poe(p, 'setor', setor(r[1]) or setor(r[0])); poe(p, 'horario', horario(r[2]) or horario(r[1])); poe(p, 'funcao', funcao(r[5]))
     poe(p, 'admissao', data(r[6], f'{r[4]} admissão')); poe_pr(p, 'salario', numero(r[7]))
     if p['situacao'] == 'desligado':
         poe(p, 'demissao', data(r[8], f'{r[4]} demissão')); poe(p, 'motivo_demissao', limpo(r[9]))
@@ -461,7 +465,7 @@ def sai_p(p):
     return o
 historico = [{'chave': p['chave'], 'vigencia': p['admissao'], 'cargo': p.get('funcao'), 'salario': p['privado'].get('salario'), 'motivo': 'Admissão', 'setor': p.get('setor'),
               'obs': 'Importado da planilha (salário atual)' if p['situacao'] == 'ativo' else 'Importado da planilha (último salário)'} for p in pessoas if p.get('admissao')]
-setores_usados = sorted({p['setor'] for p in pessoas if p.get('setor')} | set(setores_tg))
+setores_usados = sorted({p['setor'] for p in pessoas if p.get('setor')} | {x for x in setores_tg if x})
 saida = {
     'setores': [{'nome': s} for s in setores_usados],
     'cargos': sorted(cargos.values(), key=lambda c: c['nome']),

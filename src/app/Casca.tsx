@@ -24,8 +24,8 @@ function contadores(): Record<string, number> {
     c.compras = S.lista('pedidos_compra').filter(p => p.status === 'aguardando' && p.prazo && p.prazo < hoje).length
   }
   if (Perm.pode('financeiro')) c.financeiro = S.lista('lancamentos').filter(l => !l.pago_em && l.vencimento <= hoje).length
-  if (Perm.pode('fabrica')) {
-    c.producao = S.lista('ordens').filter(o => (o.status === 'fila' || o.status === 'producao') && o.prazo && o.prazo < hoje).length
+  if (Perm.pode('pcp')) c.producao = S.lista('ordens').filter(o => (o.status === 'fila' || o.status === 'producao') && o.prazo && o.prazo < hoje).length
+  if (Perm.pode('almox')) {
     c.maquinas = S.lista('manutencoes').filter(m => m.status !== 'concluida' && m.tipo === 'corretiva').length
   }
   if (Perm.pode('rh_ver')) for (const a of C.alertasRH()) {
@@ -68,20 +68,24 @@ export function Casca() {
   const areas = areasVisiveis()
   const al = C.alertas()
   const urgentes = al.some(a => a.nivel === 'alto')
-  const fabrica = Perm.pode('retirar')
+  const podeRetirar = Perm.pode('retirar')
   const baixo = abasDeBaixo(s.perfil)
 
   const fecharMenu = () => classeCorpo('menu-aberto', false)
   const retirar = () => { fecharMenu(); void Telas.movimentos.retirar() }
+  const novaOrdem = () => { fecharMenu(); void Telas.producao.form() }
   const sair = async () => { fecharMenu(); if (await confirmar('Sair do sistema neste aparelho?', { ok: 'Sair' })) await App.sair() }
 
   return (
     <div className="casca">
       <aside className="lateral" id="lateral">
         <div className="lateral-marca"><a href="#/inicio" onClick={fecharMenu}><img src="./assets/logo.png" alt="JAF Metal" /></a>{API.modo === 'teste' && <span className="selo-teste">teste</span>}</div>
-        {fabrica && <div className="lateral-acoes">
+        {podeRetirar && <div className="lateral-acoes">
           <button type="button" className="btn pri" data-acao="retirar" onClick={retirar}><Ic n="retirar" /><span>Retirar peça</span></button>
           {Perm.pode('entrada') && <button type="button" className="btn sec-escuro" data-acao="entrada" onClick={() => { fecharMenu(); void Telas.movimentos.entrada() }}><Ic n="entrada" /><span>Dar entrada</span></button>}
+        </div>}
+        {!podeRetirar && Perm.pode('producao_editar') && <div className="lateral-acoes">
+          <button type="button" className="btn pri" data-acao="novaOrdem" onClick={novaOrdem}><Ic n="mais" /><span>Nova ordem</span></button>
         </div>}
         <nav className="lateral-menu" aria-label="Áreas do sistema">{areas.map(a => {
           const ss = subsDe(a), n = ss.reduce((t, x) => t + (cont[x.rota] || 0), 0)
@@ -122,8 +126,8 @@ export function Casca() {
           </div>
         </main>
       </div>
-      <nav className="abas" aria-label="Atalhos">{baixo.filter(([rt]) => rt !== 'retirar' || fabrica).map(([rt, t, ic]) => rt === 'retirar'
-        ? <button key={rt} type="button" className="aba aba-central" data-acao="retirar" onClick={retirar}><Ic n={ic} /><span>{t}</span></button>
+      <nav className="abas" aria-label="Atalhos">{baixo.filter(([rt]) => (rt !== 'retirar' || podeRetirar) && (rt !== 'novaOrdem' || Perm.pode('producao_editar'))).map(([rt, t, ic]) => rt === 'retirar' || rt === 'novaOrdem'
+        ? <button key={rt} type="button" className="aba aba-central" data-acao={rt} onClick={rt === 'retirar' ? retirar : novaOrdem}><Ic n={ic} /><span>{t}</span></button>
         : rt === 'menu' ? <button key={rt} type="button" className="aba" data-acao="menu" onClick={() => document.body.classList.toggle('menu-aberto')}><Ic n={ic} /><span>{t}</span></button>
         : <a key={rt} className={`aba ${rt === chave || (!baixo.some(x => x[0] === chave) && areaDaRota(rt) === area?.id) ? 'on' : ''}`} href={'#/' + rt} data-rota={rt} onClick={fecharMenu}><Ic n={ic} /><span>{t}</span></a>)}</nav>
     </div>)
@@ -147,11 +151,11 @@ function achar(t: string): Achado[] {
   const telas = areasVisiveis().flatMap(a => subsDe(a).map(x => ({ a, x })))
   const r: Achado[] = U.buscar(telas, t, ({ a, x }) => [x.rot, a.rot, a.desc, x.chaves || ''], 3)
     .map(({ a, x }) => ({ k: 't' + x.rota, href: '#/' + x.rota, tipo: 'tela', t: x.rot === a.rot ? a.rot : `${a.rot} › ${x.rot}`, d: 'Abrir a tela' }))
-  if (Perm.pode('rh_ver') || Perm.pode('fabrica')) {
+  if (Perm.pode('rh_ver') || Perm.pode('almox') || Perm.pode('pcp')) {
     const pessoas = U.buscar(S.lista('funcionarios'), t, f => [f.nome, f.funcao || '', f.setor || '', f.matricula || ''], 4)
     r.push(...pessoas.map(f => ({ k: 'f' + f.id, href: '#/funcionario/' + f.id, tipo: 'pessoa' as const, t: f.nome, d: [f.funcao, f.setor].filter(Boolean).join(' · ') || 'Pessoa', e: f.ativo ? '' : 'desligado' })))
   }
-  if (Perm.pode('fabrica')) {
+  if (Perm.pode('estoque_ver')) {
     const pecas = U.buscar(S.lista('pecas'), t, p => [p.codigo, p.descricao, p.utilizacao || ''], 6)
     r.push(...pecas.map(p => ({ k: 'p' + p.id, href: '#/peca/' + p.id, tipo: 'peca' as const, t: p.codigo, d: p.descricao, e: U.qtd(p.estoque) })))
   }
@@ -164,7 +168,7 @@ function BuscaGeral() {
   const inp = useRef<HTMLInputElement>(null)
   const itens = achar(t)
   const fim = () => { setT(''); setAberta(false); inp.current?.blur(); classeCorpo('busca-aberta', false) }
-  const dica = [Perm.pode('fabrica') && 'peça', (Perm.pode('rh_ver') || Perm.pode('fabrica')) && 'pessoa', 'tela'].filter(Boolean).join(', ')
+  const dica = [Perm.pode('estoque_ver') && 'peça', (Perm.pode('rh_ver') || Perm.pode('almox') || Perm.pode('pcp')) && 'pessoa', 'tela'].filter(Boolean).join(', ')
   return (
     <div className="topo-busca"><span><Ic n="busca" /></span>
       <input ref={inp} id="buscaGeral" type="search" placeholder={`Buscar ${dica}…`} autoComplete="off" aria-label="Buscar" value={t}

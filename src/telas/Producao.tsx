@@ -140,7 +140,7 @@ export async function form(o?: Partial<Ordem> | null): Promise<unknown> {
   const r = await modal<{ id: string; numero: number }>({
     titulo: novo ? 'Nova ordem de produção' : `Editar OP ${b.numero}`,
     corpo: <>
-      {Perm.pode('clientes') ? <ComboCliente id="oCli" nome="cliente_id" rotulo="Cliente" placeholder="Digite para buscar" inicial={S.get('clientes', b.cliente_id)} />
+      {Perm.pode('clientes_ver') ? <ComboCliente id="oCli" nome="cliente_id" rotulo="Cliente" placeholder="Digite para buscar" inicial={S.get('clientes', b.cliente_id)} />
         : <Campo nome="cliente_nome" rotulo="Cliente" valor={b.cliente_nome} />}
       <div className="linha-campos"><Campo nome="pedido_cliente" rotulo="Pedido do cliente" valor={b.pedido_cliente} placeholder="Ex.: PC 016/26" />
         <Campo nome="codigo" rotulo="Código do produto" valor={b.codigo} /></div>

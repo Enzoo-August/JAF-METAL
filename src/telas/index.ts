@@ -23,14 +23,14 @@ import { documento, formOcorrencia } from './rh/Disciplina.tsx'
 
 export interface DefTela { Tela: (p: { r: Rota }) => ReactNode; perm?: Acao; titulo: string | ((r: Rota) => string) }
 
-const pecas: DefTela = { Tela: Pecas.TelaPecas, perm: 'fabrica', titulo: Pecas.tituloPecas }
+const pecas: DefTela = { Tela: Pecas.TelaPecas, perm: 'estoque_ver', titulo: Pecas.tituloPecas }
 const compras: DefTela = { Tela: Compras.TelaCompras, perm: 'compras', titulo: Compras.tituloCompras }
 const fornecedores: DefTela = { Tela: Fornecedores.TelaFornecedores, perm: 'compras', titulo: Fornecedores.tituloFornecedores }
-const maquinas: DefTela = { Tela: Maquinas.TelaMaquinas, perm: 'fabrica', titulo: Maquinas.tituloMaquinas }
+const maquinas: DefTela = { Tela: Maquinas.TelaMaquinas, perm: 'almox', titulo: Maquinas.tituloMaquinas }
 const clientes: DefTela = { Tela: Clientes.TelaClientes, perm: 'clientes', titulo: Clientes.tituloClientes }
 const rh: DefTela = { Tela: TelaRH, perm: 'rh_ver', titulo: tituloRH }
-// "Equipe" (quem não é do RH: almoxarifado e produção veem nome, função e o que a pessoa retirou)
-const equipe: DefTela = { Tela: TelaRH, perm: 'fabrica', titulo: tituloRH }
+// "Equipe" (quem não é do RH: PCP e produção veem nome, função e o que a pessoa fez)
+const equipe: DefTela = { Tela: TelaRH, perm: 'pcp', titulo: tituloRH }
 const funcionario: DefTela = { Tela: TelaRH, titulo: tituloRH }
 
 export const ROTAS: Record<string, DefTela> = {
@@ -40,7 +40,7 @@ export const ROTAS: Record<string, DefTela> = {
   compras, pedido: compras,
   fornecedores, fornecedor: fornecedores,
   maquinas, maquina: maquinas,
-  producao: { Tela: Producao.TelaProducao, perm: 'fabrica', titulo: 'Ordens de produção' },
+  producao: { Tela: Producao.TelaProducao, perm: 'pcp', titulo: 'Ordens de produção' },
   financeiro: { Tela: Financeiro.TelaFinanceiro, perm: 'financeiro', titulo: Financeiro.tituloFinanceiro },
   clientes, cliente: clientes,
   rh, equipe, funcionario,

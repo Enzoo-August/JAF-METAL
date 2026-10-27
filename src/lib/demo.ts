@@ -152,6 +152,7 @@ export async function criarDemo(): Promise<void> {
   await chefe('Kleber Dias', 'Ivo Martins')
   await API.rpc('criar_acesso', { p_login: 'escritorio', p_senha: senha, p_nome: 'Denise (teste)', p_perfil: 'escritorio', p_func: ids['Denise Lima'] })
   await API.rpc('criar_acesso', { p_login: 'almox', p_senha: senha, p_nome: 'Edu (teste)', p_perfil: 'almoxarife', p_func: ids['Edu Rocha'] })
+  await API.rpc('criar_acesso', { p_login: 'pcp', p_senha: senha, p_nome: 'Paula (teste)', p_perfil: 'pcp', p_func: null })
   await API.rpc('criar_acesso', { p_login: 'operador', p_senha: senha, p_nome: 'Beto (teste)', p_perfil: 'producao', p_func: ids['Beto Silva'] })
   await API.rpc('criar_acesso', { p_login: 'helena', p_senha: senha, p_nome: 'Helena (teste)', p_perfil: 'rh', p_func: ids['Helena Costa'] })
   await API.rpc('criar_acesso', { p_login: 'gerente', p_senha: senha, p_nome: 'Ivo (teste)', p_perfil: 'gerente', p_func: ids['Ivo Martins'] })

@@ -118,7 +118,7 @@ window.auditar = async function auditar(opt = {}) {
 // roda a varredura com os 4 perfis no tamanho atual
 window.auditarPerfis = async function (opt = {}) {
   const res = {};
-  for (const login of ['dono', 'escritorio', 'almox', 'operador', 'helena', 'gerente']) {
+  for (const login of ['dono', 'escritorio', 'almox', 'pcp', 'operador', 'helena', 'gerente']) {
     await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await new Promise(ok => setTimeout(ok, 700));
     UI.fecharTodas();
     const a = await window.auditar(opt);

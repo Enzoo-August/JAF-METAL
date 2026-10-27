@@ -10,19 +10,19 @@ export interface Area { id: string; rot: string; ic: NomeIcone; desc: string; su
 
 export const AREAS: Area[] = [
   { id: 'inicio', rot: 'Início', ic: 'inicio', desc: 'Resumo do dia e atalhos', subs: [{ rota: 'inicio', rot: 'Início', perm: 'todos' }] },
-  { id: 'estoque', rot: 'Estoque', ic: 'estoque', desc: 'Peças, saldo, retiradas e entradas', subs: [
-    { rota: 'pecas', rot: 'Peças', perm: 'fabrica', chaves: 'saldo prateleira inventário contar código' },
+  { id: 'almoxarifado', rot: 'Almoxarifado', ic: 'estoque', desc: 'Peças, retiradas, entradas, máquinas e manutenção', subs: [
+    { rota: 'pecas', rot: 'Peças', perm: 'estoque_ver', chaves: 'estoque saldo prateleira inventário contar código' },
     { rota: 'movimentos', rot: 'Movimentações', perm: 'historico_mov', chaves: 'retiradas entradas histórico quem tirou' },
+    { rota: 'maquinas', rot: 'Máquinas e manutenção', perm: 'almox', chaves: 'chamado quebrou preventiva corretiva' },
   ] },
   { id: 'compras', rot: 'Compras', ic: 'compras', desc: 'O que falta, pedidos e fornecedores', subs: [
     { rota: 'compras/lista', rot: 'O que comprar', perm: 'compras', chaves: 'lista de compras faltando mínimo' },
     { rota: 'compras', rot: 'Pedidos', perm: 'compras', chaves: 'pedido de compra receber chegou' },
     { rota: 'fornecedores', rot: 'Fornecedores', perm: 'compras', chaves: 'fornecedor contato telefone' },
   ] },
-  { id: 'fabrica', rot: 'Fábrica', ic: 'producao', desc: 'Ordens de produção e máquinas', subs: [
-    { rota: 'producao', rot: 'Ordens de produção', perm: 'fabrica', chaves: 'op fila produzindo pronta entrega' },
-    { rota: 'maquinas', rot: 'Máquinas e manutenção', perm: 'fabrica', chaves: 'chamado quebrou preventiva corretiva' },
-    { rota: 'equipe', rot: 'Equipe', perm: 'fabrica', nao: 'rh_ver', chaves: 'funcionários pessoas' },
+  { id: 'pcp', rot: 'PCP', ic: 'producao', desc: 'Planejamento e controle da produção: ordens de produção', subs: [
+    { rota: 'producao', rot: 'Ordens de produção', perm: 'pcp', chaves: 'op fila produzindo pronta entrega planejamento controle' },
+    { rota: 'equipe', rot: 'Equipe', perm: 'pcp', nao: 'rh_ver', chaves: 'funcionários pessoas' },
   ] },
   { id: 'rh', rot: 'RH', ic: 'equipe', desc: 'Pessoas, ponto, férias, treinamentos e segurança', subs: [
     { rota: 'rh', rot: 'Pessoas', perm: 'rh_ver', chaves: 'funcionários cadastro ficha admissão experiência desligamento' },
@@ -72,11 +72,12 @@ export const areaDaRota = (rota: string): string | undefined => AREAS.find(a => 
 // barra de baixo do celular (o botão do meio é o que a pessoa mais faz)
 export type AbaBaixo = [rota: string, rot: string, ic: NomeIcone]
 const BAIXO: Partial<Record<Perfil, AbaBaixo[]>> = {
-  dono: [['inicio', 'Início', 'inicio'], ['pecas', 'Estoque', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['rh', 'RH', 'equipe'], ['menu', 'Menu', 'menu']],
-  escritorio: [['inicio', 'Início', 'inicio'], ['pecas', 'Estoque', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['financeiro', 'Contas', 'dinheiro'], ['menu', 'Menu', 'menu']],
-  almoxarife: [['inicio', 'Início', 'inicio'], ['pecas', 'Estoque', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['compras/lista', 'Comprar', 'compras'], ['menu', 'Menu', 'menu']],
+  dono: [['inicio', 'Início', 'inicio'], ['pecas', 'Almox.', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['rh', 'RH', 'equipe'], ['menu', 'Menu', 'menu']],
+  escritorio: [['inicio', 'Início', 'inicio'], ['pecas', 'Almox.', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['financeiro', 'Contas', 'dinheiro'], ['menu', 'Menu', 'menu']],
+  almoxarife: [['inicio', 'Início', 'inicio'], ['pecas', 'Peças', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['compras/lista', 'Comprar', 'compras'], ['menu', 'Menu', 'menu']],
   producao: [['inicio', 'Início', 'inicio'], ['pecas', 'Estoque', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['producao', 'Ordens', 'producao'], ['menu', 'Menu', 'menu']],
-  gerente: [['inicio', 'Início', 'inicio'], ['pecas', 'Estoque', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['rh', 'Equipe', 'equipe'], ['menu', 'Menu', 'menu']],
+  pcp: [['inicio', 'Início', 'inicio'], ['producao', 'Ordens', 'producao'], ['novaOrdem', 'Nova ordem', 'mais'], ['pecas', 'Estoque', 'estoque'], ['menu', 'Menu', 'menu']],
+  gerente: [['inicio', 'Início', 'inicio'], ['pecas', 'Almox.', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['rh', 'Equipe', 'equipe'], ['menu', 'Menu', 'menu']],
   rh: [['inicio', 'Início', 'inicio'], ['rh', 'Pessoas', 'equipe'], ['rh/ponto', 'Ponto', 'relogio'], ['rh/ferias', 'Férias', 'calendario'], ['menu', 'Menu', 'menu']],
 }
 export const abasDeBaixo = (p: Perfil): AbaBaixo[] => BAIXO[p] || BAIXO.producao!

@@ -19,7 +19,7 @@ interface Artigo { id: string; area: string; titulo: string; palavras: string; p
 export const ARTIGOS: Artigo[] = [
   // ---------------- começo
   { id: 'menu', area: 'inicio', titulo: 'Como o sistema está organizado', palavras: 'menu áreas abas onde fica perdido navegar', perm: 'todos', corpo: [
-    'O menu tem poucas *áreas*, na ordem do que mais se usa: Início, Estoque, Compras, Fábrica, RH, Financeiro… Cada área tem *abas* no alto da tela (ex.: no RH: Pessoas, Ponto, Férias…).',
+    'O menu tem poucas *áreas*, na ordem do que mais se usa: Início, Almoxarifado, Compras, PCP, RH, Financeiro… Cada área tem *abas* no alto da tela (ex.: no RH: Pessoas, Ponto, Férias…).',
     'No celular, a barra de baixo tem os atalhos do seu perfil e o botão *Menu* abre todas as áreas. O *?* ao lado das abas abre a ajuda daquela área.',
     'A *lupa* no topo procura peça, pessoa ou tela: digite “férias” e toque no resultado.'],
     tour: [{ alvo: '.lateral-menu, .abas', texto: 'Aqui ficam as áreas do sistema. Toque numa área para abrir.' }, { alvo: '#buscaGeral, [data-acao=buscar]', texto: 'A lupa procura peça, pessoa ou tela pelo nome.' }, { alvo: '[data-acao=alertas]', texto: 'O sininho mostra o que precisa de atenção (férias vencendo, peça faltando…).' }] },
@@ -29,27 +29,30 @@ export const ARTIGOS: Artigo[] = [
   { id: 'avisos', area: 'inicio', titulo: 'O que é o sininho (avisos)', palavras: 'sino avisos alerta vermelho piscando', perm: 'todos', corpo: [
     'O sininho junta tudo que precisa de atenção para o seu perfil: peças abaixo do mínimo, pedidos atrasados, contas vencendo, férias vencendo, exames (ASO) e treinamentos vencidos, fim de experiência.',
     'Aviso que *pisca* é urgente (férias vencidas ou vencendo em 30 dias, reciclagem obrigatória perto de vencer). Toque no aviso para ir direto à tela.'] },
-  // ---------------- estoque
-  { id: 'retirar', area: 'estoque', titulo: 'Como retirar uma peça do almoxarifado', palavras: 'retirar tirar pegar saída peça', perm: 'retirar', corpo: [
+  // ---------------- almoxarifado
+  { id: 'retirar', area: 'almoxarifado', titulo: 'Como retirar uma peça do almoxarifado', palavras: 'retirar tirar pegar saída peça', perm: 'retirar', corpo: [
     { passos: ['Toque em *Retirar* (botão azul do meio no celular, ou *Retirar peça* no menu).', 'Digite parte do código ou do nome da peça e escolha na lista.', 'Confira a quantidade, quem está retirando e a máquina.', 'Toque em *Retirar*. Errou? Toque em *Desfazer* no aviso que aparece embaixo.'] }],
     tour: [{ alvo: '[data-acao=retirar]', texto: 'Este botão abre a retirada de peça. Ele está sempre à mão.' }] },
-  { id: 'entrada', area: 'estoque', titulo: 'Chegou peça: como dar entrada', palavras: 'entrada chegou nota fiscal compra receber', perm: 'entrada', corpo: [
+  { id: 'entrada', area: 'almoxarifado', titulo: 'Chegou peça: como dar entrada', palavras: 'entrada chegou nota fiscal compra receber', perm: 'entrada', corpo: [
     'Se a peça veio de um *pedido de compra*, abra o pedido e toque em *Receber*: o estoque sobe e o pedido é baixado (dá para receber só uma parte).',
     'Sem pedido: *Dar entrada* → escolha a peça → Compra → quantidade, preço da nota, fornecedor e número da NF.'] },
-  { id: 'contar', area: 'estoque', titulo: 'O estoque do sistema não bate com a prateleira', palavras: 'contar inventário ajuste diferença saldo errado', perm: 'entrada', corpo: [
-    'Abra a peça e toque em *Contar*. Digite quanto tem de verdade: o sistema lança o ajuste da diferença e guarda no histórico. Para muitas peças use *Estoque → Contar estoque* (inventário).'] },
-  { id: 'peps', area: 'estoque', titulo: 'O que é o lote (PEPS) na ficha da peça', palavras: 'peps lote preço custo valor', perm: 'precos', corpo: [
+  { id: 'contar', area: 'almoxarifado', titulo: 'O estoque do sistema não bate com a prateleira', palavras: 'contar inventário ajuste diferença saldo errado', perm: 'entrada', corpo: [
+    'Abra a peça e toque em *Contar*. Digite quanto tem de verdade: o sistema lança o ajuste da diferença e guarda no histórico. Para muitas peças use *Almoxarifado → Peças → Contar estoque* (inventário).'] },
+  { id: 'peps', area: 'almoxarifado', titulo: 'O que é o lote (PEPS) na ficha da peça', palavras: 'peps lote preço custo valor', perm: 'precos', corpo: [
     'Cada entrada (nota) é um lote com o preço pago. Quem retira usa o lote mais antigo primeiro (Primeiro que Entra, Primeiro que Sai) — como na planilha, só que automático.'] },
   // ---------------- compras
   { id: 'comprar', area: 'compras', titulo: 'Como sei o que precisa comprar', palavras: 'lista de compras mínimo faltando comprar', perm: 'compras', rota: '#/compras/lista', corpo: [
     'Em *Compras → O que comprar* aparecem as peças abaixo do mínimo (a mesma regra da planilha). A quantidade sugerida completa até o máximo e já desconta o que está a caminho. Marque e toque em *Gerar pedido*.'] },
   { id: 'enviarPedido', area: 'compras', titulo: 'Como mandar o pedido para o fornecedor', palavras: 'enviar pedido whatsapp email pdf fornecedor', perm: 'compras', corpo: [
     'Abra o pedido → *Enviar*. Dá para mandar o PDF, abrir o WhatsApp do fornecedor com o texto pronto ou o e-mail.'] },
-  // ---------------- fábrica
-  { id: 'chamado', area: 'fabrica', titulo: 'A máquina deu problema', palavras: 'máquina quebrou chamado manutenção corretiva', perm: 'manutencao', corpo: [
-    'Em *Fábrica → Máquinas* toque em *Máquina com problema* (ou ponha esse atalho no Início), escolha a máquina e descreva. Quando resolver, abra o chamado, escreva a solução e marque *Concluída*.'] },
-  { id: 'ordens', area: 'fabrica', titulo: 'Como funcionam as ordens de produção', palavras: 'ordem produção op fila pronta entregue', perm: 'producao_status', corpo: [
-    'Cada ordem anda: *Na fila → Produzindo → Pronta → Entregue*. Abra a ordem para começar, anotar quantas já foram feitas e marcar pronta. A entrega é marcada pelo escritório.'] },
+  { id: 'chamado', area: 'almoxarifado', titulo: 'A máquina deu problema', palavras: 'máquina quebrou chamado manutenção corretiva', perm: 'manutencao', corpo: [
+    'Em *Almoxarifado → Máquinas e manutenção* toque em *Máquina com problema* (ou ponha esse atalho no Início), escolha a máquina e descreva. Quando resolver, abra o chamado, escreva a solução e marque *Concluída*.'] },
+  // ---------------- PCP
+  { id: 'novaOrdemAjuda', area: 'pcp', titulo: 'Como criar uma ordem de produção', palavras: 'nova ordem produção op pcp planejamento criar cliente prazo', perm: 'producao_editar', rota: '#/producao', corpo: [
+    { passos: ['Em *PCP → Ordens de produção* toque em *Nova ordem*.', 'Escolha o cliente, o pedido do cliente e o produto (código, quantidade, unidade e prazo).', 'Se quiser, escolha a máquina, o responsável e marque *Urgente*.', 'Toque em *Criar ordem*. A ordem entra *Na fila* com número automático (OP 1, OP 2…).'] }],
+    tour: [{ rota: '#/producao', alvo: '[data-o=nova]', texto: 'Toque aqui para criar uma ordem de produção.' }] },
+  { id: 'ordens', area: 'pcp', titulo: 'Como funcionam as ordens de produção', palavras: 'ordem produção op fila pronta entregue pcp', perm: 'producao_status', corpo: [
+    'Cada ordem anda: *Na fila → Produzindo → Pronta → Entregue*. Abra a ordem para começar, anotar quantas já foram feitas e marcar pronta. A entrega e o cancelamento são marcados pelo PCP ou pelo escritório.'] },
   // ---------------- RH
   { id: 'rhVisao', area: 'rh', titulo: 'RH: o que tem e onde fica', palavras: 'rh recursos humanos planilhas excel onde', perm: 'rh_ver', rota: '#/rh', corpo: [
     'O RH junta as planilhas: *Relação de funcionários* e *Banco de dados* → aba *Pessoas*; *Planilha de horas extras* → *Ponto e horas extras*; datas limite de férias → *Férias e ausências*; *Plano de treinamentos*, *Procedimentos SGQ* e *Versatilidade* → *Treinamentos*; ASO e EPI → *EPI e exames*; modelos de advertência e suspensão → *Advertências*; organograma → *Organograma*.',
@@ -116,7 +119,7 @@ export const ARTIGOS: Artigo[] = [
     'Mostra mês a mês o que entrou, saiu e vai entrar/sair. Informe o saldo uma vez (*Informar saldo*) e o sistema calcula quanto vai ter em 7, 30 e 90 dias.'] },
   // ---------------- sistema
   { id: 'acessos', area: 'admin', titulo: 'Criar o acesso de alguém', palavras: 'acesso login senha usuário criar perfil', perm: 'acessos', rota: '#/admin', corpo: [
-    'Em *Administração → Acessos → Novo acesso*: nome, usuário, senha provisória e o perfil (Dono, Escritório, Almoxarifado, Produção, RH ou Gerente de fábrica). Na primeira entrada a pessoa cria a própria senha.'] },
+    'Em *Administração → Acessos → Novo acesso*: nome, usuário, senha provisória e o perfil (Dono, Escritório, Almoxarifado, PCP, Produção, RH ou Gerente de fábrica). Na primeira entrada a pessoa cria a própria senha.'] },
   { id: 'copia', area: 'admin', titulo: 'Cópia de segurança dos dados', palavras: 'backup cópia segurança baixar', perm: 'config', rota: '#/admin?aba=copia', corpo: [
     '*Administração → Cópia dos dados* → *Baixar cópia completa*. Faça uma vez por semana e guarde no Drive.'] },
   { id: 'internet', area: 'ajuda', titulo: 'Ficou sem internet. Perco alguma coisa?', palavras: 'internet offline sem rede', perm: 'todos', corpo: [
@@ -124,7 +127,7 @@ export const ARTIGOS: Artigo[] = [
   { id: 'instalar', area: 'ajuda', titulo: 'Usar como aplicativo no celular', palavras: 'instalar aplicativo celular tela inicial ícone', perm: 'todos', rota: '#/conta', corpo: [
     'Veja em *Minha conta → Usar como aplicativo* (toque no seu nome, no menu).'] },
   { id: 'quemVe', area: 'ajuda', titulo: 'Quem vê o quê', palavras: 'perfil permissão acesso quem vê dono escritório', perm: 'todos', corpo: [
-    '*Dono*: tudo. *Escritório*: tudo do dia a dia, sem criar acessos. *Almoxarifado*: estoque, compras, máquinas e produção. *Produção*: retirar peça, estoque (sem preços), ordens e chamados. *RH*: só o RH. *Gerente de fábrica*: fábrica + consulta do RH sem dados pessoais.'] },
+    '*Dono*: tudo. *Escritório*: tudo do dia a dia, sem criar acessos. *Almoxarifado*: peças, retiradas, entradas, máquinas, manutenção e compras. *PCP*: ordens de produção (consulta estoque e clientes). *Produção*: retirar peça, estoque (sem preços), atualizar ordens e chamados. *RH*: só o RH. *Gerente de fábrica*: almoxarifado + ordens + consulta do RH sem dados pessoais.'] },
 ]
 
 // ------------------------------------------------------------------ texto com *negrito* e destaque da busca
@@ -184,7 +187,8 @@ function PassosPerfil() {
     escritorio: [<>O <b>Início</b> mostra o que precisa de atenção (contas vencendo, pedidos atrasados…).</>, <>Contas: <b>Financeiro</b>. Pessoas, ponto e férias: <b>RH</b>.</>, <>Toda semana: <a href="#/admin?aba=copia">baixar a cópia dos dados</a>.</>],
     dono: [<>O <b>Início</b> resume o que precisa de atenção — e dá para <b>Personalizar</b>.</>, <>Crie os acessos da equipe em <a href="#/admin">Administração → Acessos</a> (há perfil <b>RH</b> e <b>Gerente de fábrica</b>).</>, <>Veja <a href="#/relatorios">Relatórios</a>, o <a href="#/financeiro/fluxo">Fluxo de caixa</a> e os <a href="#/rh/relatorios">Relatórios do RH</a>.</>],
     rh: [<><b>Pessoas</b>: cadastro e ficha completa de cada um (toque no nome).</>, <><b>Ponto</b>: lance as horas extras e faltas do mês e exporte para a contabilidade.</>, <><b>Férias</b>: quem está vencendo e o aviso de férias em PDF. O sininho avisa o resto (exames, treinamentos, experiência).</>],
-    gerente: [<>Para pegar uma peça: <b>Retirar</b>. Ordens e máquinas em <b>Fábrica</b>.</>, <>Na <b>Equipe</b> você consulta quem está de férias, afastado, os treinamentos e o ponto da sua turma.</>, <>Dúvida? Digite aqui em cima o que quer fazer.</>],
+    pcp: [<>Para criar uma ordem: <b>Nova ordem</b> (botão do meio no celular).</>, <>Em <b>PCP → Ordens de produção</b> você acompanha a fila, o que está produzindo, pronto e entregue.</>, <>Precisa saber se tem peça? Veja o <b>Estoque</b> (só consulta).</>],
+    gerente: [<>Para pegar uma peça: <b>Retirar</b>. Máquinas em <b>Almoxarifado</b>; ordens em <b>PCP</b>.</>, <>Na <b>Equipe</b> você consulta quem está de férias, afastado, os treinamentos e o ponto da sua turma.</>, <>Dúvida? Digite aqui em cima o que quer fazer.</>],
   }
   return <ol className="passos">{(L[API.sessao?.perfil || ''] || []).map((x, n) => <li key={n}><span>{x}</span></li>)}</ol>
 }
@@ -192,7 +196,7 @@ function PassosPerfil() {
 export function boasVindas(): void {
   void modal({
     titulo: 'Bem-vindo ao sistema da JAF Metal',
-    corpo: <><p>Olá, <b>{(API.sessao?.nome || '').split(' ')[0]}</b>! Este é o jeito novo de cuidar {API.sessao?.perfil === 'rh' ? 'do RH: pessoas, ponto, férias, treinamentos, exames e advertências' : 'do almoxarifado, das compras, da produção' + (Perm.pode('rh_ver') ? ', do RH' : '') + (Perm.pode('financeiro') ? ' e do financeiro' : '')} — no lugar das planilhas.</p>
+    corpo: <><p>Olá, <b>{(API.sessao?.nome || '').split(' ')[0]}</b>! Este é o jeito novo de cuidar {API.sessao?.perfil === 'rh' ? 'do RH: pessoas, ponto, férias, treinamentos, exames e advertências' : API.sessao?.perfil === 'pcp' ? 'do PCP: planejar e acompanhar as ordens de produção' : 'do almoxarifado, das compras, da produção' + (Perm.pode('rh_ver') ? ', do RH' : '') + (Perm.pode('financeiro') ? ' e do financeiro' : '')} — no lugar das planilhas.</p>
       <PassosPerfil /><p className="sub mt">A qualquer hora: <b>Ajuda</b> no menu — digite o que quer fazer.</p></>,
     fecharTxt: 'Começar',
   }).then(() => App.gravarPref('boasVindas', true))

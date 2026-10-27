@@ -249,7 +249,7 @@ await rpc(prod, 'ordem_status', { id: op.id, status: 'producao' })
 await rpc(prod, 'ordem_status', { id: op.id, produzido: 30 })
 let o = (await q(`select status, produzido::float, iniciada_em from public.ordens where id = $1`, [op.id]))[0]
 conf(o.status === 'producao' && o.produzido === 30 && o.iniciada_em, 'apontamento de produção', o)
-conf((await erro(prod, 'ordem_status', { id: op.id, status: 'entregue' }))?.includes('escritório'), 'produção não marca entregue')
+conf((await erro(prod, 'ordem_status', { id: op.id, status: 'entregue' }))?.includes('PCP ou pelo escritório'), 'produção não marca entregue')
 await rpc(prod, 'ordem_status', { id: op.id, status: 'pronta' })
 o = (await q(`select status, produzido::float from public.ordens where id = $1`, [op.id]))[0]
 conf(o.status === 'pronta' && o.produzido === 80, 'pronta completa a quantidade', o)
@@ -257,6 +257,24 @@ await rpc(esc, 'ordem_status', { id: op.id, status: 'entregue' })
 conf((await erro(esc, 'salvar_ordem', { id: op.id, produto: 'x', qtd: 1 }))?.includes('não pode ser alterada'), 'ordem entregue não muda')
 await rpc(esc, 'salvar_cliente', { id: cli, nome: 'Upgrade' })
 conf((await q(`select cliente_nome from public.ordens where id = $1`, [op.id]))[0].cliente_nome === 'Upgrade', 'renomear cliente atualiza as ordens')
+// PCP: cria e encerra ordens; consulta estoque e clientes; não mexe no almoxarifado, compras, financeiro nem RH
+{
+  const pcp = await rpc(dono, 'criar_acesso', 'paula.pcp', 'senha-forte-6', 'Paula PCP', 'pcp', null)
+  conf(!!pcp, 'acesso do PCP criado')
+  const op2 = await rpc(pcp, 'salvar_ordem', { cliente_id: cli, produto: 'Barra curva', qtd: 10, prazo: '2026-11-10', maquina_id: maq })
+  conf(op2.numero === 2, 'PCP cria ordem', op2)
+  await rpc(pcp, 'ordem_status', { id: op2.id, status: 'producao' })
+  await rpc(pcp, 'ordem_status', { id: op2.id, status: 'cancelada' })
+  conf((await q(`select status from public.ordens where id = $1`, [op2.id]))[0].status === 'cancelada', 'PCP cancela ordem')
+  await rpc(pcp, 'ordem_status', { id: op2.id, status: 'pronta' })
+  conf((await q(`select status from public.ordens where id = $1`, [op2.id]))[0].status === 'pronta', 'PCP reabre ordem')
+  conf((await ver(pcp, 'select * from public.pecas')).length > 0 && (await ver(pcp, 'select * from public.clientes')).length > 0, 'PCP consulta estoque e clientes')
+  conf((await ver(pcp, 'select * from public.movimentos')).length === 0 && (await ver(pcp, 'select * from public.pedidos_compra')).length === 0
+    && (await ver(pcp, 'select * from public.lancamentos')).length === 0 && (await ver(pcp, 'select * from public.funcionarios_privado')).length === 0, 'PCP não vê movimentações, compras, financeiro nem dados pessoais')
+  conf((await erro(pcp, 'salvar_cliente', { nome: 'X' }))?.includes('perfil não pode'), 'PCP não cadastra cliente')
+  conf((await erro(pcp, 'salvar_maquina', { nome: 'X' }))?.includes('perfil não pode'), 'PCP não cadastra máquina')
+  conf((await erro(alm, 'salvar_ordem', { produto: 'x', qtd: 1 }))?.includes('perfil não pode'), 'almoxarifado não cria ordem (é do PCP)')
+}
 
 // manutenção (produção abre chamado)
 const man = await rpc(prod, 'salvar_manutencao', { maquina_id: maq, problema: 'Barulho no cabeçote' })

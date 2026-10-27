@@ -1,6 +1,6 @@
 /* Linhas das tabelas do banco (iguais ao supabase/schema.sql). Datas: 'AAAA-MM-DD'; horários: ISO. */
 
-export type Perfil = 'dono' | 'escritorio' | 'almoxarife' | 'producao' | 'rh' | 'gerente'
+export type Perfil = 'dono' | 'escritorio' | 'almoxarife' | 'pcp' | 'producao' | 'rh' | 'gerente'
 
 export interface PerfilAcesso {
   user_id: string; nome: string; login: string; perfil: Perfil; funcionario_id: string | null

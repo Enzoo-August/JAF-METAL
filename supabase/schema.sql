@@ -66,10 +66,11 @@ end $$;
 -- Perfis de acesso
 --   dono       : tudo, inclusive acessos e importação
 --   escritorio : tudo menos acessos/importação
---   almoxarife : almoxarifado, compras, fornecedores, máquinas, produção
---   producao   : retirar peça, ver estoque, ordens de produção, manutenção
+--   almoxarife : almoxarifado (peças, movimentações, máquinas e manutenção), compras, fornecedores
+--   pcp        : planejamento e controle da produção — ordens de produção; consulta estoque e clientes
+--   producao   : retirar peça, ver estoque, atualizar ordens de produção, manutenção
 --   rh         : só o RH (pessoas, ponto, férias, treinamentos, EPI/ASO, disciplina)
---   gerente    : gerente de fábrica — consulta o RH (sem dados pessoais) e a fábrica
+--   gerente    : gerente de fábrica — consulta o RH (sem dados pessoais), o almoxarifado e o PCP
 -- ---------------------------------------------------------------------
 create table if not exists public.perfis (
   user_id        uuid primary key references auth.users(id) on delete cascade,
@@ -83,7 +84,7 @@ create table if not exists public.perfis (
 -- senha provisória (criada pelo Dono): o sistema obriga a trocar no primeiro acesso
 alter table public.perfis add column if not exists trocar_senha boolean not null default false;
 alter table public.perfis drop constraint if exists perfis_perfil_check;
-alter table public.perfis add constraint perfis_perfil_check check (perfil in ('dono','escritorio','almoxarife','producao','rh','gerente'));
+alter table public.perfis add constraint perfis_perfil_check check (perfil in ('dono','escritorio','almoxarife','pcp','producao','rh','gerente'));
 
 create or replace function public.meu_perfil() returns text
 language sql stable security definer set search_path = public as
@@ -457,11 +458,11 @@ create policy ler on public.funcionarios for select to authenticated using (publ
 drop policy if exists ler on public.funcionarios_privado;
 create policy ler on public.funcionarios_privado for select to authenticated using (public.eh('dono','escritorio','rh'));
 drop policy if exists ler on public.maquinas;
-create policy ler on public.maquinas for select to authenticated using (public.eh('dono','escritorio','almoxarife','producao','gerente'));
+create policy ler on public.maquinas for select to authenticated using (public.eh('dono','escritorio','almoxarife','pcp','producao','gerente'));
 drop policy if exists ler on public.pecas;
-create policy ler on public.pecas for select to authenticated using (public.eh('dono','escritorio','almoxarife','producao','gerente'));
+create policy ler on public.pecas for select to authenticated using (public.eh('dono','escritorio','almoxarife','pcp','producao','gerente'));
 drop policy if exists ler on public.clientes;
-create policy ler on public.clientes for select to authenticated using (public.eh('dono','escritorio'));
+create policy ler on public.clientes for select to authenticated using (public.eh('dono','escritorio','pcp'));
 drop policy if exists ler on public.pedidos_compra;
 create policy ler on public.pedidos_compra for select to authenticated using (public.eh('dono','escritorio','almoxarife'));
 drop policy if exists ler on public.pedido_itens;
@@ -472,7 +473,7 @@ drop policy if exists ler on public.movimentos;
 create policy ler on public.movimentos for select to authenticated
   using (public.eh('dono','escritorio','almoxarife') or (public.eh('producao','gerente') and criado_por = auth.uid()));
 drop policy if exists ler on public.ordens;
-create policy ler on public.ordens for select to authenticated using (public.eh('dono','escritorio','almoxarife','producao','gerente'));
+create policy ler on public.ordens for select to authenticated using (public.eh('dono','escritorio','almoxarife','pcp','producao','gerente'));
 drop policy if exists ler on public.lancamentos;
 create policy ler on public.lancamentos for select to authenticated using (public.eh('dono','escritorio'));
 drop policy if exists ler on public.historico;
@@ -918,7 +919,7 @@ language plpgsql security definer set search_path = public as $$
 declare v_id uuid := coalesce(public.uid_de(p, 'id'), gen_random_uuid()); v_cli uuid := public.uid_de(p, 'cliente_id');
         v_old public.ordens; v_qtd numeric := public.num(p, 'qtd');
 begin
-  perform public.exigir('dono','escritorio','almoxarife');
+  perform public.exigir('dono','escritorio','pcp');
   if public.nz(p->>'produto') is null then raise exception 'Informe o produto'; end if;
   if v_qtd is null or v_qtd <= 0 then raise exception 'Informe a quantidade'; end if;
   select * into v_old from public.ordens where id = v_id;
@@ -941,13 +942,13 @@ create or replace function public.ordem_status(p jsonb) returns void
 language plpgsql security definer set search_path = public as $$
 declare o public.ordens; v_st text := public.nz(p->>'status'); v_prod numeric := public.num(p, 'produzido');
 begin
-  perform public.exigir('dono','escritorio','almoxarife','producao','gerente');
+  perform public.exigir('dono','escritorio','pcp','producao','gerente');
   select * into o from public.ordens where id = public.uid_de(p, 'id') for update;
   if o.id is null then raise exception 'Ordem não encontrada'; end if;
   if v_st is null then v_st := o.status; end if;
   if v_st not in ('fila','producao','pronta','entregue','cancelada') then raise exception 'Situação inválida'; end if;
-  if v_st in ('entregue','cancelada') and public.eh('producao','gerente') then raise exception 'Entrega e cancelamento são feitos pelo escritório'; end if;
-  if o.status in ('entregue','cancelada') and not public.eh('dono','escritorio') then raise exception 'Ordem já encerrada'; end if;
+  if v_st in ('entregue','cancelada') and public.eh('producao','gerente') then raise exception 'Entrega e cancelamento são feitos pelo PCP ou pelo escritório'; end if;
+  if o.status in ('entregue','cancelada') and not public.eh('dono','escritorio','pcp') then raise exception 'Ordem já encerrada'; end if;
   if v_prod is not null and v_prod < 0 then raise exception 'Quantidade produzida não pode ser negativa'; end if;
   update public.ordens set status = v_st,
          produzido = coalesce(v_prod, case when v_st = 'pronta' and produzido < qtd then qtd else produzido end),
@@ -1047,7 +1048,7 @@ begin
   if v_login !~ '^[a-z0-9._-]{3,30}$' then raise exception 'O usuário deve ter de 3 a 30 letras ou números, sem espaço nem acento'; end if;
   if length(coalesce(p_senha, '')) < 8 then raise exception 'A senha precisa ter 8 caracteres ou mais'; end if;
   if public.nz(p_nome) is null or length(public.nz(p_nome)) < 2 then raise exception 'Informe o nome'; end if;
-  if p_perfil not in ('dono','escritorio','almoxarife','producao','rh','gerente') then raise exception 'Perfil inválido'; end if;
+  if p_perfil not in ('dono','escritorio','almoxarife','pcp','producao','rh','gerente') then raise exception 'Perfil inválido'; end if;
   v_email := v_login || '@jafmetal.local';
   if exists (select 1 from public.perfis where login = v_login) then raise exception 'Esse usuário já existe. Escolha outro.'; end if;
   delete from auth.users u where lower(u.email) = v_email and not exists (select 1 from public.perfis p where p.user_id = u.id);
@@ -1107,7 +1108,7 @@ begin
   perform public.exigir('dono');
   select * into v from public.perfis where user_id = p_user;
   if v.user_id is null then raise exception 'Acesso não encontrado'; end if;
-  if p_perfil not in ('dono','escritorio','almoxarife','producao','rh','gerente') then raise exception 'Perfil inválido'; end if;
+  if p_perfil not in ('dono','escritorio','almoxarife','pcp','producao','rh','gerente') then raise exception 'Perfil inválido'; end if;
   if v.perfil = 'dono' and v.ativo and (p_perfil <> 'dono' or not p_ativo)
      and (select count(*) from public.perfis where perfil = 'dono' and ativo) < 2 then
     raise exception 'Precisa existir pelo menos um Dono ativo';

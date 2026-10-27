@@ -28,11 +28,11 @@ Um sistema web, instalável como aplicativo, que **substitui a planilha do almox
 
 | Área | No dia a dia |
 |---|---|
-| 🧰 **Estoque** | Retirar peça em 3 toques (quem retirou, para qual máquina) · dar entrada · contar estoque (inventário) · situação de cada peça: *Comprar*, *No mínimo*, *Estoque alto* · ficha com consumo dos últimos 12 meses, quanto tempo o estoque dura e a evolução do preço |
+| 🧰 **Almoxarifado** (peças, movimentações, máquinas e manutenção) | Retirar peça em 3 toques (quem retirou, para qual máquina) · dar entrada · contar estoque (inventário) · situação de cada peça: *Comprar*, *No mínimo*, *Estoque alto* · ficha com consumo dos últimos 12 meses, quanto tempo o estoque dura e a evolução do preço |
 | 🛒 **Compras** | Lista de compras automática (abaixo do mínimo, sugerindo até o máximo e descontando o que já está a caminho) · pedido de compra com PDF, WhatsApp e e-mail para o fornecedor · recebimento total ou parcial · pedidos atrasados em destaque |
 | 🚚 **Fornecedores** | Cadastro completo (CNPJ e CEP preenchem sozinhos) · qualificação com validade · total comprado por ano · **pontualidade de entrega** de cada um |
 | ⚙️ **Máquinas** | Situação de cada máquina · chamado de "máquina com problema" · preventiva com prazo e aviso · custo de peças e serviços por máquina · horas paradas |
-| 🏭 **Produção** | Ordens de produção em quadro (*Na fila → Produzindo → Pronta → Entregue*) · apontamento de quantidade · prioridade e prazo · entrega já lança a conta a receber |
+| 🏭 **PCP** (planejamento e controle da produção) | Ordens de produção em quadro (*Na fila → Produzindo → Pronta → Entregue*) · apontamento de quantidade · prioridade e prazo · entrega já lança a conta a receber |
 | 💰 **Financeiro** | Contas a pagar e a receber com parcelas · baixa com juros/desconto · **fluxo de caixa** com saldo projetado para 7, 30 e 90 dias · receitas e despesas por categoria |
 | 👥 **RH** | Substitui as planilhas do RH: ficha completa de cada pessoa (documentos com máscara LGPD, PDF) · linha do tempo de cargo e salário · **ponto e horas extras** (50/60/80/100%, tolerância da CLT, fechamento do mês e Excel para a contabilidade) · **férias** com data limite, regras da CLT e aviso em PDF · atestados e afastamentos · **matrizes** de treinamento, procedimentos (SGQ) e versatilidade · ASO e EPI com ficha NR-6 · advertências e suspensões com documento pronto (art. 482) · organograma · processos trabalhistas · relatórios (turnover, absenteísmo, custo por setor) |
 | 📊 **Relatórios** | Os mesmos da planilha (estoque, consumo anual, análise de custos) e novos: *dinheiro parado*, custo por máquina, pontualidade de fornecedor — tudo exporta para Excel e PDF |
@@ -43,11 +43,12 @@ Um sistema web, instalável como aplicativo, que **substitui a planilha do almox
 | Perfil | Acesso |
 |---|---|
 | **Dono** | Tudo, inclusive acessos, importação e histórico de alterações |
-| **Escritório** | Tudo do dia a dia (financeiro, salários, compras, estoque, produção); não cria acessos |
-| **Almoxarifado** | Estoque, compras, fornecedores, máquinas e ordens; **sem** financeiro e salários |
-| **Produção** | Retirar peça, ver estoque **sem preços**, ordens de produção e chamados de máquina |
+| **Escritório** | Tudo do dia a dia (financeiro, salários, compras, almoxarifado, PCP); não cria acessos |
+| **Almoxarifado** | Peças, retiradas, entradas, máquinas, manutenção, compras e fornecedores; **sem** PCP, financeiro e salários |
+| **PCP** | Cria e acompanha as ordens de produção; consulta estoque e clientes; **sem** compras, financeiro e RH |
+| **Produção** | Retirar peça, ver estoque **sem preços**, atualizar ordens de produção e chamados de máquina |
 | **RH** | Só o RH (pessoas, documentos, salários, ponto, férias, treinamentos, exames, advertências) |
-| **Gerente de fábrica** | Fábrica e consulta do RH da equipe, **sem** salários, documentos pessoais nem CID |
+| **Gerente de fábrica** | Almoxarifado, acompanha o PCP e consulta do RH da equipe, **sem** salários, documentos pessoais nem CID |
 
 Essas regras estão **dentro do banco de dados** (Row Level Security + funções que conferem o perfil): não dependem do aparelho nem do navegador.
 

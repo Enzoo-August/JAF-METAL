@@ -545,10 +545,34 @@ window.roteiro = async function roteiro(filtro) {
     await como('almox');
     await ir('#/financeiro'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'almoxarife sem financeiro');
     await ir('#/equipe'); conf(!document.getElementById('view').textContent.includes('Folha'), 'almoxarife não vê folha/salários');
+    const menuA = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
+    conf(menuA.includes('Almoxarifado') && !menuA.includes('PCP') && !menuA.includes('Fábrica'), 'almoxarife: área Almoxarifado, sem PCP', menuA);
+    await ir('#/maquinas'); conf(!document.getElementById('view').textContent.includes('Sem acesso') && document.querySelector('.subabas')?.textContent.includes('Máquinas'), 'máquinas dentro do Almoxarifado');
     const ped = S.lista('pedidos_compra').find(p => p.status === 'aguardando');
     await ir('#/pedido/' + ped.id); await clicar('Receber', document.getElementById('view'));
     const j = await espera(janela);
     conf(!j.querySelector('[name=lancar]') && j.textContent.includes('escritório'), 'ao receber, almoxarife não lança conta (avisa que é o escritório)');
+  });
+
+  // ================================================================ PCP (ordens de produção)
+  await passo('perfil PCP', async () => {
+    await como('pcp');
+    const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
+    conf(menu.join('|') === 'Início|Almoxarifado|PCP|Ajuda', 'menu do PCP: Início, Almoxarifado (consulta), PCP e Ajuda', menu);
+    conf(!document.querySelector('.lateral [data-acao=retirar]') && !!document.querySelector('.lateral [data-acao=novaOrdem]'), 'PCP tem "Nova ordem" e não "Retirar peça"');
+    conf(S.lista('movimentos').length === 0 && S.lista('lancamentos').length === 0 && S.lista('clientes').length > 0, 'banco manda ordens e clientes, sem movimentações nem financeiro');
+    for (const r of ['#/maquinas', '#/movimentos', '#/compras', '#/financeiro', '#/rh']) { await ir(r); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'PCP sem ' + r); }
+    await ir('#/pecas'); conf(!document.getElementById('view').textContent.includes('Sem acesso') && !botao('Nova peça', document.getElementById('view')), 'PCP consulta as peças sem editar');
+    await ir('#/producao'); await clicar('Nova ordem', document.getElementById('view'));
+    const j = await espera(janela);
+    conf(!!j.querySelector('#oCli'), 'PCP escolhe o cliente da lista');
+    digitar(j.querySelector('[name=produto]'), 'Peça do PCP'); digitar(j.querySelector('[name=qtd]'), '5');
+    await okJanela('Criar ordem');
+    const o = S.lista('ordens').find(x => x.produto === 'Peça do PCP');
+    conf(o && o.status === 'fila', 'PCP cria ordem', erroJanela(j));
+    Telas.producao.abrir(o.id); const k = await espera(janela);
+    conf(!!botao('Começar a produzir', k), 'PCP mexe na ordem');
+    UI.fecharTodas();
   });
 
   // ================================================================ ESCRITÓRIO

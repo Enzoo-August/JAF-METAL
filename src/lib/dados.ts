@@ -40,6 +40,7 @@ export const S = {
   tabelasDoPerfil(): NomeTabela[] {
     const p = API.sessao?.perfil
     if (p === 'rh') return ['config', 'funcionarios', ...RH_SENSIVEL, ...RH_BASE]
+    if (p === 'pcp') return ['config', 'pecas', 'maquinas', 'funcionarios', 'ordens', 'clientes', 'rh_feriados']
     const t: NomeTabela[] = ['config', 'pecas', 'maquinas', 'manutencoes', 'funcionarios', 'ordens', 'movimentos', 'rh_feriados']
     if (p === 'dono' || p === 'escritorio' || p === 'almoxarife') t.push('fornecedores', 'pedidos_compra', 'pedido_itens')
     if (p === 'dono' || p === 'escritorio') t.push('clientes', 'lancamentos', ...RH_SENSIVEL, ...RH_BASE.filter(x => x !== 'rh_feriados'))
@@ -394,10 +395,12 @@ export const C = {
       const semConta = S.lista('pedidos_compra').filter(p => p.recebido_em && p.recebido_em >= U.somaDias(hoje(), -60) && C.semConta(p))
       if (semConta.length) add('baixo', `${U.plural(semConta.length, 'pedido')} recebido${semConta.length > 1 ? 's' : ''} sem conta a pagar lançada`, '#/compras?f=semconta', semConta.length)
     }
-    if (Perm.pode('fabrica')) {
+    if (Perm.pode('pcp')) {
     const ords = S.lista('ordens').filter(o => o.status === 'fila' || o.status === 'producao')
     const oatr = ords.filter(o => o.prazo && o.prazo < hoje())
     if (oatr.length) add('alto', `${U.plural(oatr.length, 'ordem', 'ordens')} de produção ${oatr.length === 1 ? 'atrasada' : 'atrasadas'}`, '#/producao', oatr.length)
+    }
+    if (Perm.pode('almox')) {
     const mab = S.lista('manutencoes').filter(m => m.status !== 'concluida' && m.tipo === 'corretiva')
     if (mab.length) add('alto', `${U.plural(mab.length, 'máquina')} com problema aberto`, '#/maquinas?f=problema', mab.length)
     const prev = S.lista('maquinas').filter(m => m.ativo && C.situacaoMaquina(m).cod === 'prevvencida')

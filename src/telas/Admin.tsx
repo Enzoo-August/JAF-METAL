@@ -18,11 +18,12 @@ import { MOTIVO } from './Movimentos.tsx'
 
 const DESC_PERFIL: Record<string, string> = {
   dono: 'Tudo, inclusive acessos, importação e histórico de alterações.',
-  escritorio: 'Tudo do dia a dia: financeiro, salários, compras, estoque e produção. Não cria acessos.',
-  almoxarife: 'Estoque, compras, fornecedores, máquinas e ordens. Não vê financeiro nem salários.',
-  producao: 'Retirar peça, ver estoque (sem preços), ordens de produção e chamados de máquina.',
+  escritorio: 'Tudo do dia a dia: financeiro, salários, compras, almoxarifado e PCP. Não cria acessos.',
+  almoxarife: 'Almoxarifado (peças, retiradas, entradas, máquinas e manutenção), compras e fornecedores. Não vê PCP, financeiro nem salários.',
+  pcp: 'PCP: cria e acompanha as ordens de produção (fila, produzindo, pronta, entregue). Consulta o estoque e os clientes. Não vê compras, financeiro nem RH.',
+  producao: 'Retirar peça, ver estoque (sem preços), atualizar as ordens de produção e abrir chamados de máquina.',
   rh: 'Só o RH: pessoas, documentos, salários, ponto, férias, treinamentos, exames e advertências. Não vê estoque nem financeiro.',
-  gerente: 'Fábrica (estoque, retirar, ordens, máquinas) e consulta do RH da equipe — sem salários, documentos pessoais nem CID.',
+  gerente: 'Almoxarifado (estoque, retirar, máquinas), acompanha as ordens do PCP e consulta o RH da equipe — sem salários, documentos pessoais nem CID.',
 }
 
 export function TelaAdmin({ r }: { r: Rota }) {

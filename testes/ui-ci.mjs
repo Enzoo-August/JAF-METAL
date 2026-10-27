@@ -54,7 +54,7 @@ for (const [w, h, toque] of [[1366, 768, false], [375, 812, true]]) {
   await ctx.close()
 }
 
-// 2) varredura de layout, 4 perfis, celular / tablet / computador
+// 2) varredura de layout, 7 perfis, celular / tablet / computador
 for (const [w, h, toque, sat] of [[375, 812, true, 47], [360, 640, true, 24], [768, 1024, true, 0], [1366, 768, false, 0]]) {
   const { ctx, p } = await abrir(w, h, toque)
   await p.evaluate((codigo) => { (0, eval)(codigo) }, auditoria)

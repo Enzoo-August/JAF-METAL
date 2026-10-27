@@ -174,7 +174,7 @@ function Resumo({ f }: { f: Funcionario }) {
       {f.ativo ? <Btn txt="Desligar" icone="sair" cls="perigo-txt" data-rh="desligar" onClick={() => void desligar(f)} />
         : <Btn txt="Readmitir" icone="desfazer" data-rh="readmitir" onClick={() => void readmitir(f)} />}
     </div>}
-    {Perm.pode('fabrica') && <DaFabrica f={f} />}
+    {(Perm.pode('almox') || Perm.pode('pcp')) && <DaFabrica f={f} />}
   </>
 }
 
