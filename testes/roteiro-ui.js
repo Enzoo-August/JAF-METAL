@@ -441,9 +441,12 @@ window.roteiro = async function roteiro(filtro) {
     await okJanela('Salvar');
     conf(S.lista('rh_asos').length === na + 1, 'ASO gravado', erroJanela(j));
     Telas.rh.formEpi(f); j = await espera(janela);
-    const ins = j.querySelectorAll('.item-matriz input'); digitar(ins[0], 'Luva de vaqueta'); digitar(ins[1], '12345'); digitar(ins[3], '3');
+    // um digitado ("Outro") e um escolhido do cadastro de EPI
+    digitar(j.querySelector('[data-item-epi="0"] [data-campo=cat]'), 'outro'); await dorme(60);
+    digitar(j.querySelector('[data-item-epi="0"] [aria-label="Nome do EPI"]'), 'Luva nitrílica'); digitar(j.querySelector('[data-item-epi="0"] [aria-label=CA]'), '12345');
+    digitar(j.querySelector('[data-item-epi="0"] [aria-label="Trocar a cada (meses)"]'), '3');
     await clicar(j.querySelector('[data-seg=addEpi]'));
-    const ins2 = j.querySelectorAll('.item-matriz')[1].querySelectorAll('input'); digitar(ins2[0], 'Óculos de proteção');
+    const sel2 = j.querySelector('[data-item-epi="1"] [data-campo=cat]'); digitar(sel2, sel2.options[1].value);
     await okJanela('Registrar entrega');
     conf(S.lista('rh_epis').length === ne + 2, 'dois EPI de uma vez', erroJanela(j));
     Telas.rh.formOcorrencia(f); j = await espera(janela);
@@ -598,6 +601,86 @@ window.roteiro = async function roteiro(filtro) {
     conf(!!document.querySelector('[data-atalho=novaPessoa]') || (await ir('#/inicio'), !!document.querySelector('[data-atalho=novaPessoa]')), 'início do RH com "Nova pessoa"');
     Telas.rh.formAso(f); const j = await espera(janela); await okJanela('Salvar');
     conf(!erroJanela(j), 'RH grava exame', erroJanela(j));
+  });
+
+  // ================================================================ pedidos do RH (v2.2)
+  await passo('banco de horas no ponto', async () => {
+    await como('helena');
+    const f = S.lista('funcionarios').find(x => x.nome === 'Lia Ramos');
+    const m = U.hoje().slice(0, 7);
+    await ir(`#/rh/ponto?f=${f.id}&m=${m}`); await dorme(150);
+    const op = document.querySelector('[data-dia] [data-campo=justificativa]');
+    conf(!!op && [...op.options].some(o => o.value === 'bh_pos') && [...op.options].some(o => o.value === 'bh_neg'), 'ocorrências BH+ e BH− na lista');
+    // primeiro dia útil do mês ainda aberto: 2 h a mais vão para o banco
+    const linha = [...document.querySelectorAll('[data-dia]')].find(l => !l.querySelector('[data-campo=e1]')?.disabled && ![0, 6].includes(new Date(l.dataset.dia + 'T12:00').getDay()) && !l.classList.contains('feriado'));
+    if (linha) {
+      for (const [k, v] of [['e1', '07:00'], ['s1', '12:00'], ['e2', '13:00'], ['s2', new Date(linha.dataset.dia + 'T12:00').getDay() === 5 ? '18:00' : '19:00']]) digitar(linha.querySelector(`[data-campo=${k}]`), v);
+      digitar(linha.querySelector('[data-campo=justificativa]'), 'bh_pos'); await dorme(80);
+      conf(linha.querySelector('.pd-bh')?.textContent.trim() === '+2h', 'saldo BH do dia: +2h', linha.querySelector('.pd-bh')?.textContent);
+      await clicar(document.querySelector('[data-ponto=salvar]')); await espera(() => /Ponto salvo/.test(aviso()?.textContent || ''), 5000);
+      await dorme(150);
+      const r = document.getElementById('resumoPonto');
+      conf(!!r && /Banco de horas/.test(r.textContent) && /Saldo credor/.test(r.textContent), 'resumo do período mostra o banco de horas (saldo credor)', r?.textContent.slice(0, 200));
+    } else conf(false, 'achou um dia útil para lançar');
+    conf(!!document.querySelector('[data-ponto=pdf]') && !!document.querySelector('[data-ponto=excel]'), 'botões Imprimir / PDF e Excel no cartão');
+  });
+
+  await passo('salário do cargo para todos', async () => {
+    await como('helena');
+    await ir('#/rh/ajustes?aba=cargos'); await dorme(100);
+    const c = S.lista('rh_cargos').find(x => x.nome === 'Torneiro CNC');
+    const pessoas = S.lista('funcionarios').filter(f => f.ativo && f.cargo_id === c.id);
+    document.querySelector(`[data-cargo="${c.id}"]`).click(); const j = await espera(janela);
+    conf(!!j.querySelector('[name=tipo]') && !!j.querySelector('[name=salario_cargo]'), 'cargo com tipo e salário');
+    digitar(j.querySelector('[name=salario_cargo]'), '4.350,00'); await dorme(60);
+    const ap = j.querySelector('[name=aplicar]');
+    conf(!!ap === pessoas.length > 0, 'opção de atualizar todas as pessoas do cargo');
+    if (ap) { ap.click(); await dorme(60); conf(!!j.querySelector('[name=vigencia]'), 'vigência só aparece ao marcar') }
+    await okJanela('Salvar');
+    conf(!erroJanela(j), 'salva o salário do cargo', erroJanela(j));
+    conf(Number(S.get('rh_cargos_salarios', c.id)?.salario) === 4350, 'salário do cargo gravado');
+    conf(pessoas.every(f => Number(S.get('funcionarios_privado', f.id)?.salario) === 4350), 'todas as pessoas do cargo com o novo salário', pessoas.map(f => S.get('funcionarios_privado', f.id)?.salario));
+  });
+
+  await passo('EPI com CA e entrega pelo cadastro', async () => {
+    await como('helena');
+    await ir('#/rh/seguranca?f=ca'); await dorme(120);
+    conf(document.querySelectorAll('[data-ca]').length >= 3, 'lista de EPIs com CA');
+    await clicar(document.querySelector('[data-seg=novoCa]')); let j = await espera(janela);
+    digitar(j.querySelector('[name=descricao]'), 'Avental de raspa'); digitar(j.querySelector('[name=ca]'), '99901'); digitar(j.querySelector('[name=validade_ca]'), '2027-09-06');
+    digitar(j.querySelector('[name=fabricante]'), 'Fabricante Teste'); digitar(j.querySelector('[name=tamanhos]'), 'Único');
+    await okJanela('Salvar'); conf(!erroJanela(j), 'cadastra EPI com CA', erroJanela(j));
+    const cat = S.lista('rh_epi_catalogo').find(x => x.ca === '99901');
+    conf(!!cat && cat.fabricante === 'Fabricante Teste' && cat.validade_ca === '2027-09-06', 'EPI gravado com CA, validade e fabricante');
+    const f = S.lista('funcionarios').find(x => x.nome === 'Beto Silva');
+    Telas.rh.formEpi(f); j = await espera(janela);
+    digitar(j.querySelector('[data-campo=cat]'), cat.id); await dorme(60);
+    digitar(j.querySelector('[aria-label=Tamanho]'), 'Único');
+    await okJanela('Registrar entrega'); conf(!erroJanela(j), 'entrega pelo cadastro', erroJanela(j));
+    const e = S.lista('rh_epis').filter(x => x.funcionario_id === f.id && x.catalogo_id === cat.id)[0];
+    conf(!!e && e.ca === '99901' && e.tamanho === 'Único' && e.fabricante === 'Fabricante Teste', 'entrega com CA, fabricante e tamanho', e);
+    conf(/Assinar o termo/.test(aviso()?.textContent || ''), 'aviso oferece assinar o termo');
+    UI.fecharTodas();
+    Telas.rh.termoEpi(f, [e.id]); j = await espera(janela);
+    conf(!!j.querySelector('[name=modo][value=facial]') && !!j.querySelector('[name=modo][value=tela]') && !!j.querySelector('[name=modo][value=papel]'), 'termo: assinatura facial, na tela ou no papel');
+    conf(j.querySelector(`[name="e_${e.id}"]`)?.checked, 'termo já marca a entrega nova');
+    j.querySelector('[name=modo][value=tela]').click(); await dorme(120);
+    conf(!!j.querySelector('canvas.assin-tela'), 'quadro para assinar na tela');
+    UI.fecharTodas();
+  });
+
+  await passo('indicadores de RH', async () => {
+    await como('helena');
+    await ir('#/rh/indicadores'); await dorme(250);
+    const v = document.getElementById('view');
+    conf(/Indicadores de RH/.test(v.textContent) && !!document.getElementById('tRot') && !!document.getElementById('tCustos'), 'tela de indicadores com rotatividade e custos');
+    conf(/Turnover do ano/.test(v.textContent) && /Faixa etária/.test(v.textContent) && /Tipo de cargo/.test(v.textContent), 'indicadores de equipe');
+    conf(document.querySelectorAll('#alertasInd .nota').length > 0 || /Sem comparação/.test(v.textContent), 'alertas e dicas do mês');
+    await clicar(document.querySelector('[data-ind=lancar]')); const j = await espera(janela);
+    digitar(j.querySelector('[name=receita_1]'), '123.456,78');
+    await okJanela('Salvar'); conf(!erroJanela(j), 'lança a receita do mês', erroJanela(j));
+    conf(S.lista('rh_indicadores').some(x => x.competencia.endsWith('-01-01') && Number(x.receita) === 123456.78), 'receita gravada');
+    await como('gerente'); await ir('#/rh/indicadores'); conf(/Sem acesso/.test(document.getElementById('view').textContent), 'gerente não abre os indicadores (têm receita e salários)');
   });
 
   await passo('perfil gerente de fábrica', async () => {

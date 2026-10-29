@@ -29,11 +29,17 @@ export const opcoesSetores = (vazio = '—') => {
 export const opcoesCargos = (vazio = '—') =>
   [{ v: '', t: vazio }, ...U.ordenar(S.lista('rh_cargos').filter(c => c.ativo), c => U.sem(c.nome)).map(c => ({ v: c.id, t: c.nome + (c.cbo ? ` (CBO ${c.cbo})` : '') }))]
 
-// salário usado nas horas extras: o da planilha de horas extras, se houver; senão o salário do cadastro
-export const salarioHE = (f: Funcionario): number => {
-  const p = S.get('funcionarios_privado', f.id)
-  return Number(p?.salario_he) || Number(p?.salario) || 0
+// salário usado nas horas extras: o que vale no mês pela linha do tempo de cargo e salário (reajuste do cargo,
+// promoção, dissídio…); sem linha do tempo, o salário do cadastro. m = 'AAAA-MM' (vazio = hoje)
+export const salarioHE = (f: Funcionario, m?: string): number => {
+  const ate = m ? U.somaDias(U.somaMeses(m + '-01', 1), -1) : U.hoje()
+  const h = S.lista('rh_historico').filter(x => x.funcionario_id === f.id && x.salario && x.vigencia <= ate)
+    .sort((a, b) => a.vigencia < b.vigencia ? 1 : a.vigencia > b.vigencia ? -1 : (a.criado_em < b.criado_em ? 1 : -1))[0]
+  return Number(h?.salario) || Number(S.get('funcionarios_privado', f.id)?.salario) || 0
 }
+
+// salário de referência do cargo (só RH, Escritório e Dono recebem)
+export const salarioCargo = (cargoId: string | null | undefined): number => Number(S.get('rh_cargos_salarios', cargoId)?.salario) || 0
 
 // ausência que pega o dia (férias, atestado…)
 export const ausenciaNoDia = (fid: string, dia: string) =>
@@ -64,8 +70,8 @@ export function TagVence({ venc, ok = 'Em dia', amarelo = 60, pisca = false }: {
 }
 
 // ------------------------------------------------------------------ anexos (PDF / foto) — certificados, exames, documentos assinados
-const TIPOS_OK = ['application/pdf', 'image/jpeg', 'image/png']
-const lerBase64 = (f: File) => new Promise<string>((ok, falha) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => falha(r.error); r.readAsDataURL(f) })
+export const TIPOS_OK = ['application/pdf', 'image/jpeg', 'image/png']
+export const lerBase64 = (f: File) => new Promise<string>((ok, falha) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = () => falha(r.error); r.readAsDataURL(f) })
 export async function abrirAnexo(a: Pick<RhAnexo, 'id'>): Promise<void> {
   const r = await API.rpc<{ nome: string; tipo: string; conteudo: string }>('rh_baixar_anexo', { p_id: a.id })
   const bin = Uint8Array.from(atob(r.conteudo), c => c.charCodeAt(0))

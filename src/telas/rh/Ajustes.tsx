@@ -7,11 +7,16 @@ import * as R from '../../lib/rh.ts'
 import type { RhCargo, RhSetor } from '../../lib/tipos.ts'
 import * as U from '../../lib/util.ts'
 import { aviso, erro } from '../../ui/avisos.ts'
-import { Btn, Cab, Campo, Vazio } from '../../ui/base.tsx'
+import { BuscaLista, Btn, Cab, Campo, Vazio } from '../../ui/base.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { Ic } from '../../ui/icones.tsx'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
-import { jornada, nomeF, opcoesPessoas, opcoesSetores } from './comum.tsx'
+import { jornada, nomeF, opcoesPessoas, opcoesSetores, salarioCargo, sensivel } from './comum.tsx'
+
+// tipos de cargo (os da planilha "Cargo e salário" + os já usados)
+const TIPOS_CARGO = ['Administrativo', 'Gestor Direto', 'Logística', 'Montagem', 'Pintura', 'Produção', 'Qualidade', 'Solda', 'Usinagem', 'Comercial', 'Diretoria']
+const pessoasDoCargo = (id: string) => S.lista('funcionarios').filter(f => f.ativo && f.situacao !== 'desligado' && f.cargo_id === id)
+const salarioDe = (fid: string) => Number(S.get('funcionarios_privado', fid)?.salario) || 0
 
 export function TelaAjustesRH({ r }: { r: Rota }) {
   const [aba, setAba] = useLembrar('aj.aba', 'cargos')
@@ -26,14 +31,39 @@ export function TelaAjustesRH({ r }: { r: Rota }) {
 
 // ------------------------------------------------------------------ cargos
 function Cargos() {
-  const l = U.ordenar(S.lista('rh_cargos'), c => (c.ativo ? '0' : '1') + U.sem(c.nome))
+  const [busca, setBusca] = useState('')
+  let l = U.ordenar(S.lista('rh_cargos'), c => (c.ativo ? '0' : '1') + U.sem(c.nome))
+  if (busca.trim()) l = U.buscar(l, busca, c => [c.nome, c.tipo || '', c.setor || '', c.cbo || ''])
+  const sens = sensivel()
   return <>
-    <div className="grupo-btn"><Btn txt="Novo cargo" icone="mais" cls="pri" data-aj="cargo" onClick={() => void formCargo()} /></div>
-    <div className="lista mt">{l.length ? l.map(c => { const n = S.lista('funcionarios').filter(f => f.ativo && f.cargo_id === c.id).length
+    <div className="barra-filtros"><BuscaLista id="bCargo" valor={busca} placeholder="Buscar cargo" aoMudar={setBusca} />
+      <Btn txt="Novo cargo" icone="mais" cls="pri" data-aj="cargo" onClick={() => void formCargo()} /></div>
+    {sens && <p className="sub mt">O salário do cargo é o valor de referência. Ao mudar, dá para atualizar de uma vez o salário de todas as pessoas do cargo.</p>}
+    <div className="lista mt">{l.length ? l.map(c => { const ps = pessoasDoCargo(c.id), sal = salarioCargo(c.id)
+      const dif = sens && sal ? ps.filter(f => salarioDe(f.id) !== sal).length : 0
       return <div key={c.id} className="linha clicavel" data-cargo={c.id} onClick={() => void formCargo(c)}><div className="meio"><b>{c.nome}{!c.ativo && <> <span className="tag t-cinza">inativo</span></>}</b>
-        <small>{[c.cbo && 'CBO ' + c.cbo, c.setor, c.superior_id && 'responde a ' + (S.get('rh_cargos', c.superior_id)?.nome || '')].filter(Boolean).join(' · ') || '—'}</small></div>
-        <div className="lado"><b>{n}</b><small>{n === 1 ? 'pessoa' : 'pessoas'}</small></div></div> })
+        <small>{[c.tipo, c.cbo && 'CBO ' + c.cbo, c.setor, c.superior_id && 'responde a ' + (S.get('rh_cargos', c.superior_id)?.nome || '')].filter(Boolean).join(' · ') || '—'}</small>
+        {dif > 0 && <small className="amarelo-txt">{U.plural(dif, 'pessoa')} com salário diferente do cargo</small>}</div>
+        <div className="lado">{sens && <b>{sal ? U.moeda(sal) : '—'}</b>}<small>{U.plural(ps.length, 'pessoa')}</small></div></div> })
       : <Vazio icone="equipe" titulo="Nenhum cargo" texto="Cadastre os cargos com CBO e a quem cada um responde: isso monta o organograma." />}</div>
+  </>
+}
+// salário do cargo + "atualizar todas as pessoas" (a vigência só aparece se marcar)
+function SalarioDoCargo({ c }: { c?: RhCargo }) {
+  const ps = c ? pessoasDoCargo(c.id) : []
+  const atual = c ? salarioCargo(c.id) : 0
+  const [sal, setSal] = useState(atual ? U.campoNum(atual) : '')
+  const [aplicar, setAplicar] = useState(false)
+  const novo = U.num(sal) || 0
+  const mudam = ps.filter(f => novo > 0 && salarioDe(f.id) !== novo)
+  return <>
+    <Campo nome="salario_cargo" rotulo="Salário do cargo" tipo="dinheiro" valor={sal} attrs={{ onChange: (e: { target: HTMLInputElement }) => setSal(e.target.value) }} />
+    {c && ps.length > 0 && novo > 0 && <label className="check"><input type="checkbox" name="aplicar" checked={aplicar} onChange={(e) => setAplicar(e.target.checked)} />
+      <span>Atualizar o salário das pessoas deste cargo para {U.moeda(novo)} <small className="fraco">({mudam.length ? `${U.plural(mudam.length, 'pessoa muda', 'pessoas mudam')} de ${U.plural(ps.length, 'pessoa')}` : 'todas já ganham esse valor'})</small></span></label>}
+    {aplicar && mudam.length > 0 && <>
+      <Campo nome="vigencia" rotulo="Vale a partir de" tipo="date" valor={U.hoje()} req ajuda="Entra na linha do tempo de cada pessoa (motivo: Reajuste do cargo). As horas extras passam a usar o novo salário." />
+      <ul className="lista-simples">{mudam.slice(0, 12).map(f => <li key={f.id}>{f.nome}: {U.moeda(salarioDe(f.id))} → {U.moeda(novo)}</li>)}{mudam.length > 12 && <li>… e mais {mudam.length - 12}</li>}</ul>
+    </>}
   </>
 }
 async function formCargo(c?: RhCargo) {
@@ -41,6 +71,9 @@ async function formCargo(c?: RhCargo) {
     titulo: c ? 'Cargo' : 'Novo cargo',
     corpo: <>
       <div className="linha-campos"><Campo nome="nome" rotulo="Nome do cargo" valor={c?.nome} req /><Campo nome="cbo" rotulo="CBO" valor={c?.cbo} placeholder="Ex.: 7212-15" /></div>
+      <div className="linha-campos"><Campo nome="tipo" rotulo="Tipo do cargo" valor={c?.tipo} attrs={{ list: 'lTiposCargo' }} placeholder="Ex.: Produção" />
+        <datalist id="lTiposCargo">{U.unicos([...TIPOS_CARGO, ...S.lista('rh_cargos').map(x => x.tipo).filter((x): x is string => !!x)]).map(x => <option key={x} value={x} />)}</datalist>
+        {sensivel() ? <SalarioDoCargo c={c} /> : <span />}</div>
       <div className="linha-campos"><Campo nome="setor" rotulo="Setor" tipo="select" valor={c?.setor} opcoes={opcoesSetores()} />
         <Campo nome="superior_id" rotulo="Responde ao cargo" tipo="select" valor={c?.superior_id} opcoes={[{ v: '', t: '— (topo)' }, ...U.ordenar(S.lista('rh_cargos').filter(x => x.ativo && x.id !== c?.id), x => U.sem(x.nome)).map(x => ({ v: x.id, t: x.nome }))]} /></div>
       <Campo nome="descricao" rotulo="Descrição das atividades (opcional)" tipo="area" linhas={3} valor={c?.descricao} />
@@ -48,8 +81,14 @@ async function formCargo(c?: RhCargo) {
     </>,
     botoes: [{ txt: 'Salvar', acao: async (frm) => {
       const d = lerForm(frm)
-      await API.rpc('rh_salvar_cargo', { p: { ...d, id: c?.id, superior_id: d.superior_id || null, ativo: c ? d.ativo : true } })
-      await App.gravou(['rh_cargos', 'funcionarios']); aviso('Cargo salvo.')
+      const id = await API.rpc<string>('rh_salvar_cargo', { p: { nome: d.nome, cbo: d.cbo, tipo: d.tipo, setor: d.setor, descricao: d.descricao, id: c?.id, superior_id: d.superior_id || null, ativo: c ? d.ativo : true } })
+      let n = 0
+      if (sensivel()) {
+        const sal = U.num(d.salario_cargo) || null, antes = c ? salarioCargo(c.id) || null : null
+        if (sal !== antes || d.aplicar) n = await API.rpc<number>('rh_salario_cargo', { p: { cargo_id: id, salario: sal, aplicar: !!d.aplicar, vigencia: d.vigencia || null } })
+      }
+      await App.gravou(['rh_cargos', 'rh_cargos_salarios', 'funcionarios', ...(n ? ['funcionarios_privado', 'rh_historico'] as const : [])], { inteira: ['rh_cargos_salarios', ...(n ? ['rh_historico'] as const : [])] })
+      aviso(n ? `Cargo salvo. Salário atualizado para ${U.plural(n, 'pessoa')}.` : 'Cargo salvo.')
     } }],
   })
 }

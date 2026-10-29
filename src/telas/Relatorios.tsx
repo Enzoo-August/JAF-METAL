@@ -15,7 +15,7 @@ interface Exportavel { titulo: string; sub: string; colunas: ColunaPdf[]; linhas
 interface Relatorio { corpo: ReactNode; ex: Exportavel | null; anos?: string[]; comMes?: boolean; semAno?: boolean }
 interface Filtro { ano: string; mes: string }
 
-function Barras({ itens, fmt = U.moeda0 }: { itens: { t: string; v: number }[]; fmt?: (n: number) => string }) {
+export function Barras({ itens, fmt = U.moeda0 }: { itens: { t: string; v: number }[]; fmt?: (n: number) => string }) {
   const max = Math.max(1, ...itens.map(i => i.v))
   return <div className="barras">{itens.map(i => <div key={i.t} className="barra-h"><span title={i.t}>{i.t}</span><div className="trilho"><i style={{ width: `${i.v / max * 100}%` }} /></div><b>{fmt(i.v)}</b></div>)}</div>
 }

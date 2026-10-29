@@ -443,6 +443,48 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   conf((await erro(rh, 'importar_rh', { pessoas: [] }, false))?.includes('perfil não pode'), 'só o Dono importa as planilhas do RH')
   conf((await erro(dono, 'importar_rh', { pessoas: [] }, false))?.includes('Já existem funcionários'), 'importação do RH não passa por cima sem "substituir"')
   conf((await erro(dono, 'importar_rh', { pessoas: [] }, true))?.includes('ligados a retiradas'), 'não substitui quem já está ligado a retiradas e acessos')
+
+  // ---------------- v2.2: salário do cargo, banco de horas, EPI com CA e termo assinado, indicadores
+  const cSol = await rpc(rh, 'rh_salvar_cargo', { nome: 'Soldador A', tipo: 'Solda', setor: 'Produção' })
+  conf((await ver(rh, 'select tipo from public.rh_cargos where id = $1', [cSol]))[0].tipo === 'Solda', 'cargo guarda o tipo')
+  conf(await rpc(rh, 'rh_salario_cargo', { cargo_id: cSol, salario: 4800.5 }) === 0, 'salário do cargo sem aplicar não mexe em ninguém')
+  const bia = await rpc(rh, 'salvar_funcionario', { nome: 'Bia Soldadora', cargo_id: cSol, setor: 'Produção', admissao: '2025-01-06', registro: 'Matriz', privado: { salario: '4800' } })
+  const caio = await rpc(rh, 'salvar_funcionario', { nome: 'Caio Soldador', cargo_id: cSol, setor: 'Produção', admissao: '2025-03-03', registro: 'Matriz', privado: { salario: '4800,5' } })
+  conf((await erro(ger, 'rh_salario_cargo', { cargo_id: cSol, salario: 1 }))?.includes('perfil não pode'), 'gerente não muda salário de cargo')
+  conf((await erro(rh, 'rh_salario_cargo', { cargo_id: cSol, salario: -5 }))?.includes('inválido'), 'salário negativo recusado')
+  const nAplic = await rpc(rh, 'rh_salario_cargo', { cargo_id: cSol, salario: 5300, aplicar: true, vigencia: '2026-01-01' })
+  const sal = async (id) => Number((await ver(rh, 'select salario from public.funcionarios_privado where funcionario_id = $1', [id]))[0].salario)
+  conf(nAplic === 2 && await sal(bia) === 5300 && await sal(caio) === 5300, 'atualizar o cargo muda o salário de todos do cargo', nAplic)
+  const hb = await ver(rh, `select motivo, salario::float s from public.rh_historico where funcionario_id = $1 order by vigencia desc, criado_em desc limit 1`, [bia])
+  conf(hb[0].motivo === 'Reajuste do cargo' && hb[0].s === 5300, 'reajuste do cargo entra na linha do tempo', hb)
+  conf(await rpc(rh, 'rh_salario_cargo', { cargo_id: cSol, salario: 5300, aplicar: true }) === 0, 'aplicar de novo não duplica (ninguém muda)')
+  conf((await ver(ger, 'select * from public.rh_cargos_salarios')).length === 0 && (await ver(rh, 'select * from public.rh_cargos_salarios')).length === 1, 'salário do cargo só para RH, Escritório e Dono')
+  // banco de horas no ponto
+  await rpc(rh, 'rh_salvar_ponto', { funcionario_id: bia, dias: [{ data: '2026-02-02', e1: '07:00', s1: '12:00', e2: '13:00', s2: '19:00', justificativa: 'bh_pos' }, { data: '2026-02-03', justificativa: 'bh_neg' }] })
+  conf((await ver(rh, `select string_agg(justificativa, ',' order by data) j from public.rh_ponto where funcionario_id = $1`, [bia]))[0].j === 'bh_pos,bh_neg', 'ponto aceita BH+ e BH−')
+  conf((await erro(rh, 'rh_salvar_ponto', { funcionario_id: bia, dias: [{ data: '2026-02-04', justificativa: 'bh_x' }] }))?.includes('Justificativa inválida'), 'ocorrência desconhecida recusada')
+  // EPI: cadastro com CA, entrega pelo cadastro, termo assinado
+  const cat = await rpc(rh, 'rh_salvar_epi_catalogo', { descricao: 'Luva de vaqueta', ca: ' 12 345 ', validade_ca: '2029-02-08', fabricante: 'Fabricante Teste', tamanhos: 'P, M, G', onde_utiliza: 'Solda MIG e TIG', vida_util_meses: 3 })
+  conf((await ver(rh, 'select ca from public.rh_epi_catalogo where id = $1', [cat]))[0].ca === '12345', 'CA guardado só com números')
+  conf((await erro(rh, 'rh_salvar_epi_catalogo', { ca: '1' }))?.includes('descrição'), 'EPI sem descrição recusado')
+  conf((await erro(ger, 'rh_salvar_epi_catalogo', { descricao: 'X' }))?.includes('perfil não pode') && (await ver(ger, 'select * from public.rh_epi_catalogo')).length === 1, 'gerente consulta o cadastro de EPI e não altera')
+  const ent = await rpc(rh, 'rh_salvar_epi', { funcionario_id: bia, catalogo_id: cat, entrega: '2026-10-15', tamanho: 'M' })
+  const en = (await ver(rh, 'select epi, ca, fabricante, tamanho, validade_ca::text v, vida_util_meses from public.rh_epis where id = $1', [ent]))[0]
+  conf(en.epi === 'Luva de vaqueta' && en.ca === '12345' && en.fabricante === 'Fabricante Teste' && en.tamanho === 'M' && en.v === '2029-02-08' && en.vida_util_meses === 3, 'entrega pelo cadastro traz CA, validade e fabricante', en)
+  conf((await erro(rh, 'rh_assinar_epis', { ids: [ent], modo: 'facial' }))?.includes('Falta a foto'), 'assinatura facial sem foto recusada')
+  conf(await rpc(rh, 'rh_assinar_epis', { ids: [ent], modo: 'facial', conteudo: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB', tipo: 'image/jpeg' }) === 1, 'termo assinado por foto')
+  const as = (await ver(rh, `select e.assinatura, (select count(*)::int from public.rh_anexos a where a.registro_id = e.id) n from public.rh_epis e where e.id = $1`, [ent]))[0]
+  conf(as.assinatura === 'facial' && as.n === 1, 'a foto fica guardada na entrega', as)
+  conf(await rpc(rh, 'rh_assinar_epis', { ids: [ent], modo: 'papel' }) === 1, 'termo para assinar no papel')
+  await rpc(rh, 'rh_anexar', { tabela: 'rh_epi_catalogo', registro_id: cat, nome: 'CA 12345.pdf', tipo: 'application/pdf', conteudo: 'JVBERi0xLjQKJcfsj6IKMSAwIG9iago=' })
+  conf((await ver(rh, `select count(*)::int n from public.rh_anexos where tabela = 'rh_epi_catalogo'`))[0].n === 1, 'PDF do CA anexado ao cadastro do EPI')
+  // indicadores (receita e custos lançados à mão)
+  await rpc(rh, 'rh_salvar_indicadores', { ano: 2026, meses: [{ mes: 1, receita: 123456.78, beneficios: 1000 }, { mes: 2, receita: 100000.5 }] })
+  conf((await ver(rh, 'select count(*)::int n, sum(receita)::float r from public.rh_indicadores'))[0].r === 223457.28, 'receita do mês gravada')
+  await rpc(rh, 'rh_salvar_indicadores', { ano: 2026, meses: [{ mes: 2 }] })
+  conf((await ver(rh, 'select count(*)::int n from public.rh_indicadores'))[0].n === 1, 'mês vazio apaga o lançamento')
+  conf((await erro(rh, 'rh_salvar_indicadores', { ano: 2026, meses: [{ mes: 3, receita: -1 }] }))?.includes('negativo'), 'valor negativo recusado')
+  conf((await erro(ger, 'rh_salvar_indicadores', { ano: 2026, meses: [] }))?.includes('perfil não pode') && (await ver(ger, 'select * from public.rh_indicadores')).length === 0, 'indicadores (receita) só para RH, Escritório e Dono')
 }
 
 // ---------------------------------------------------------------- funções liberadas

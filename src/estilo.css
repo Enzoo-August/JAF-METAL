@@ -504,7 +504,7 @@ button.link:hover { text-decoration: underline; }
 .seletor-mes { display: flex; align-items: center; gap: 6px; }
 .seletor-mes b { min-width: 170px; text-align: center; font-size: 1.05rem; }
 .ponto { background: var(--cartao); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: var(--sombra); overflow: hidden; }
-.ponto-cab, .ponto-dia { display: grid; grid-template-columns: 110px repeat(4, minmax(78px, 1fr)) minmax(110px, 1.3fr) 70px 70px; gap: 6px; align-items: center; padding: 5px 10px; }
+.ponto-cab, .ponto-dia { display: grid; grid-template-columns: 110px repeat(4, minmax(78px, 1fr)) minmax(110px, 1.3fr) 66px 66px 70px; gap: 6px; align-items: center; padding: 5px 10px; }
 .ponto-cab { background: var(--cartao-2); font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--texto-2); font-weight: 700; padding: 9px 10px; border-bottom: 1px solid var(--borda); }
 .ponto-dia { border-top: 1px solid var(--borda); }
 .ponto-cab + .ponto-dia { border-top: 0; }
@@ -517,6 +517,24 @@ button.link:hover { text-decoration: underline; }
 .pd-trava { grid-column: span 5; font-weight: 700; color: var(--azul); font-size: .85rem; letter-spacing: .04em; }
 .pd-h small { display: block; font-size: .74rem; }
 .pd-x .cem { color: var(--azul); display: block; }
+.pd-bh { font-weight: 700; }
+.amarelo-txt { color: var(--amarelo); font-weight: 600; }
+.verde-txt { color: var(--verde); font-weight: 600; }
+.tabela-form td { padding: 4px 6px; }
+.tabela-form input { width: 100%; min-width: 96px; height: 36px; border: 1px solid var(--borda-forte); border-radius: var(--raio-p); background: var(--cartao); color: var(--texto); font: inherit; padding: 0 8px; text-align: right; }
+/* termo de EPI: foto do rosto e assinatura na tela */
+.assin-caixa { border: 1px dashed var(--borda-forte); border-radius: var(--raio-p); padding: 10px; background: var(--cartao-2); }
+.assin-video, .assin-foto { display: block; width: 100%; max-width: 360px; aspect-ratio: 4 / 3; object-fit: cover; margin: 0 auto; border-radius: var(--raio-p); background: #000; }
+.assin-video { transform: scaleX(-1); }
+.assin-tela { display: block; width: 100%; height: 170px; background: #fff; border: 1px solid var(--borda-forte); border-radius: var(--raio-p); touch-action: none; cursor: crosshair; }
+.itens-epi { display: grid; gap: 10px; margin-bottom: 8px; }
+.item-epi { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--borda); border-radius: var(--raio-p); }
+.item-epi select, .item-epi input { width: 100%; height: 40px; border: 1px solid var(--borda-forte); border-radius: var(--raio-p); background: var(--cartao); color: var(--texto); font: inherit; padding: 0 9px; min-width: 0; }
+.item-epi .linha-campos { margin: 0; }
+.lista-simples { margin: 4px 0 0; padding-left: 18px; font-size: .88rem; color: var(--texto-2); max-height: 180px; overflow-y: auto; }
+.pd-bh.mais { color: var(--verde); } .pd-bh.menos { color: var(--vermelho); }
+.banco-final { font-size: 1.5rem; font-weight: 800; }
+.banco-final.mais { color: var(--verde); } .banco-final.menos { color: var(--vermelho); }
 .ponto-dia.domingo, .ponto-dia.descanso, .ponto-dia.feriado { background: var(--cartao-2); }
 .ponto-dia.feriado .pd-dia small, .ponto-dia.domingo .pd-dia { color: var(--azul); }
 .ponto-dia.ausencia { background: var(--azul-f); }
@@ -678,12 +696,12 @@ mark { background: color-mix(in srgb, #f0c063 55%, transparent); color: inherit;
   .subabas { padding: 0 2px 0 6px; }
   .subabas-lista a { padding: 11px 10px 9px; font-size: .88rem; }
   .ponto-cab { display: none; }
-  .ponto-dia { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-areas: "dia dia h x" "e1 s1 e2 s2" "j j j j"; padding: 8px 10px 10px; gap: 6px; }
+  .ponto-dia { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-areas: "dia dia h x" "e1 s1 e2 s2" "j j j bh"; padding: 8px 10px 10px; gap: 6px; }
   .ponto-dia .pd-dia { grid-area: dia; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
   .ponto-dia .pd-dia small { display: inline; }
   .ponto-dia [data-campo=e1] { grid-area: e1; } .ponto-dia [data-campo=s1] { grid-area: s1; } .ponto-dia [data-campo=e2] { grid-area: e2; } .ponto-dia [data-campo=s2] { grid-area: s2; }
   .ponto-dia [data-campo=justificativa] { grid-area: j; }
-  .ponto-dia .pd-h { grid-area: h; } .ponto-dia .pd-x { grid-area: x; }
+  .ponto-dia .pd-h { grid-area: h; } .ponto-dia .pd-x { grid-area: x; } .ponto-dia .pd-bh { grid-area: bh; align-self: center; }
   .ponto-dia .pd-trava { grid-column: 1 / -1; grid-row: 2; }
   .ponto-dia input, .ponto-dia select { height: 40px; font-size: 16px; padding: 0 3px; }
   .ponto-dia input[type=time] { text-align: center; }

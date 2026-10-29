@@ -50,20 +50,21 @@ export type TipoDia = 'trabalho' | 'descanso' | 'domingo' | 'feriado' | 'ausenci
 export interface DiaCalc {
   data: string; tipo: TipoDia; rotulo: string
   prev: number; trab: number; he: number; he100: number; atraso: number; abonado: number; falta: boolean
+  bh: number                        // banco de horas do dia: + crédito (BH_POS), − débito (BH_NEG), em horas
   travado: boolean                  // férias / afastamento / suspensão: não aceita horário
   tolerado: number                  // minutos ignorados pela tolerância
 }
 export interface InfoDia { feriado?: string | null; ausencia?: Pick<RhAusencia, 'tipo' | 'abona'> | null; fechado?: boolean; futuro?: boolean }
 
 const ROTULO_AUS: Record<string, string> = { ferias: 'FÉRIAS', atestado: 'ATESTADO', afastamento: 'AFASTADO', licenca: 'LICENÇA', suspensao: 'SUSPENSÃO', folga: 'FOLGA', falta: 'FALTA', declaracao: 'DECLARAÇÃO' }
-const ROTULO_JUST: Record<string, string> = { atestado: 'Atestado', declaracao: 'Declaração', licenca: 'Licença', folga: 'Folga', falta: 'Falta', abonado: 'Abonado', compensado: 'Compensado' }
+const ROTULO_JUST: Record<string, string> = { atestado: 'Atestado', declaracao: 'Declaração', licenca: 'Licença', folga: 'Folga', falta: 'Falta', abonado: 'Abonado', compensado: 'Compensado', bh_pos: 'Banco de horas +', bh_neg: 'Banco de horas −' }
 export const TRAVA = new Set(['ferias', 'afastamento', 'licenca', 'suspensao'])
 
 export function calcDia(data: string, p: Pick<RhPonto, 'e1' | 's1' | 'e2' | 's2' | 'justificativa'> | null, info: InfoDia, j: Jornada): DiaCalc {
   const dow = diaSemana(data)
   const feriado = info.feriado || null
   const prev = feriado ? 0 : (j.previstas[dow] || 0)
-  const base: DiaCalc = { data, tipo: 'trabalho', rotulo: '', prev, trab: 0, he: 0, he100: 0, atraso: 0, abonado: 0, falta: false, travado: false, tolerado: 0 }
+  const base: DiaCalc = { data, tipo: 'trabalho', rotulo: '', prev, trab: 0, he: 0, he100: 0, atraso: 0, abonado: 0, falta: false, bh: 0, travado: false, tolerado: 0 }
   const aus = info.ausencia
   if (aus) {
     base.tipo = 'ausencia'; base.rotulo = ROTULO_AUS[aus.tipo] || aus.tipo.toUpperCase(); base.travado = TRAVA.has(aus.tipo)
@@ -87,10 +88,14 @@ export function calcDia(data: string, p: Pick<RhPonto, 'e1' | 's1' | 'e2' | 's2'
   const just = p?.justificativa || null
   if (feriado) { base.tipo = 'feriado'; base.rotulo = feriado } else if (dow === 0) { base.tipo = 'domingo'; base.rotulo = 'Domingo' }
   else if (prev === 0) { base.tipo = 'descanso'; base.rotulo = dow === 6 ? 'Sábado' : 'Descanso' }
+  if (just) base.rotulo = ROTULO_JUST[just] || just
+  // banco de horas: BH_POS guarda o que passou da jornada (em vez de pagar hora extra);
+  // BH_NEG desconta do banco o que faltou para a jornada (em vez de falta/atraso)
+  if (just === 'bh_pos') { base.bh = Math.max(0, base.trab - prev); if (tem && base.trab < prev) base.atraso = prev - base.trab; return base }
+  if (just === 'bh_neg') { base.bh = -Math.max(0, prev - base.trab); base.he = Math.max(0, base.trab - prev); return base }
   // hora extra: o que passa do previsto. Domingo e feriado: tudo a 100%.
   const extra = Math.max(0, base.trab - prev)
   if (base.tipo === 'feriado' || base.tipo === 'domingo') base.he100 = extra; else base.he = extra
-  if (just) base.rotulo = ROTULO_JUST[just] || just
   if (prev > 0 && base.trab < prev) {
     const falta = prev - base.trab
     if (just === 'falta') { if (!tem) base.falta = true; else base.atraso = falta }
@@ -106,6 +111,7 @@ export function calcDia(data: string, p: Pick<RhPonto, 'e1' | 's1' | 'e2' | 's2'
 export interface Faixas { p50: number; p60: number; p80: number; p100: number }
 export interface ResumoMes {
   dias: DiaCalc[]; prev: number; trab: number; he: number; he100: number; atraso: number; abonado: number
+  bhCredito: number; bhDebito: number; bh: number      // banco de horas do mês (débito vem positivo; bh = crédito − débito)
   faltas: number; semLancamento: number; dsr: number; faixas: Faixas; valorHora: number; valores: Faixas & { total: number }
 }
 export function diasDoMes(ano: number, mes: number): string[] {
@@ -130,7 +136,7 @@ export function resumoMes(ano: number, mes: number, d: DadosMes, j: Jornada): Re
   const hoje = d.hoje || U.hoje()
   const dias = diasDoMes(ano, mes).map(data => {
     const fora = (d.admissao && data < d.admissao) || (d.demissao && data > d.demissao)
-    if (fora) return { data, tipo: 'descanso' as TipoDia, rotulo: 'Fora do contrato', prev: 0, trab: 0, he: 0, he100: 0, atraso: 0, abonado: 0, falta: false, travado: true, tolerado: 0 }
+    if (fora) return { data, tipo: 'descanso' as TipoDia, rotulo: 'Fora do contrato', prev: 0, trab: 0, he: 0, he100: 0, atraso: 0, abonado: 0, falta: false, bh: 0, travado: true, tolerado: 0 }
     const aus = d.ausencias.find(a => a.inicio <= data && (a.fim === null || a.fim >= data)) || null
     return calcDia(data, porDia.get(data) || null, { feriado: d.feriados.get(data) || null, ausencia: aus, fechado: d.fechado, futuro: data > hoje }, j)
   })
@@ -143,10 +149,25 @@ export function resumoMes(ano: number, mes: number, d: DadosMes, j: Jornada): Re
   const faixas = dividirFaixas(he, he100, d.upgrade, j)
   return {
     dias, prev: s('prev'), trab: s('trab'), he, he100, atraso: s('atraso'), abonado: s('abonado'),
+    bhCredito: U.soma(dias, x => Math.max(0, x.bh)), bhDebito: U.soma(dias, x => Math.max(0, -x.bh)), bh: U.soma(dias, x => x.bh),
     faltas: dias.filter(x => x.falta).length, semLancamento: dias.filter(x => x.tipo === 'vazio').length, dsr: semanas.size,
     faixas, valorHora: d.salarioHora, valores: valoresFaixas(faixas, d.salarioHora),
   }
 }
+
+// saldo do banco de horas ANTES de um mês (soma dos dias marcados BH_POS/BH_NEG desde o começo)
+export function saldoBancoAntes(antesDe: string, pontos: RhPonto[], d: Pick<DadosMes, 'ausencias' | 'feriados'>, j: Jornada): number {
+  let t = 0
+  for (const p of pontos) {
+    if (p.data >= antesDe || (p.justificativa !== 'bh_pos' && p.justificativa !== 'bh_neg')) continue
+    const aus = d.ausencias.find(a => a.inicio <= p.data && (a.fim === null || a.fim >= p.data)) || null
+    t += calcDia(p.data, p, { feriado: d.feriados.get(p.data) || null, ausencia: aus }, j).bh
+  }
+  return t
+}
+// "+8h30 (credor)" / "−2h (devedor)"
+export const sinalHoras = (h: number): string => (h > 0 ? '+' : '') + horas(h)
+export const situacaoBanco = (h: number): string => Math.abs(h) < 1 / 120 ? 'Zerado' : h > 0 ? 'Saldo credor' : 'Saldo devedor'
 
 // ------------------------------------------------------------------ férias (CLT)
 // período aquisitivo: 12 meses de trabalho; concessivo: os 12 meses seguintes (prazo para a empresa dar as férias).

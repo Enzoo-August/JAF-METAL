@@ -9,20 +9,25 @@ import * as R from '../../lib/rh.ts'
 import type { Funcionario, Justificativa, RhPonto } from '../../lib/tipos.ts'
 import * as U from '../../lib/util.ts'
 import { aviso, erro } from '../../ui/avisos.ts'
-import { excel } from '../../ui/arquivos.tsx'
+import { entregar, excel, pdfDocumento } from '../../ui/arquivos.tsx'
 import { Btn, Cab, Campo, Chips, Vazio } from '../../ui/base.tsx'
 import { ir, useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { Ic } from '../../ui/icones.tsx'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
-import { ativos, jornada, pode, salarioHE, sensivel } from './comum.tsx'
+import { ativos, jornada, pode, razaoEmpresa, salarioHE, sensivel } from './comum.tsx'
 
-const JUST: [Justificativa | '', string][] = [['', '—'], ['atestado', 'Atestado'], ['declaracao', 'Declaração'], ['licenca', 'Licença'], ['folga', 'Folga'], ['compensado', 'Compensado (banco)'], ['abonado', 'Abonado'], ['falta', 'Falta']]
+const JUST: [Justificativa | '', string][] = [['', '—'], ['atestado', 'Atestado'], ['declaracao', 'Declaração'], ['licenca', 'Licença'], ['folga', 'Folga'],
+  ['bh_pos', 'BH+ Banco de horas (crédito)'], ['bh_neg', 'BH− Banco de horas (débito)'], ['compensado', 'Compensado'], ['abonado', 'Abonado'], ['falta', 'Falta']]
 const mesAtual = () => U.hoje().slice(0, 7)
 const nomeMesAno = (m: string) => `${U.nomeMes(Number(m.slice(5, 7)))} de ${m.slice(0, 4)}`
 const outroMes = (m: string, n: number) => U.somaMeses(m + '-01', n).slice(0, 7)
 const hm = (t: string | null | undefined) => (t ? String(t).slice(0, 5) : '')
 
 export const feriadosMap = (): Map<string, string> => new Map(S.lista('rh_feriados').map(f => [f.data, f.nome]))
+// banco de horas acumulado antes do mês m (dias BH+ e BH− já salvos)
+export function bancoAntes(f: Funcionario, m: string, feriados = feriadosMap()): number {
+  return R.saldoBancoAntes(m + '-01', S.lista('rh_ponto').filter(p => p.funcionario_id === f.id), { ausencias: S.lista('rh_ausencias').filter(a => a.funcionario_id === f.id), feriados }, jornada())
+}
 export const mesFechado = (fid: string, m: string): boolean => S.lista('rh_ponto_meses').some(x => x.funcionario_id === fid && x.competencia.slice(0, 7) === m)
 
 // resumo de um mês de uma pessoa (usado aqui, na ficha e nos relatórios)
@@ -32,7 +37,7 @@ export function resumoDe(f: Funcionario, m: string, pontos?: RhPonto[], feriados
   const ps = pontos ?? S.lista('rh_ponto').filter(p => p.funcionario_id === f.id && p.data.startsWith(m))
   return R.resumoMes(ano, mes, {
     pontos: ps, ausencias: S.lista('rh_ausencias').filter(a => a.funcionario_id === f.id), feriados, fechado: mesFechado(f.id, m),
-    upgrade: f.registro === 'Upgrade', salarioHora: sensivel() ? salarioHE(f) / j.divisor : 0, admissao: f.admissao, demissao: f.demissao,
+    upgrade: f.registro === 'Upgrade', salarioHora: sensivel() ? salarioHE(f, m) / j.divisor : 0, admissao: f.admissao, demissao: f.demissao,
   }, j)
 }
 // quem aparece no mês: ativos + quem saiu durante o mês
@@ -75,12 +80,13 @@ function Fechamento({ m, setM }: { m: string; setM: (m: string) => void }) {
     </div>
     <div className="barra-filtros mt"><Chips atual={f} aoEscolher={setF} nome="pf" opcoes={[{ v: 'todos', t: 'Todos', n: linhas.length }, { v: 'he', t: 'Com hora extra', n: comHE.length }, { v: 'faltas', t: 'Com falta ou atraso', n: comFalta.length }, { v: 'abertos', t: 'Mês não fechado', n: abertos.length }]} /></div>
     {vis.length ? <div className="tabela-caixa"><table className="tabela cartoes" id="tPonto"><thead><tr><th>Pessoa</th><th className="num">Dias lançados</th><th className="num">50%</th><th className="num">60%</th><th className="num">80%</th><th className="num">100%</th>
-      <th className="num">Faltas</th><th className="num">Atrasos</th>{sens && <th className="num">Valor HE</th>}<th>Mês</th></tr></thead>
+      <th className="num">Faltas</th><th className="num">Atrasos</th><th className="num">Banco de horas</th>{sens && <th className="num">Valor HE</th>}<th>Mês</th></tr></thead>
       <tbody>{vis.map(({ f: x, r: s, dias, fechado }) => <tr key={x.id} className="clicavel" data-pessoa={x.id} onClick={() => ir(`#/rh/ponto?f=${x.id}&m=${m}`)}>
         <td className="titulo" data-r="Pessoa"><b>{x.nome}</b><div className="peq">{[x.funcao, x.registro].filter(Boolean).join(' · ')}</div></td>
         <td className="num" data-r="Dias lançados">{dias}</td><td className="num" data-r="50%">{s.faixas.p50 ? R.horas(s.faixas.p50) : ''}</td><td className="num" data-r="60%">{s.faixas.p60 ? R.horas(s.faixas.p60) : ''}</td>
         <td className="num" data-r="80%">{s.faixas.p80 ? R.horas(s.faixas.p80) : ''}</td><td className="num" data-r="100%">{s.faixas.p100 ? R.horas(s.faixas.p100) : ''}</td>
         <td className="num" data-r="Faltas">{s.faltas || ''}</td><td className="num" data-r="Atrasos">{s.atraso ? R.horas(s.atraso) : ''}</td>
+        <td className="num" data-r="Banco de horas">{s.bhCredito || s.bhDebito ? <span className={`pd-bh ${s.bh >= 0 ? 'mais' : 'menos'}`}>{R.sinalHoras(s.bh)}</span> : ''}</td>
         {sens && <td className="num" data-r="Valor HE">{s.valores.total ? U.moeda(s.valores.total) : ''}</td>}
         <td data-r="Mês">{fechado ? <span className="tag t-verde">Fechado</span> : <span className="tag t-cinza">Aberto</span>}</td></tr>)}</tbody></table></div>
       : <Vazio icone="relogio" titulo="Ninguém aqui" texto="Mude o filtro ou o mês." />}
@@ -96,9 +102,10 @@ function Fechamento({ m, setM }: { m: string; setM: (m: string) => void }) {
 
 async function exportarFechamento(m: string, linhas: { f: Funcionario; r: R.ResumoMes }[]) {
   const fech = linhas.map(({ f, r }) => ({
-    ID: f.matricula || '', Nome: f.nome, Cargo: f.funcao || '', Registro: f.registro || '', Salário: salarioHE(f) || null,
+    ID: f.matricula || '', Nome: f.nome, Cargo: f.funcao || '', Registro: f.registro || '', 'Salário no mês': salarioHE(f, m) || null,
     'HE 50% (h)': U.r2(r.faixas.p50), 'HE 60% (h)': U.r2(r.faixas.p60), 'HE 80% (h)': U.r2(r.faixas.p80), 'HE 100% (h)': U.r2(r.faixas.p100),
     'Faltas (dias)': r.faltas, DSR: r.dsr, 'Atrasos (h)': U.r2(r.atraso), 'Abonadas (h)': U.r2(r.abonado),
+    'BH crédito (h)': U.r2(r.bhCredito), 'BH débito (h)': U.r2(r.bhDebito), 'BH saldo do mês (h)': U.r2(r.bh), 'BH saldo final (h)': U.r2(bancoAntes(f, m) + r.bh),
     'Valor 50%': U.r2(r.valores.p50), 'Valor 60%': U.r2(r.valores.p60), 'Valor 80%': U.r2(r.valores.p80), 'Valor 100%': U.r2(r.valores.p100), 'Valor total HE': U.r2(r.valores.total),
   }))
   // lançamentos dia a dia, como a aba "Lançamentos" da planilha
@@ -107,7 +114,7 @@ async function exportarFechamento(m: string, linhas: { f: Funcionario; r: R.Resu
     const p = S.lista('rh_ponto').find(x => x.funcionario_id === f.id && x.data === d.data)
     return { Data: U.d(d.data), Nome: f.nome, Dia: R.NOME_DIA[R.diaSemana(d.data)], Entrada: hm(p?.e1), 'Início intervalo': hm(p?.s1), 'Término intervalo': hm(p?.e2), Saída: hm(p?.s2),
       'Horas trabalhadas': U.r2(d.trab), Status: d.data <= hoje ? 'Ok' : 'Previsão', 'Horas previstas': d.prev, 'Horas extras': U.r2(d.he), 'Horas 100%': U.r2(d.he100),
-      Absenteísmo: U.r2(d.falta ? d.prev : d.atraso), Ocorrência: d.rotulo }
+      Absenteísmo: U.r2(d.falta ? d.prev : d.atraso), 'Saldo BH': d.bh ? U.r2(d.bh) : null, Ocorrência: d.rotulo }
   }))
   await excel(`Fechamento ponto ${m}.xlsx`, [['Fechamento', fech], ['Lançamentos', dias]], true)
 }
@@ -181,6 +188,7 @@ function Cartao({ f, m, setM, recarregar }: { f: Funcionario; m: string; setM: (
   const fer = feriadosMap()
   const pontos: RhPonto[] = Object.entries(lin).map(([data, l]) => ({ id: data, funcionario_id: f.id, data, e1: l.e1 || null, s1: l.s1 || null, e2: l.e2 || null, s2: l.s2 || null, justificativa: (l.justificativa || null) as Justificativa | null, obs: l.obs || null, atualizado_em: '' }))
   const res = resumoDe(f, m, pontos, fer)
+  const antes = bancoAntes(f, m, fer)
   const mudar = (d: string, campo: keyof Linha, v: string) => { setLin(o => ({ ...o, [d]: { ...(o[d] || vazia), [campo]: v } })); setSujos(s => new Set(s).add(d)) }
   const hoje = U.hoje()
   const pessoas = pessoasDoMes(m)
@@ -232,13 +240,15 @@ function Cartao({ f, m, setM, recarregar }: { f: Funcionario; m: string; setM: (
       {sensivel() ? <div className="kpi"><small>Valor das extras</small><b>{U.moeda(res.valores.total)}</b><span>hora {U.moeda(res.valorHora)}{f.registro === 'Upgrade' && j.upgrade60 ? ' · Upgrade 60%' : ''}</span></div>
         : <div className="kpi"><small>Abonadas</small><b>{R.horas(res.abonado)}</b><span>atestado, folga…</span></div>}
     </div>
+    <div className="grupo-btn mt"><Btn txt="Imprimir / PDF" icone="imprimir" cls="sec mini" data-ponto="pdf" onClick={() => espelhoPdf(f, m, res, antes)} />
+      <Btn txt="Excel" icone="planilha" cls="sec mini" data-ponto="excel" onClick={() => espelhoExcel(f, m, res, antes)} /></div>
     {fechado && <p className="nota verde mt"><Ic n="cadeado" /> Mês fechado. {pode() ? 'Para mudar, toque em Reabrir o mês.' : ''}</p>}
     {editar && <div className="grupo-btn mt barra-ponto">
       <Btn txt="Preencher horário padrão" icone="relogio" data-ponto="padrao" onClick={preencher} />
       <button type="button" className={`btn pri${ocup ? ' carregando' : ''}`} data-ponto="salvar" disabled={!sujos.size || ocup} onClick={() => void salvar()}><Ic n="ok" /><span>{sujos.size ? `Salvar (${U.plural(sujos.size, 'dia')})` : 'Salvo'}</span></button>
     </div>}
     <div className="ponto mt" id="gradePonto" role="table" aria-label={'Ponto de ' + nomeMesAno(m)}>
-      <div className="ponto-cab" role="row"><span>Dia</span><span>Entrada</span><span>Saída almoço</span><span>Volta</span><span>Saída</span><span>Ocorrência</span><span className="num">Horas</span><span className="num">Extra</span></div>
+      <div className="ponto-cab" role="row"><span>Dia</span><span>Entrada</span><span>Saída almoço</span><span>Volta</span><span>Saída</span><span>Ocorrência</span><span className="num">Horas</span><span className="num">Extra</span><span className="num">Saldo BH</span></div>
       {res.dias.map(d => {
         const l = lin[d.data] || vazia, dw = R.diaSemana(d.data)
         const bloqueado = !editar || d.travado
@@ -252,14 +262,90 @@ function Cartao({ f, m, setM, recarregar }: { f: Funcionario; m: string; setM: (
               {JUST.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></>}
           <span className="num pd-h">{d.trab ? R.horas(d.trab) : ''}{d.atraso ? <small className="negativo">−{R.horas(d.atraso)}</small> : null}</span>
           <span className="num pd-x">{d.he ? R.horas(d.he) : ''}{d.he100 ? <b className="cem">{R.horas(d.he100)}</b> : ''}</span>
+          <span className={`num pd-bh${d.bh > 0 ? ' mais' : d.bh < 0 ? ' menos' : ''}`} aria-label="Saldo do banco de horas no dia">{d.bh ? R.sinalHoras(d.bh) : ''}</span>
         </div>
       })}
     </div>
-    <p className="sub mt">Domingo e feriado: toda hora conta a 100% (em azul). Dias de férias, afastamento e suspensão ficam travados. {fer.size === 0 && pode() ? <>Nenhum feriado cadastrado — <a href="#/rh/ajustes?aba=feriados">cadastrar feriados</a>.</> : null}</p>
+    <ResumoPeriodo res={res} antes={antes} />
+    <p className="sub mt">Domingo e feriado: toda hora conta a 100% (em azul). BH+ guarda no banco de horas o que passou da jornada; BH− desconta do banco o que faltou. Dias de férias, afastamento e suspensão ficam travados. {fer.size === 0 && pode() ? <>Nenhum feriado cadastrado — <a href="#/rh/ajustes?aba=feriados">cadastrar feriados</a>.</> : null}</p>
     {editar && sujos.size > 0 && <div className="barra-salvar"><span>{U.plural(sujos.size, 'dia alterado', 'dias alterados')}</span>
       <button type="button" className={`btn pri${ocup ? ' carregando' : ''}`} disabled={ocup} onClick={() => void salvar()}><Ic n="ok" /><span>Salvar</span></button></div>}
     {pode() && <div className="grupo-btn mt"><Btn txt={fechado ? 'Reabrir o mês' : 'Fechar o mês'} icone="cadeado" data-ponto="fechar" onClick={fecharReabrir} /></div>}
   </>
+}
+
+// ------------------------------------------------------------------ resumo do período (rodapé do cartão)
+function ResumoPeriodo({ res, antes }: { res: R.ResumoMes; antes: number }) {
+  const final = antes + res.bh
+  return <section className="card mt" id="resumoPonto"><h2>Resumo do período</h2>
+    <div className="grade g2 mt">
+      <dl className="dl">
+        <dt>Horas previstas</dt><dd>{R.horas(res.prev)}</dd>
+        <dt>Horas trabalhadas</dt><dd>{R.horas(res.trab)}</dd>
+        <dt>Horas extras 50%</dt><dd>{R.horas(res.faixas.p50)}</dd>
+        <dt>Horas extras 60%</dt><dd>{R.horas(res.faixas.p60)}</dd>
+        <dt>Horas extras 80%</dt><dd>{R.horas(res.faixas.p80)}</dd>
+        <dt>Horas extras 100%</dt><dd>{R.horas(res.faixas.p100)}</dd>
+        <dt>Faltas</dt><dd>{U.plural(res.faltas, 'dia')}{res.dsr ? ` (perde ${U.plural(res.dsr, 'DSR')})` : ''}</dd>
+        <dt>Atrasos / saídas antes</dt><dd>{R.horas(res.atraso)}</dd>
+        <dt>Abonadas</dt><dd>{R.horas(res.abonado)}</dd>
+        {sensivel() && <><dt>Valor das horas extras</dt><dd>{U.moeda(res.valores.total)} <small className="fraco">(hora {U.moeda(res.valorHora)})</small></dd></>}
+      </dl>
+      <div className="banco-horas" data-banco>
+        <h3>Banco de horas</h3>
+        <dl className="dl mt">
+          <dt>Saldo anterior</dt><dd>{R.sinalHoras(antes)}</dd>
+          <dt>Positivas (crédito +)</dt><dd className="pd-bh mais">+{R.horas(res.bhCredito)}</dd>
+          <dt>Negativas (débito −)</dt><dd className="pd-bh menos">−{R.horas(res.bhDebito)}</dd>
+          <dt>Saldo do mês</dt><dd>{R.sinalHoras(res.bh)}</dd>
+        </dl>
+        <p className="mt"><small className="fraco">Saldo final</small><br /><span className={`banco-final ${final > 0 ? 'mais' : final < 0 ? 'menos' : ''}`}>{R.sinalHoras(final)}</span> <b>{R.situacaoBanco(final)}</b></p>
+      </div>
+    </div></section>
+}
+
+// ------------------------------------------------------------------ espelho de ponto (imprimir / PDF / Excel)
+const linhaEspelho = (f: Funcionario, d: R.DiaCalc): string[] => {
+  const p = S.lista('rh_ponto').find(x => x.funcionario_id === f.id && x.data === d.data)
+  return [`${d.data.slice(8)} ${R.NOME_DIA[R.diaSemana(d.data)]}`, hm(p?.e1), hm(p?.s1), hm(p?.e2), hm(p?.s2), d.rotulo, d.trab ? R.horas(d.trab) : '',
+    d.he + d.he100 ? R.horas(d.he + d.he100) : '', d.bh ? R.sinalHoras(d.bh) : '']
+}
+const semMenos = (t: string) => t.replace(/−/g, '-')
+function quadros(res: R.ResumoMes, antes: number): { resumo: string[][]; banco: string[][] } {
+  const final = antes + res.bh
+  const resumo = [['Horas previstas', R.horas(res.prev)], ['Horas trabalhadas', R.horas(res.trab)],
+    ['Horas extras 50% / 60% / 80% / 100%', [res.faixas.p50, res.faixas.p60, res.faixas.p80, res.faixas.p100].map(R.horas).join(' / ')],
+    ['Faltas (dias)', `${res.faltas}${res.dsr ? ` (perde ${res.dsr} DSR)` : ''}`], ['Atrasos / saídas antes', R.horas(res.atraso)], ['Abonadas', R.horas(res.abonado)],
+    ...(sensivel() ? [['Valor das horas extras', `${U.moeda(res.valores.total)} (hora ${U.moeda(res.valorHora)})`]] : [])]
+  const banco = [['Saldo anterior', R.sinalHoras(antes)], ['Positivas (crédito +)', '+' + R.horas(res.bhCredito)], ['Negativas (débito −)', '−' + R.horas(res.bhDebito)],
+    ['Saldo do mês', R.sinalHoras(res.bh)], ['Saldo final', `${R.sinalHoras(final)} — ${R.situacaoBanco(final)}`]]
+  return { resumo, banco }
+}
+async function espelhoPdf(f: Funcionario, m: string, res: R.ResumoMes, antes: number) {
+  const { resumo, banco } = quadros(res, antes)
+  const blob = await pdfDocumento('Espelho de ponto', U.cap(nomeMesAno(m)), (c) => {
+    let y = c.texto([`Funcionário: ${f.nome}`, f.matricula && `Matrícula: ${f.matricula}`, f.funcao && `Cargo: ${f.funcao}`, f.setor && `Setor: ${f.setor}`, f.horario && `Horário: ${f.horario}`].filter(Boolean).join('    '), c.y + 2, { tam: 9.5, negrito: true }) + 1
+    c.tabela({ ...c.estilo, startY: y, head: [['Dia', 'Entrada', 'Saída alm.', 'Volta', 'Saída', 'Ocorrência', 'Horas', 'Extra', 'Saldo BH']],
+      body: res.dias.map(d => linhaEspelho(f, d).map(semMenos)), styles: { ...c.estilo.styles, fontSize: 7.6, cellPadding: 1.1 },
+      columnStyles: { 0: { cellWidth: 16 }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } } })
+    y = c.doc.lastAutoTable.finalY + 5
+    if (y > c.H - 70) { c.doc.addPage(); y = 20 }
+    const meia = (c.W - 32) / 2
+    c.tabela({ ...c.estilo, startY: y, head: [['Resumo do período', '']], body: resumo.map(l => l.map(semMenos)), tableWidth: meia, margin: { left: 14 }, styles: { ...c.estilo.styles, fontSize: 8.4 } })
+    const y1 = c.doc.lastAutoTable.finalY
+    c.tabela({ ...c.estilo, startY: y, head: [['Banco de horas', '']], body: banco.map(l => l.map(semMenos)), tableWidth: meia, margin: { left: c.W / 2 + 2 }, styles: { ...c.estilo.styles, fontSize: 8.4 } })
+    y = Math.max(y1, c.doc.lastAutoTable.finalY) + 20
+    if (y > c.H - 25) { c.doc.addPage(); y = 40 }
+    c.assinatura(f.nome, 'Funcionário', 14, y, 80)
+    c.assinatura(razaoEmpresa(), 'RH', c.W - 94, y, 80)
+  })
+  await entregar(blob, `Espelho de ponto ${f.nome} ${m}.pdf`)
+}
+async function espelhoExcel(f: Funcionario, m: string, res: R.ResumoMes, antes: number) {
+  const cab = ['Dia', 'Entrada', 'Saída almoço', 'Volta almoço', 'Saída', 'Ocorrência', 'Horas', 'Extra', 'Saldo BH']
+  const dias = res.dias.map(d => { const l = linhaEspelho(f, d); return Object.fromEntries(cab.map((k, i) => [k, l[i]])) })
+  const { resumo, banco } = quadros(res, antes)
+  await excel(`Espelho de ponto ${f.nome} ${m}.xlsx`, [['Ponto', dias], ['Resumo', [...resumo, ...banco.map(([a, b]) => ['Banco de horas — ' + a, b])].map(([Item, Valor]) => ({ Item, Valor }))]])
 }
 
 // ------------------------------------------------------------------ na ficha: últimos meses

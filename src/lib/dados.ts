@@ -16,11 +16,12 @@ const INCR: Record<NomeTabela, string | null> = {
   rh_ponto_meses: null, rh_feriados: null, rh_matrizes: 'atualizado_em', rh_matriz_itens: 'atualizado_em', rh_matriz_niveis: 'atualizado_em',
   rh_plano_treinos: 'atualizado_em', rh_metas: 'atualizado_em', rh_epis: 'atualizado_em', rh_asos: 'atualizado_em',
   rh_ocorrencias: 'atualizado_em', rh_anexos: null, rh_processos: 'atualizado_em',
+  rh_cargos_salarios: null, rh_epi_catalogo: 'atualizado_em', rh_indicadores: null,
 }
 // tabelas do RH por perfil
 const RH_BASE: NomeTabela[] = ['rh_setores', 'rh_cargos', 'rh_ausencias', 'rh_ponto', 'rh_ponto_meses', 'rh_feriados', 'rh_matrizes', 'rh_matriz_itens',
-  'rh_matriz_niveis', 'rh_plano_treinos', 'rh_metas', 'rh_epis', 'rh_asos', 'rh_ocorrencias']
-const RH_SENSIVEL: NomeTabela[] = ['funcionarios_privado', 'rh_historico', 'rh_anexos', 'rh_processos']
+  'rh_matriz_niveis', 'rh_plano_treinos', 'rh_metas', 'rh_epis', 'rh_asos', 'rh_ocorrencias', 'rh_epi_catalogo']
+const RH_SENSIVEL: NomeTabela[] = ['funcionarios_privado', 'rh_historico', 'rh_anexos', 'rh_processos', 'rh_cargos_salarios', 'rh_indicadores']
 const CHAVE: Partial<Record<NomeTabela, string>> = { config: 'chave', funcionarios_privado: 'funcionario_id', perfis: 'user_id' }
 const TODAS = Object.keys(INCR) as NomeTabela[]
 
@@ -363,6 +364,11 @@ export const C = {
     for (const e of S.lista('rh_epis')) { const k = e.funcionario_id + '|' + U.sem(e.epi); const x = ultimoEpi.get(k); if (!x || x.entrega < e.entrega) ultimoEpi.set(k, e) }
     const trocar = [...ultimoEpi.values()].filter(e => ativosId.has(e.funcionario_id) && (R.trocaEpi(e) || '9999') < h).length
     if (trocar) add('baixo', `${U.plural(trocar, 'EPI')} passou do prazo de troca`, '#/rh/seguranca?f=epi', trocar)
+    // CA do EPI (cadastro): vencido ou vencendo em 90 dias
+    const cats = S.lista('rh_epi_catalogo').filter(c => c.ativo && c.validade_ca)
+    const caV = cats.filter(c => c.validade_ca! < h).length, ca90 = cats.filter(c => c.validade_ca! >= h && U.dias(h, c.validade_ca!) <= 90).length
+    if (caV) add('medio', `${U.plural(caV, 'EPI')} com CA vencido no cadastro`, '#/rh/seguranca?f=ca', caV)
+    if (ca90) add('baixo', `${U.plural(ca90, 'EPI')} com CA vencendo em até 90 dias`, '#/rh/seguranca?f=ca', ca90)
     return a
   },
 

@@ -62,7 +62,7 @@ window.auditar = async function auditar(opt = {}) {
   const rotas = ['#/inicio', '#/pecas', '#/movimentos', '#/compras', '#/compras/lista', '#/fornecedores', '#/producao', '#/maquinas', '#/financeiro', '#/financeiro/fluxo',
     '#/clientes', '#/equipe', '#/relatorios?r=estoque', '#/relatorios?r=consumo', '#/relatorios?r=compras', '#/relatorios?r=financeiro', '#/admin', '#/ajuda', '#/ajuda?q=f%C3%A9rias', '#/conta',
     '#/rh', '#/rh?f=experiencia', '#/rh/ponto', '#/rh/ferias', '#/rh/ferias?aba=ausencias', '#/rh/ferias?aba=fora', '#/rh/treinamentos?aba=matrizes', '#/rh/treinamentos?aba=plano',
-    '#/rh/treinamentos?aba=reciclagem', '#/rh/treinamentos?aba=metas', '#/rh/seguranca', '#/rh/seguranca?f=epi', '#/rh/disciplina', '#/rh/processos', '#/rh/organograma', '#/rh/relatorios',
+    '#/rh/treinamentos?aba=reciclagem', '#/rh/treinamentos?aba=metas', '#/rh/seguranca', '#/rh/seguranca?f=epi', '#/rh/disciplina', '#/rh/processos', '#/rh/organograma', '#/rh/relatorios', '#/rh/indicadores', '#/rh/seguranca?f=ca',
     '#/rh/ajustes?aba=cargos', '#/rh/ajustes?aba=feriados', '#/rh/ajustes?aba=jornada'];
   const f0 = S.lista('funcionarios').find(f => f.ativo)
   if (f0) { rotas.push(`#/rh/ponto?f=${f0.id}&m=${U.hoje().slice(0, 7)}`); for (const a of ['dados', 'cargo', 'ferias', 'ponto', 'treinos', 'seguranca', 'disciplina', 'documentos']) rotas.push(`#/funcionario/${f0.id}?aba=${a}`) }

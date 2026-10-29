@@ -14,7 +14,7 @@ import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { Ic } from '../../ui/icones.tsx'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
 import { CartaoOrdem } from '../Producao.tsx'
-import { Anexos, feriasDe, LinhaPessoa, nomeF, opcoesCargos, opcoesPessoas, opcoesSetores, pode, REGISTROS, sensivel, situacaoFunc, TagFerias, TagVence } from './comum.tsx'
+import { Anexos, feriasDe, LinhaPessoa, nomeF, opcoesCargos, opcoesPessoas, opcoesSetores, pode, REGISTROS, salarioCargo, sensivel, situacaoFunc, TagFerias, TagVence } from './comum.tsx'
 import { DisciplinaDaPessoa } from './Disciplina.tsx'
 import { FeriasDaPessoa } from './Ferias.tsx'
 import { PontoDaPessoa } from './Ponto.tsx'
@@ -87,7 +87,7 @@ async function exportarPessoas() {
     const oc = S.lista('rh_ocorrencias').filter(o => o.funcionario_id === f.id && o.status !== 'cancelado').sort((a, b) => a.data_ocorrencia < b.data_ocorrencia ? -1 : 1)
     const linha: Record<string, unknown> = {
       Nome: f.nome, Função: f.funcao, Setor: f.setor, Admissão: d(f.admissao), Celular: p.celular || f.telefone, 'Matrícula eSocial': f.matricula_esocial, Matrícula: f.matricula,
-      CBO: S.get('rh_cargos', f.cargo_id)?.cbo || '', 'Tempo de serviço': R.tempoCasa(f.admissao, f.demissao || U.hoje()), Salário: p.salario, 'Salário (horas extras)': p.salario_he,
+      CBO: S.get('rh_cargos', f.cargo_id)?.cbo || '', 'Tempo de serviço': R.tempoCasa(f.admissao, f.demissao || U.hoje()), Salário: p.salario,
       RG: p.rg, CPF: p.cpf, PIS: p.pis, 'Título de eleitor': p.titulo_eleitor, Reservista: p.reservista, CNH: p.cnh, 'E-mail': p.email, Nascimento: d(p.nascimento),
       Idade: R.idade(p.nascimento || null), Sexo: p.sexo, 'Estado civil': p.estado_civil, Naturalidade: p.naturalidade, Estado: p.uf_nascimento, Nacionalidade: p.nacionalidade,
       Mãe: p.mae, Pai: p.pai, 'Grau de instrução': p.instrucao, 'Dados bancários': p.banco, Pix: p.pix, 'Exame médico': d(aso?.data_exame),
@@ -228,7 +228,7 @@ function CargoSalario({ f }: { f: Funcionario }) {
   return <>
     <section className="card"><div className="card-cab"><div><h2>Hoje</h2><p className="sub">{f.funcao || 'Sem cargo'} · {f.setor || 'sem setor'}</p></div>
       <div className="estoque-grande">{p?.salario ? U.moeda(p.salario) : '—'}</div></div>
-      {p?.salario_he && Number(p.salario_he) !== Number(p.salario) ? <p className="sub">Para as horas extras a planilha usava {U.moeda(p.salario_he)} (fica assim até alguém mudar no cadastro).</p> : null}
+      <p className="sub">As horas extras são calculadas com este salário (o que vale em cada mês, pela linha do tempo).</p>
       {pode() && f.ativo && <Btn txt="Alterar cargo ou salário" icone="relatorio" cls="pri" data-rh="cargo" onClick={() => void alterarCargoSalario(f)} />}</section>
     <section className="card mt"><h2>Linha do tempo</h2>
       {h.length ? <ol className="linha-tempo mt">{h.map((x, i) => {
@@ -317,7 +317,7 @@ export async function formPessoa(f?: Funcionario | null, parte = 'trabalho'): Pr
         <div className="linha-campos"><Campo nome="banco" rotulo="Dados bancários" valor={p.banco} placeholder="Banco, agência e conta" /><Campo nome="pix" rotulo="Chave Pix" valor={p.pix} /></div>
         <div className="linha-campos"><Campo nome="uniforme" rotulo="Uniforme (tamanho)" valor={p.uniforme} /><Campo nome="calcado" rotulo="Calçado / botina (nº)" valor={p.calcado} />
           <Campo nome="chave_celular" rotulo="Chave do celular" valor={p.chave_celular} /><Campo nome="chave_vestiario" rotulo="Chave do vestiário" valor={p.chave_vestiario} /></div>
-        <div className="linha-campos"><Campo nome="indicacao" rotulo="Indicado por" valor={p.indicacao} /><Campo nome="salario_he" rotulo="Salário para horas extras" tipo="dinheiro" valor={U.campoNum(p.salario_he)} ajuda="Deixe vazio para usar o salário do cadastro." />
+        <div className="linha-campos"><Campo nome="indicacao" rotulo="Indicado por" valor={p.indicacao} />
           <Campo nome="ferias_base" rotulo="Início do período aquisitivo" tipo="date" valor={b.ferias_base} ajuda="Só se for diferente da admissão (ex.: afastamento longo)." /></div>
         <Campo nome="pobs" rotulo="Abono / observações" tipo="area" valor={p.obs} linhas={2} />
       </div>
@@ -326,7 +326,7 @@ export async function formPessoa(f?: Funcionario | null, parte = 'trabalho'): Pr
       const d = lerForm(frm)
       if (d.cpf && !R.cpfValido(d.cpf)) throw new ErroApp('CPF inválido: confira os números.')
       const priv: Record<string, unknown> = {
-        salario: novo ? d.salario : p.salario ?? null, salario_he: d.salario_he, cpf: d.cpf, rg: d.rg, pis: d.pis, titulo_eleitor: d.titulo_eleitor, reservista: d.reservista, cnh: d.cnh,
+        salario: novo ? d.salario : p.salario ?? null, salario_he: null, cpf: d.cpf, rg: d.rg, pis: d.pis, titulo_eleitor: d.titulo_eleitor, reservista: d.reservista, cnh: d.cnh,
         nascimento: d.nascimento || null, sexo: d.sexo, estado_civil: d.estado_civil, nacionalidade: d.nacionalidade, naturalidade: d.naturalidade, uf_nascimento: d.uf_nascimento,
         mae: d.mae, pai: d.pai, instrucao: d.instrucao, email: d.email, celular: d.celular, endereco: d.endereco, numero: d.numero, complemento: d.complemento, bairro: d.bairro,
         cep: d.cep, cidade: d.cidade, banco: d.banco, pix: d.pix, emergencia_nome: d.emergencia_nome, emergencia_fone: d.emergencia_fone, telefone_corp: d.telefone_corp,
@@ -386,7 +386,9 @@ export async function alterarCargoSalario(f: Funcionario) {
     corpo: <>
       <div className="campo"><label>Motivo</label><div className="opcoes">{MOTIVOS.map((m, i) => <label key={m} className="opcao"><input type="radio" name="motivo" value={m} defaultChecked={i === 0} /><span><b>{m}</b><small>{DICA[m]}</small></span></label>)}</div></div>
       <div className="linha-campos"><Campo nome="vigencia" rotulo="Vale a partir de" tipo="date" valor={U.hoje()} req /><Campo nome="salario" rotulo={`Novo salário (hoje ${p?.salario ? U.moeda(p.salario) : '—'})`} tipo="dinheiro" placeholder="deixe vazio se não mudou" /></div>
-      <div className="linha-campos">{S.lista('rh_cargos').length > 0 && <Campo nome="cargo_id" rotulo="Novo cargo" tipo="select" valor="" opcoes={opcoesCargos(`Continua: ${f.funcao || 'sem cargo'}`)} />}
+      <div className="linha-campos">{S.lista('rh_cargos').length > 0 && <Campo nome="cargo_id" rotulo="Novo cargo" tipo="select" valor="" opcoes={opcoesCargos(`Continua: ${f.funcao || 'sem cargo'}`)}
+        attrs={{ onChange: (e: { target: HTMLSelectElement }) => { const s = e.target.form?.elements.namedItem('salario') as HTMLInputElement | null, v = salarioCargo(e.target.value); if (s && !s.value && v) s.value = U.campoNum(v) } }}
+        ajuda="Escolhendo o cargo, o salário do cargo já vem preenchido." />}
         <Campo nome="setor" rotulo="Novo setor" tipo="select" valor="" opcoes={opcoesSetores(`Continua: ${f.setor || 'sem setor'}`)} /></div>
       <Campo nome="obs" rotulo="Observação (opcional)" />
       <p className="sub">Data no futuro: o cadastro muda sozinho quando chegar o dia (fica marcado na linha do tempo).</p>

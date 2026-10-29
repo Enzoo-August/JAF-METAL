@@ -18,7 +18,7 @@ import { TelaRelatorios } from './Relatorios.tsx'
 import { formPessoa } from './rh/Pessoas.tsx'
 import { TelaRH, tituloRH } from './rh/index.tsx'
 import { avisoFerias, formAusencia, programarFerias } from './rh/Ferias.tsx'
-import { formAso, formEpi, fichaEpi } from './rh/Seguranca.tsx'
+import { fichaEpi, formAso, formCatalogo, formEpi, termoEpi } from './rh/Seguranca.tsx'
 import { documento, formOcorrencia } from './rh/Disciplina.tsx'
 
 export interface DefTela { Tela: (p: { r: Rota }) => ReactNode; perm?: Acao; titulo: string | ((r: Rota) => string) }
@@ -60,7 +60,7 @@ export const Telas = {
   financeiro: { form: Financeiro.form, abrir: Financeiro.abrir, saldoHoje: Financeiro.saldoHoje },
   clientes: { form: Clientes.form, novoRapido: Clientes.novoRapido },
   equipe: { form: formPessoa },
-  rh: { formPessoa, programarFerias, avisoFerias, formAusencia, formAso, formEpi, fichaEpi, formOcorrencia, documento },
+  rh: { formPessoa, programarFerias, avisoFerias, formAusencia, formAso, formEpi, fichaEpi, termoEpi, formCatalogo, formOcorrencia, documento },
   admin: { trocarSenha },
   inicio: { personalizar },
   ajuda: { boasVindas },

@@ -1376,7 +1376,7 @@ create table if not exists public.rh_historico (
   vigencia       date not null,
   cargo          text,
   salario        numeric(12,2) check (salario is null or salario >= 0),
-  motivo         text not null default 'Admissão' check (motivo in ('Admissão','Promoção','Dissídio','Espontâneo','Mérito','Correção','Mudança de setor')),
+  motivo         text not null default 'Admissão' check (motivo in ('Admissão','Promoção','Dissídio','Espontâneo','Mérito','Correção','Mudança de setor','Reajuste do cargo')),
   setor          text,
   obs            text,
   criado_por     uuid default auth.uid(),
@@ -1413,7 +1413,7 @@ create table if not exists public.rh_ponto (
   s1             time,
   e2             time,
   s2             time,
-  justificativa  text check (justificativa is null or justificativa in ('atestado','declaracao','licenca','folga','falta','abonado','compensado')),
+  justificativa  text check (justificativa is null or justificativa in ('atestado','declaracao','licenca','folga','falta','abonado','compensado','bh_pos','bh_neg')),
   obs            text,
   atualizado_em  timestamptz not null default now(),
   unique (funcionario_id, data)
@@ -1582,7 +1582,7 @@ create table if not exists public.rh_anexos (
 create index if not exists rh_anexos_reg on public.rh_anexos (registro_id);
 do $$ begin
   alter table public.rh_anexos drop constraint if exists rh_anexos_tabela_check;
-  alter table public.rh_anexos add constraint rh_anexos_tabela_check check (tabela in ('funcionarios','rh_matriz_niveis','rh_asos','rh_epis','rh_ocorrencias','rh_ausencias','rh_processos'));
+  alter table public.rh_anexos add constraint rh_anexos_tabela_check check (tabela in ('funcionarios','rh_matriz_niveis','rh_asos','rh_epis','rh_ocorrencias','rh_ausencias','rh_processos','rh_epi_catalogo'));
 end $$;
 create table if not exists public.rh_anexos_conteudo (
   anexo_id uuid primary key references public.rh_anexos(id) on delete cascade,
@@ -1787,27 +1787,6 @@ begin
   return v_id;
 end $$;
 
-create or replace function public.rh_salvar_cargo(p jsonb) returns uuid
-language plpgsql security definer set search_path = public as $$
-declare v_id uuid := coalesce(public.uid_de(p, 'id'), gen_random_uuid()); v_nome text := public.nz(p->>'nome'); v_sup uuid := public.uid_de(p, 'superior_id');
-        x uuid; n int := 0;
-begin
-  perform public.exigir('dono','escritorio','rh');
-  if v_nome is null then raise exception 'Informe o nome do cargo'; end if;
-  if exists (select 1 from public.rh_cargos where lower(nome) = lower(v_nome) and id <> v_id) then raise exception 'Já existe o cargo "%"', v_nome; end if;
-  -- não deixa fazer um círculo no organograma (A responde a B que responde a A)
-  x := v_sup;
-  while x is not null and n < 50 loop
-    if x = v_id then raise exception 'Esse superior criaria um círculo no organograma'; end if;
-    select superior_id into x from public.rh_cargos where id = x; n := n + 1;
-  end loop;
-  insert into public.rh_cargos (id, nome, cbo, setor, superior_id, descricao, ativo)
-  values (v_id, v_nome, public.nz(p->>'cbo'), public.nz(p->>'setor'), v_sup, public.nzt(p->>'descricao'), coalesce((p->>'ativo')::boolean, true))
-  on conflict (id) do update set nome = excluded.nome, cbo = excluded.cbo, setor = excluded.setor, superior_id = excluded.superior_id,
-          descricao = excluded.descricao, ativo = excluded.ativo;
-  update public.funcionarios set funcao = v_nome where cargo_id = v_id and funcao is distinct from v_nome;
-  return v_id;
-end $$;
 
 -- ---------------------------------------------------------------------
 -- Férias, atestados e afastamentos
@@ -1887,7 +1866,7 @@ begin
     exception when others then raise exception 'Horário inválido no dia % (use 07:00)', to_char(v_data, 'DD/MM');
     end;
     v_j := public.nz(d->>'justificativa'); v_o := public.nzt(d->>'obs');
-    if v_j is not null and v_j not in ('atestado','declaracao','licenca','folga','falta','abonado','compensado') then raise exception 'Justificativa inválida'; end if;
+    if v_j is not null and v_j not in ('atestado','declaracao','licenca','folga','falta','abonado','compensado','bh_pos','bh_neg') then raise exception 'Justificativa inválida'; end if;
     if (v_e1 is null) <> (v_s1 is null) or (v_e2 is null) <> (v_s2 is null) then
       raise exception 'Dia %: cada entrada precisa da sua saída', to_char(v_data, 'DD/MM');
     end if;
@@ -2020,22 +1999,6 @@ end $$;
 -- ---------------------------------------------------------------------
 -- EPI e ASO
 -- ---------------------------------------------------------------------
-create or replace function public.rh_salvar_epi(p jsonb) returns uuid
-language plpgsql security definer set search_path = public as $$
-declare v_id uuid := coalesce(public.uid_de(p, 'id'), gen_random_uuid());
-begin
-  perform public.exigir('dono','escritorio','rh');
-  if (p->>'excluir')::boolean then delete from public.rh_epis where id = v_id; return v_id; end if;
-  if not exists (select 1 from public.funcionarios where id = public.uid_de(p, 'funcionario_id')) then raise exception 'Escolha o funcionário'; end if;
-  if public.nz(p->>'epi') is null then raise exception 'Informe o equipamento (EPI)'; end if;
-  if public.dt(p, 'entrega') is null then raise exception 'Informe a data de entrega'; end if;
-  insert into public.rh_epis (id, funcionario_id, epi, ca, entrega, validade_ca, vida_util_meses, quantidade, motivo, obs)
-  values (v_id, public.uid_de(p, 'funcionario_id'), public.nz(p->>'epi'), public.nz(p->>'ca'), public.dt(p, 'entrega'), public.dt(p, 'validade_ca'),
-          nullif(public.num(p, 'vida_util_meses')::int, 0), coalesce(public.num(p, 'quantidade'), 1), public.nz(p->>'motivo'), public.nzt(p->>'obs'))
-  on conflict (id) do update set epi = excluded.epi, ca = excluded.ca, entrega = excluded.entrega, validade_ca = excluded.validade_ca,
-          vida_util_meses = excluded.vida_util_meses, quantidade = excluded.quantidade, motivo = excluded.motivo, obs = excluded.obs;
-  return v_id;
-end $$;
 
 create or replace function public.rh_salvar_aso(p jsonb) returns uuid
 language plpgsql security definer set search_path = public as $$
@@ -2104,22 +2067,6 @@ end $$;
 -- ---------------------------------------------------------------------
 -- Anexos (PDF, JPG, PNG — até 4 MB)
 -- ---------------------------------------------------------------------
-create or replace function public.rh_anexar(p jsonb) returns uuid
-language plpgsql security definer set search_path = public as $$
-declare v_id uuid := gen_random_uuid(); v_c text := p->>'conteudo'; v_tam int;
-begin
-  perform public.exigir('dono','escritorio','rh');
-  if coalesce(p->>'tabela', '') not in ('funcionarios','rh_matriz_niveis','rh_asos','rh_epis','rh_ocorrencias','rh_ausencias','rh_processos') then raise exception 'Anexo sem destino'; end if;
-  if public.uid_de(p, 'registro_id') is null then raise exception 'Anexo sem destino'; end if;
-  if coalesce(p->>'tipo', '') not in ('application/pdf','image/jpeg','image/png') then raise exception 'Só PDF, JPG ou PNG'; end if;
-  if v_c is null or length(v_c) < 10 then raise exception 'Arquivo vazio'; end if;
-  v_tam := (length(v_c) * 3) / 4;
-  if v_tam > 4 * 1024 * 1024 then raise exception 'Arquivo grande demais (máximo 4 MB)'; end if;
-  insert into public.rh_anexos (id, tabela, registro_id, nome, tipo, tamanho)
-  values (v_id, p->>'tabela', public.uid_de(p, 'registro_id'), coalesce(public.nz(p->>'nome'), 'arquivo'), p->>'tipo', v_tam);
-  insert into public.rh_anexos_conteudo (anexo_id, conteudo) values (v_id, v_c);
-  return v_id;
-end $$;
 
 create or replace function public.rh_baixar_anexo(p_id uuid) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -2290,6 +2237,226 @@ begin
   update public.perfis set preferencias = p where user_id = auth.uid();
 end $$;
 
+-- =====================================================================
+-- v2.2 — pedidos do RH: banco de horas, salário por cargo, catálogo de EPI com CA,
+--        termo de EPI assinado (foto do rosto ou na tela) e indicadores de RH
+-- =====================================================================
+-- banco de horas no ponto: BH_POS (crédito +) e BH_NEG (débito −)
+do $$ begin
+  alter table public.rh_ponto drop constraint if exists rh_ponto_justificativa_check;
+  alter table public.rh_ponto add constraint rh_ponto_justificativa_check
+    check (justificativa is null or justificativa in ('atestado','declaracao','licenca','folga','falta','abonado','compensado','bh_pos','bh_neg'));
+  alter table public.rh_historico drop constraint if exists rh_historico_motivo_check;
+  alter table public.rh_historico add constraint rh_historico_motivo_check
+    check (motivo in ('Admissão','Promoção','Dissídio','Espontâneo','Mérito','Correção','Mudança de setor','Reajuste do cargo'));
+end $$;
+
+-- cargos: tipo (como na planilha "Cargo e salário") e salário do cargo (sensível: só RH, Escritório e Dono)
+alter table public.rh_cargos add column if not exists tipo text;
+create table if not exists public.rh_cargos_salarios (
+  id            uuid primary key references public.rh_cargos(id) on delete cascade,   -- o próprio cargo
+  salario       numeric(12,2) not null check (salario > 0),
+  atualizado_em timestamptz not null default now()
+);
+
+-- catálogo de EPI (planilha "CA - Certificado de Aprovação dos EPIs"); o PDF do CA vai em rh_anexos
+create table if not exists public.rh_epi_catalogo (
+  id            uuid primary key default gen_random_uuid(),
+  descricao     text not null,
+  onde_utiliza  text,
+  fabricante    text,
+  ca            text,
+  validade_ca   date,
+  tamanhos      text,
+  vida_util_meses int check (vida_util_meses is null or vida_util_meses > 0),
+  obs           text,
+  ativo         boolean not null default true,
+  atualizado_em timestamptz not null default now()
+);
+create index if not exists rh_epi_catalogo_ca on public.rh_epi_catalogo (ca);
+alter table public.rh_epis add column if not exists catalogo_id uuid references public.rh_epi_catalogo(id) on delete set null;
+alter table public.rh_epis add column if not exists fabricante text;
+alter table public.rh_epis add column if not exists tamanho text;
+alter table public.rh_epis add column if not exists assinatura text check (assinatura is null or assinatura in ('facial','tela','papel'));
+alter table public.rh_epis add column if not exists assinado_em timestamptz;
+
+-- indicadores de RH: o que o sistema não sabe sozinho (receita bruta e custos do mês)
+create table if not exists public.rh_indicadores (
+  id            uuid primary key default gen_random_uuid(),
+  competencia   date not null unique check (extract(day from competencia) = 1),
+  receita       numeric(14,2) check (receita is null or receita >= 0),
+  beneficios    numeric(14,2) check (beneficios is null or beneficios >= 0),
+  encargos      numeric(14,2) check (encargos is null or encargos >= 0),
+  outros        numeric(14,2) check (outros is null or outros >= 0),
+  atualizado_em timestamptz not null default now()
+);
+
+do $$
+declare t text;
+begin
+  foreach t in array array['rh_cargos_salarios','rh_epi_catalogo','rh_indicadores'] loop
+    execute format('drop trigger if exists tg_atualizado on public.%I', t);
+    execute format('create trigger tg_atualizado before update on public.%I for each row execute function public.tg_atualizado()', t);
+    execute format('drop trigger if exists tg_historico on public.%I', t);
+    execute format('create trigger tg_historico after insert or update or delete on public.%I for each row execute function public.tg_historico()', t);
+    execute format('alter table public.%I enable row level security', t);
+    execute format('revoke all on public.%I from anon, authenticated', t);
+    execute format('drop policy if exists ler on public.%I', t);
+  end loop;
+end $$;
+grant select on public.rh_cargos_salarios, public.rh_epi_catalogo, public.rh_indicadores to authenticated;
+create policy ler on public.rh_cargos_salarios for select to authenticated using (public.pode_rh());
+create policy ler on public.rh_epi_catalogo    for select to authenticated using (public.ve_rh());
+create policy ler on public.rh_indicadores     for select to authenticated using (public.pode_rh());
+
+create or replace function public.rh_salvar_cargo(p jsonb) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid := coalesce(public.uid_de(p, 'id'), gen_random_uuid()); v_nome text := public.nz(p->>'nome'); v_sup uuid := public.uid_de(p, 'superior_id');
+        x uuid; n int := 0;
+begin
+  perform public.exigir('dono','escritorio','rh');
+  if v_nome is null then raise exception 'Informe o nome do cargo'; end if;
+  if exists (select 1 from public.rh_cargos where lower(nome) = lower(v_nome) and id <> v_id) then raise exception 'Já existe o cargo "%"', v_nome; end if;
+  -- não deixa fazer um círculo no organograma (A responde a B que responde a A)
+  x := v_sup;
+  while x is not null and n < 50 loop
+    if x = v_id then raise exception 'Esse superior criaria um círculo no organograma'; end if;
+    select superior_id into x from public.rh_cargos where id = x; n := n + 1;
+  end loop;
+  insert into public.rh_cargos (id, nome, cbo, setor, superior_id, descricao, ativo, tipo)
+  values (v_id, v_nome, public.nz(p->>'cbo'), public.nz(p->>'setor'), v_sup, public.nzt(p->>'descricao'), coalesce((p->>'ativo')::boolean, true), public.nz(p->>'tipo'))
+  on conflict (id) do update set nome = excluded.nome, cbo = excluded.cbo, setor = excluded.setor, superior_id = excluded.superior_id,
+          descricao = excluded.descricao, ativo = excluded.ativo, tipo = excluded.tipo;
+  update public.funcionarios set funcao = v_nome where cargo_id = v_id and funcao is distinct from v_nome;
+  return v_id;
+end $$;
+
+-- salário do cargo. Com aplicar = true, todas as pessoas ativas do cargo passam a ganhar esse salário
+-- (entra na linha do tempo de cada uma, com a vigência escolhida). Devolve quantas pessoas mudaram.
+create or replace function public.rh_salario_cargo(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare v_c uuid := public.uid_de(p, 'cargo_id'); v_sal numeric := public.num(p, 'salario'); v_vig date := coalesce(public.dt(p, 'vigencia'), public.hoje());
+        v_motivo text := coalesce(public.nz(p->>'motivo'), 'Reajuste do cargo'); v_nome text; f record; n int := 0;
+begin
+  perform public.exigir('dono','escritorio','rh');
+  select nome into v_nome from public.rh_cargos where id = v_c;
+  if v_nome is null then raise exception 'Cargo não encontrado'; end if;
+  if v_sal is null then delete from public.rh_cargos_salarios where id = v_c; return 0; end if;
+  if v_sal <= 0 then raise exception 'Salário inválido'; end if;
+  insert into public.rh_cargos_salarios (id, salario) values (v_c, v_sal) on conflict (id) do update set salario = excluded.salario;
+  if coalesce((p->>'aplicar')::boolean, false) then
+    for f in select x.id from public.funcionarios x left join public.funcionarios_privado pr on pr.funcionario_id = x.id
+              where x.cargo_id = v_c and x.ativo and x.situacao <> 'desligado' and pr.salario is distinct from v_sal loop
+      perform public.rh_alterar_cargo_salario(jsonb_build_object('funcionario_id', f.id, 'vigencia', v_vig, 'salario', v_sal, 'motivo', v_motivo,
+                                                                 'obs', 'Salário do cargo ' || v_nome || ' atualizado para todos'));
+      n := n + 1;
+    end loop;
+  end if;
+  return n;
+end $$;
+
+create or replace function public.rh_salvar_epi_catalogo(p jsonb) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid := coalesce(public.uid_de(p, 'id'), gen_random_uuid());
+begin
+  perform public.exigir('dono','escritorio','rh');
+  if (p->>'excluir')::boolean then delete from public.rh_epi_catalogo where id = v_id; return v_id; end if;
+  if public.nz(p->>'descricao') is null then raise exception 'Informe a descrição do EPI'; end if;
+  insert into public.rh_epi_catalogo (id, descricao, onde_utiliza, fabricante, ca, validade_ca, tamanhos, vida_util_meses, obs, ativo)
+  values (v_id, public.nz(p->>'descricao'), public.nz(p->>'onde_utiliza'), public.nz(p->>'fabricante'), regexp_replace(coalesce(public.nz(p->>'ca'), ''), '\s', '', 'g'),
+          public.dt(p, 'validade_ca'), public.nz(p->>'tamanhos'), nullif(public.num(p, 'vida_util_meses')::int, 0), public.nzt(p->>'obs'), coalesce((p->>'ativo')::boolean, true))
+  on conflict (id) do update set descricao = excluded.descricao, onde_utiliza = excluded.onde_utiliza, fabricante = excluded.fabricante, ca = excluded.ca,
+          validade_ca = excluded.validade_ca, tamanhos = excluded.tamanhos, vida_util_meses = excluded.vida_util_meses, obs = excluded.obs, ativo = excluded.ativo;
+  update public.rh_epi_catalogo set ca = null where id = v_id and ca = '';
+  return v_id;
+end $$;
+
+create or replace function public.rh_salvar_epi(p jsonb) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid := coalesce(public.uid_de(p, 'id'), gen_random_uuid()); c public.rh_epi_catalogo;
+begin
+  perform public.exigir('dono','escritorio','rh');
+  if (p->>'excluir')::boolean then delete from public.rh_epis where id = v_id; return v_id; end if;
+  if not exists (select 1 from public.funcionarios where id = public.uid_de(p, 'funcionario_id')) then raise exception 'Escolha o funcionário'; end if;
+  select * into c from public.rh_epi_catalogo where id = public.uid_de(p, 'catalogo_id');
+  if coalesce(public.nz(p->>'epi'), c.descricao) is null then raise exception 'Informe o equipamento (EPI)'; end if;
+  if public.dt(p, 'entrega') is null then raise exception 'Informe a data de entrega'; end if;
+  insert into public.rh_epis (id, funcionario_id, epi, ca, entrega, validade_ca, vida_util_meses, quantidade, motivo, obs, catalogo_id, fabricante, tamanho)
+  values (v_id, public.uid_de(p, 'funcionario_id'), coalesce(public.nz(p->>'epi'), c.descricao), coalesce(public.nz(p->>'ca'), c.ca), public.dt(p, 'entrega'),
+          coalesce(public.dt(p, 'validade_ca'), c.validade_ca), coalesce(nullif(public.num(p, 'vida_util_meses')::int, 0), c.vida_util_meses),
+          coalesce(public.num(p, 'quantidade'), 1), public.nz(p->>'motivo'), public.nzt(p->>'obs'), c.id, coalesce(public.nz(p->>'fabricante'), c.fabricante), public.nz(p->>'tamanho'))
+  on conflict (id) do update set epi = excluded.epi, ca = excluded.ca, entrega = excluded.entrega, validade_ca = excluded.validade_ca,
+          vida_util_meses = excluded.vida_util_meses, quantidade = excluded.quantidade, motivo = excluded.motivo, obs = excluded.obs,
+          catalogo_id = excluded.catalogo_id, fabricante = excluded.fabricante, tamanho = excluded.tamanho;
+  return v_id;
+end $$;
+
+-- assinatura do termo de EPI: foto do rosto (facial), assinatura na tela ou no papel (impresso)
+-- p: {ids: [entregas], modo, conteudo?: base64 da foto/assinatura, tipo?: image/jpeg|image/png}
+create or replace function public.rh_assinar_epis(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare v_modo text := public.nz(p->>'modo'); v_id uuid; n int := 0; v_f uuid;
+begin
+  perform public.exigir('dono','escritorio','rh');
+  if v_modo is null or v_modo not in ('facial','tela','papel') then raise exception 'Escolha como vai assinar'; end if;
+  if jsonb_typeof(p->'ids') <> 'array' or jsonb_array_length(p->'ids') = 0 then raise exception 'Escolha os EPIs do termo'; end if;
+  if v_modo <> 'papel' and public.nz(p->>'conteudo') is null then raise exception 'Falta a foto ou a assinatura'; end if;
+  for v_id in select (x #>> '{}')::uuid from jsonb_array_elements(p->'ids') x loop
+    select funcionario_id into v_f from public.rh_epis where id = v_id;
+    if v_f is null then raise exception 'Entrega de EPI não encontrada'; end if;
+    update public.rh_epis set assinatura = v_modo, assinado_em = now() where id = v_id;
+    if v_modo <> 'papel' then
+      perform public.rh_anexar(jsonb_build_object('tabela', 'rh_epis', 'registro_id', v_id, 'tipo', coalesce(public.nz(p->>'tipo'), 'image/jpeg'),
+        'nome', case when v_modo = 'facial' then 'Assinatura facial ' else 'Assinatura na tela ' end || to_char(now() at time zone 'America/Sao_Paulo', 'DD-MM-YYYY HH24hMI')
+                || case when coalesce(public.nz(p->>'tipo'), 'image/jpeg') = 'image/png' then '.png' else '.jpg' end,
+        'conteudo', p->>'conteudo'));
+    end if;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+create or replace function public.rh_anexar(p jsonb) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid := gen_random_uuid(); v_c text := p->>'conteudo'; v_tam int;
+begin
+  perform public.exigir('dono','escritorio','rh');
+  if coalesce(p->>'tabela', '') not in ('funcionarios','rh_matriz_niveis','rh_asos','rh_epis','rh_ocorrencias','rh_ausencias','rh_processos','rh_epi_catalogo') then raise exception 'Anexo sem destino'; end if;
+  if public.uid_de(p, 'registro_id') is null then raise exception 'Anexo sem destino'; end if;
+  if coalesce(p->>'tipo', '') not in ('application/pdf','image/jpeg','image/png') then raise exception 'Só PDF, JPG ou PNG'; end if;
+  if v_c is null or length(v_c) < 10 then raise exception 'Arquivo vazio'; end if;
+  v_tam := (length(v_c) * 3) / 4;
+  if v_tam > 4 * 1024 * 1024 then raise exception 'Arquivo grande demais (máximo 4 MB)'; end if;
+  insert into public.rh_anexos (id, tabela, registro_id, nome, tipo, tamanho)
+  values (v_id, p->>'tabela', public.uid_de(p, 'registro_id'), coalesce(public.nz(p->>'nome'), 'arquivo'), p->>'tipo', v_tam);
+  insert into public.rh_anexos_conteudo (anexo_id, conteudo) values (v_id, v_c);
+  return v_id;
+end $$;
+
+-- p: {ano, meses: [{mes 1..12, receita, beneficios, encargos, outros}]} — campo vazio apaga o valor
+create or replace function public.rh_salvar_indicadores(p jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare v_ano int := (p->>'ano')::int; m jsonb; v_comp date; n int := 0;
+begin
+  perform public.exigir('dono','escritorio','rh');
+  if v_ano is null or v_ano < 2000 or v_ano > 2100 then raise exception 'Ano inválido'; end if;
+  if jsonb_typeof(p->'meses') <> 'array' then raise exception 'Nada para gravar'; end if;
+  for m in select * from jsonb_array_elements(p->'meses') loop
+    if (m->>'mes')::int not between 1 and 12 then raise exception 'Mês inválido'; end if;
+    v_comp := make_date(v_ano, (m->>'mes')::int, 1);
+    if public.num(m, 'receita') < 0 or public.num(m, 'beneficios') < 0 or public.num(m, 'encargos') < 0 or public.num(m, 'outros') < 0 then raise exception 'Valor negativo não vale'; end if;
+    if public.num(m, 'receita') is null and public.num(m, 'beneficios') is null and public.num(m, 'encargos') is null and public.num(m, 'outros') is null then
+      delete from public.rh_indicadores where competencia = v_comp;
+    else
+      insert into public.rh_indicadores (competencia, receita, beneficios, encargos, outros)
+      values (v_comp, public.num(m, 'receita'), public.num(m, 'beneficios'), public.num(m, 'encargos'), public.num(m, 'outros'))
+      on conflict (competencia) do update set receita = excluded.receita, beneficios = excluded.beneficios, encargos = excluded.encargos, outros = excluded.outros;
+    end if;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- Quem pode chamar cada função (o Supabase libera para todos por padrão)
 -- ---------------------------------------------------------------------
@@ -2320,7 +2487,8 @@ grant execute on function
   public.rh_salvar_feriado(date, text, boolean), public.rh_salvar_matriz(jsonb), public.rh_definir_nivel(jsonb), public.rh_salvar_plano(jsonb),
   public.rh_salvar_meta(jsonb), public.rh_salvar_epi(jsonb), public.rh_salvar_aso(jsonb), public.rh_salvar_ocorrencia(jsonb),
   public.rh_anexar(jsonb), public.rh_baixar_anexo(uuid), public.rh_excluir_anexo(uuid), public.cpf_valido(text),
-  public.rh_salvar_processo(jsonb), public.importar_rh(jsonb, boolean)
+  public.rh_salvar_processo(jsonb), public.importar_rh(jsonb, boolean), public.rh_salario_cargo(jsonb), public.rh_salvar_epi_catalogo(jsonb),
+  public.rh_assinar_epis(jsonb), public.rh_salvar_indicadores(jsonb)
   to authenticated;
 
 -- depois que existe um Dono, o "primeiro acesso" deixa de existir para quem não entrou

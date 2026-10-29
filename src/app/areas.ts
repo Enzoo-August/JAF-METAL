@@ -34,6 +34,7 @@ export const AREAS: Area[] = [
     { rota: 'rh/processos', rot: 'Processos', perm: 'rh_sensivel', chaves: 'processo trabalhista advogado ação justiça' },
     { rota: 'rh/organograma', rot: 'Organograma', perm: 'rh_ver', chaves: 'cargos hierarquia chefe' },
     { rota: 'rh/relatorios', rot: 'Relatórios', perm: 'rh_ver', chaves: 'turnover absenteísmo custo folha' },
+    { rota: 'rh/indicadores', rot: 'Indicadores', perm: 'rh_sensivel', chaves: 'indicadores rotatividade turnover receita custo por funcionário dashboard painel experiência escolaridade faixa etária' },
     { rota: 'rh/ajustes', rot: 'Ajustes', perm: 'rh_editar', chaves: 'cargos setores feriados jornada tolerância' },
   ] },
   { id: 'financeiro', rot: 'Financeiro', ic: 'dinheiro', desc: 'Contas, caixa e clientes', subs: [

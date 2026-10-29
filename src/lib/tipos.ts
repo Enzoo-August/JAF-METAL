@@ -36,15 +36,16 @@ export interface FuncionarioPrivado {
   rg_emissao: string | null; cnh_categoria: string | null; cnh_validade: string | null; categoria_militar: string | null
 }
 export interface RhSetor { id: string; nome: string; gestor_id: string | null; ativo: boolean; atualizado_em: string }
-export interface RhCargo { id: string; nome: string; cbo: string | null; setor: string | null; superior_id: string | null; descricao: string | null; ativo: boolean; atualizado_em: string }
-export type MotivoHist = 'Admissão' | 'Promoção' | 'Dissídio' | 'Espontâneo' | 'Mérito' | 'Correção' | 'Mudança de setor'
+export interface RhCargo { id: string; nome: string; cbo: string | null; setor: string | null; superior_id: string | null; descricao: string | null; ativo: boolean; tipo: string | null; atualizado_em: string }
+export interface RhCargoSalario { id: string; salario: number; atualizado_em: string }
+export type MotivoHist = 'Admissão' | 'Promoção' | 'Dissídio' | 'Espontâneo' | 'Mérito' | 'Correção' | 'Mudança de setor' | 'Reajuste do cargo'
 export interface RhHistorico { id: string; funcionario_id: string; vigencia: string; cargo: string | null; salario: number | null; motivo: MotivoHist; setor: string | null; obs: string | null; criado_por: string | null; criado_em: string }
 export type TipoAusencia = 'ferias' | 'atestado' | 'afastamento' | 'licenca' | 'suspensao' | 'folga' | 'falta' | 'declaracao'
 export interface RhAusencia {
   id: string; funcionario_id: string; tipo: TipoAusencia; inicio: string; fim: string | null; aquisitivo_inicio: string | null
   motivo: string | null; cid: string | null; abona: boolean; obs: string | null; ocorrencia_id: string | null; atualizado_em: string
 }
-export type Justificativa = 'atestado' | 'declaracao' | 'licenca' | 'folga' | 'falta' | 'abonado' | 'compensado'
+export type Justificativa = 'atestado' | 'declaracao' | 'licenca' | 'folga' | 'falta' | 'abonado' | 'compensado' | 'bh_pos' | 'bh_neg'
 export interface RhPonto { id: string; funcionario_id: string; data: string; e1: string | null; s1: string | null; e2: string | null; s2: string | null; justificativa: Justificativa | null; obs: string | null; atualizado_em: string }
 export interface RhPontoMes { id: string; funcionario_id: string; competencia: string; fechado_por: string | null; fechado_em: string }
 export interface RhFeriado { id: string; data: string; nome: string }
@@ -54,7 +55,10 @@ export interface RhMatrizItem { id: string; matriz_id: string; nome: string; ord
 export interface RhNivel { id: string; item_id: string; funcionario_id: string; nivel: number; data: string | null; obs: string | null; atualizado_em: string }
 export interface RhPlano { id: string; matriz_id: string | null; treinamento: string; data: string | null; instituicao: string | null; modalidade: string | null; status: 'planejado' | 'realizado' | 'cancelado'; obs: string | null; atualizado_em: string }
 export interface RhMeta { id: string; funcionario_id: string; objetivo: string; acao: string | null; prazo: string | null; status: 'andamento' | 'concluido' | 'cancelado'; obs: string | null; atualizado_em: string }
-export interface RhEpi { id: string; funcionario_id: string; epi: string; ca: string | null; entrega: string; validade_ca: string | null; vida_util_meses: number | null; quantidade: number; motivo: string | null; obs: string | null; atualizado_em: string }
+export interface RhEpi { id: string; funcionario_id: string; epi: string; ca: string | null; entrega: string; validade_ca: string | null; vida_util_meses: number | null; quantidade: number; motivo: string | null; obs: string | null
+  catalogo_id: string | null; fabricante: string | null; tamanho: string | null; assinatura: 'facial' | 'tela' | 'papel' | null; assinado_em: string | null; atualizado_em: string }
+export interface RhEpiCatalogo { id: string; descricao: string; onde_utiliza: string | null; fabricante: string | null; ca: string | null; validade_ca: string | null; tamanhos: string | null; vida_util_meses: number | null; obs: string | null; ativo: boolean; atualizado_em: string }
+export interface RhIndicador { id: string; competencia: string; receita: number | null; beneficios: number | null; encargos: number | null; outros: number | null; atualizado_em: string }
 export interface RhAso { id: string; funcionario_id: string; tipo: string; data_exame: string; periodicidade_meses: number | null; resultado: string | null; medico: string | null; crm: string | null; obs: string | null; atualizado_em: string }
 export interface RhOcorrencia {
   id: string; numero: number; funcionario_id: string; tipo: 'verbal' | 'escrita' | 'suspensao'; data_ocorrencia: string; data_aplicacao: string | null
@@ -120,6 +124,7 @@ export interface Tabelas {
   rh_setores: RhSetor; rh_cargos: RhCargo; rh_historico: RhHistorico; rh_ausencias: RhAusencia; rh_ponto: RhPonto; rh_ponto_meses: RhPontoMes
   rh_feriados: RhFeriado; rh_matrizes: RhMatriz; rh_matriz_itens: RhMatrizItem; rh_matriz_niveis: RhNivel; rh_plano_treinos: RhPlano
   rh_metas: RhMeta; rh_epis: RhEpi; rh_asos: RhAso; rh_ocorrencias: RhOcorrencia; rh_anexos: RhAnexo; rh_processos: RhProcesso
+  rh_cargos_salarios: RhCargoSalario; rh_epi_catalogo: RhEpiCatalogo; rh_indicadores: RhIndicador
 }
 export type NomeTabela = keyof Tabelas
 

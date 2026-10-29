@@ -110,7 +110,7 @@ export async function criarDemo(): Promise<void> {
   // RH: setores e cargos (organograma) antes das pessoas
   for (const nome of ['Usinagem', 'Produção', 'Almoxarifado', 'Escritório', 'Qualidade', 'RH']) await API.rpc('rh_salvar_setor', { p: { nome } })
   const cargo: Record<string, string> = {}
-  const novoCargo = async (nome: string, setor: string, sup: string | null, cbo: string) => { cargo[nome] = await API.rpc<string>('rh_salvar_cargo', { p: { nome, setor, cbo, superior_id: sup ? cargo[sup] : null } }) }
+  const novoCargo = async (nome: string, setor: string, sup: string | null, cbo: string) => { cargo[nome] = await API.rpc<string>('rh_salvar_cargo', { p: { nome, setor, cbo, tipo: setor === 'Escritório' || setor === 'RH' ? 'Administrativo' : setor, superior_id: sup ? cargo[sup] : null } }) }
   await novoCargo('Gerente geral', 'Escritório', null, '1421-05')
   await novoCargo('Gerente de produção', 'Produção', 'Gerente geral', '1412-05')
   await novoCargo('Líder de produção', 'Produção', 'Gerente de produção', '7201-10')
@@ -307,6 +307,14 @@ async function demoRH(ids: Record<string, string>, cargo: Record<string, string>
     await rpc('rh_salvar_epi', { funcionario_id: ids[nome], epi: 'Protetor auricular tipo plug', ca: '54321', entrega: ent, vida_util_meses: 3, quantidade: 2, motivo: nome === 'Nina Barros' ? 'Admissional' : 'Troca por desgaste' })
     await rpc('rh_salvar_epi', { funcionario_id: ids[nome], epi: 'Botina de segurança', ca: '11111', entrega: ent, vida_util_meses: 12, validade_ca: nome === 'Caio Souza' ? dia(-20) : dia(400), quantidade: 1, motivo: nome === 'Nina Barros' ? 'Admissional' : 'Troca por desgaste' })
   }
+  // cadastro de EPI com CA (um com CA vencido)
+  await rpc('rh_salvar_epi_catalogo', { descricao: 'Luva de vaqueta', fabricante: 'Luvas Exemplo', ca: '99902', validade_ca: dia(700), tamanhos: 'P, M, G', onde_utiliza: 'Solda MIG e TIG', vida_util_meses: 3 })
+  await rpc('rh_salvar_epi_catalogo', { descricao: 'Óculos de segurança', fabricante: 'Óculos Exemplo', ca: '99903', validade_ca: dia(300), tamanhos: 'Único', onde_utiliza: 'Fábrica', vida_util_meses: 6 })
+  await rpc('rh_salvar_epi_catalogo', { descricao: 'Protetor auditivo tipo concha', fabricante: 'Protetor Exemplo', ca: '99904', validade_ca: dia(-30), onde_utiliza: 'Fábrica' })
+  // salário de referência de dois cargos e a receita dos meses do ano (indicadores)
+  await rpc('rh_salario_cargo', { cargo_id: cargo['Torneiro CNC'], salario: 4200 })
+  await rpc('rh_salario_cargo', { cargo_id: cargo['Ajudante geral'], salario: 2300 })
+  await rpc('rh_salvar_indicadores', { ano: Number(hoje.slice(0, 4)), meses: Array.from({ length: Number(hoje.slice(5, 7)) }, (_, i) => ({ mes: i + 1, receita: 180000 + i * 7500, beneficios: 9000 })) })
   // medidas disciplinares
   await rpc('rh_salvar_ocorrencia', { funcionario_id: ids['Gil Prado'], tipo: 'verbal', data_ocorrencia: dia(-50), status: 'assinado', categoria: 'Descumprimento de regras de segurança (EPI)', assunto: 'Sem óculos de proteção',
     descricao: 'Foi visto operando a esmerilhadeira sem os óculos de proteção (exemplo).', aplicador: 'Kleber Dias', aplicador_cargo: 'Líder de produção' })
