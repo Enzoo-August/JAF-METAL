@@ -99,7 +99,7 @@ export function Casca() {
         </div>
       </aside>
       <div className="lateral-fundo" data-acao="fecharMenu" onClick={fecharMenu} />
-      <div className="principal">
+      <div className="principal" data-area={area?.id || 'inicio'}>
         <header className="topo">
           <button type="button" className="icone-btn so-celular" data-acao="menu" aria-label="Menu" onClick={() => document.body.classList.toggle('menu-aberto')}><Ic n="menu" /></button>
           <a href="#/inicio" className="topo-marca so-celular"><img src="./assets/logo.png" alt="JAF Metal" /></a>

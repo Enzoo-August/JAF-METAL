@@ -109,9 +109,12 @@ export function Anexos({ tabela, registro, titulo = 'Arquivos anexados', vazio =
   </div>
 }
 
+// cor do círculo com a inicial (a mesma pessoa tem sempre a mesma cor)
+export const corAvatar = (nome: string): string => 'avatar c' + ([...(nome || '')].reduce((t, c) => t + c.charCodeAt(0), 0) % 5)
+
 // ------------------------------------------------------------------ linha de pessoa (listas)
 export function LinhaPessoa({ f, direita, sub, href }: { f: Funcionario; direita?: ReactNode; sub?: ReactNode; href?: string }) {
-  return <a className="linha" href={href || '#/funcionario/' + f.id} data-func={f.id}><span className="avatar">{f.nome.charAt(0).toUpperCase()}</span>
+  return <a className="linha" href={href || '#/funcionario/' + f.id} data-func={f.id}><span className={corAvatar(f.nome)}>{f.nome.charAt(0).toUpperCase()}</span>
     <div className="meio"><b>{f.nome}</b><small>{sub ?? ([f.funcao, f.setor, f.registro].filter(Boolean).join(' · ') || '—')}</small></div>
     <div className="lado">{direita ?? <Tag s={situacaoFunc(f)} />}</div></a>
 }

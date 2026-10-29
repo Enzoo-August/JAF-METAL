@@ -1,5 +1,6 @@
 /* Pedacinhos de tela usados em todo o sistema (mesmas classes do visual de antes) */
-import { useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type Ref } from 'react'
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type Ref } from 'react'
+import { buscar } from '../lib/util.ts'
 import type { Situacao } from '../lib/tipos.ts'
 import { Ic, type NomeIcone } from './icones.tsx'
 import { erro } from './avisos.ts'
@@ -81,8 +82,11 @@ export function Campo({ nome, rotulo, tipo = 'text', valor, req, opcoes, ajuda, 
     return <label className={`check ${cls}`.trim()}><input type="checkbox" name={nome} defaultChecked={!!valor} {...extra} /> <span>{rotulo}</span></label>
   }
   let input: ReactNode
-  if (tipo === 'select') {
-    input = <select id={id} name={nome} required={req} defaultValue={String(v)} {...extra}>{(opcoes || []).map(o => <option key={String(o.v)} value={o.v}>{o.t}</option>)}</select>
+  if (tipo === 'select' && (opcoes || []).length > 10 && !attrs.semBusca) {
+    input = <SelectBusca id={id} nome={nome} req={req} valor={String(v)} opcoes={opcoes || []} extra={extra} />
+  } else if (tipo === 'select') {
+    const { semBusca: _s, ...resto } = extra; void _s
+    input = <select id={id} name={nome} required={req} defaultValue={String(v)} {...resto}>{(opcoes || []).map(o => <option key={String(o.v)} value={o.v}>{o.t}</option>)}</select>
   } else if (tipo === 'area') {
     input = <textarea id={id} name={nome} rows={linhas || 3} required={req} placeholder={placeholder} defaultValue={String(v)} {...extra} />
   } else if (tipo === 'num' || tipo === 'dinheiro' || tipo === 'qtd') {
@@ -92,6 +96,51 @@ export function Campo({ nome, rotulo, tipo = 'text', valor, req, opcoes, ajuda, 
     input = <input id={id} name={nome} type={tipo} defaultValue={String(v)} required={req} placeholder={placeholder} autoComplete={auto || 'off'} {...extra} />
   }
   return <div className={`campo ${cls}`.trim()}><label htmlFor={id}>{rotulo}{req && <> <i className="req">*</i></>}</label>{input}{ajuda ? <small>{ajuda}</small> : null}</div>
+}
+
+// lista de escolha longa (pessoas, cargos…): digita para achar. O <select> escondido continua sendo o valor do formulário.
+export function SelectBusca({ id, nome, req, valor, opcoes, extra }: { id: string; nome: string; req?: boolean; valor: string; opcoes: { v: string | number; t: string }[]; extra: Record<string, unknown> }) {
+  const sel = useRef<HTMLSelectElement>(null)
+  const inp = useRef<HTMLInputElement>(null)
+  const lista = useRef<HTMLDivElement>(null)
+  const vazio = opcoes.find(o => String(o.v) === '')
+  const reais = opcoes.filter(o => String(o.v) !== '')
+  const rot = (v: string) => (v ? opcoes.find(o => String(o.v) === v)?.t || '' : '')
+  const [txt, setTxt] = useState(rot(valor))
+  const [aberta, setAberta] = useState(false)
+  const [filtro, setFiltro] = useState('')
+  const [marc, setMarc] = useState(0)
+  const itens = filtro.trim() ? buscar(reais, filtro, o => [o.t], 40) : reais
+  const { onChange, semBusca: _s, ...resto } = extra as { onChange?: (e: { target: HTMLSelectElement }) => void; semBusca?: unknown }; void _s
+  const escolher = (v: string) => {
+    const s = sel.current!
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(s, v)
+    s.dispatchEvent(new Event('change', { bubbles: true }))
+    setTxt(rot(v)); setFiltro(''); setAberta(false); inp.current?.blur()
+  }
+  useEffect(() => { lista.current?.querySelector('.sel')?.scrollIntoView({ block: 'nearest' }) }, [marc])
+  return <div className="combo select-busca">
+    <select ref={sel} name={nome} required={req} defaultValue={valor} hidden data-busca="1" tabIndex={-1} aria-hidden="true" {...resto}
+      onChange={(e) => { setTxt(rot(e.target.value)); onChange?.(e) }}>{opcoes.map(o => <option key={String(o.v)} value={o.v}>{o.t}</option>)}</select>
+    <div className="select-busca-campo">
+      <input ref={inp} id={id} type="search" role="combobox" aria-expanded={aberta} autoComplete="off" spellCheck={false} placeholder={txt || vazio?.t || 'Digite para buscar'}
+        value={aberta ? filtro : txt} onFocus={() => { setFiltro(''); setMarc(0); setAberta(true) }}
+        onChange={(e) => { setFiltro(e.target.value); setMarc(0); setAberta(true) }}
+        onBlur={() => setTimeout(() => setAberta(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { setMarc(m => Math.min(m + 1, itens.length - 1)); e.preventDefault() }
+          else if (e.key === 'ArrowUp') { setMarc(m => Math.max(m - 1, 0)); e.preventDefault() }
+          else if (e.key === 'Enter' && aberta) { e.preventDefault(); if (itens[marc]) escolher(String(itens[marc].v)) }
+          else if (e.key === 'Escape' && aberta) { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setAberta(false); inp.current?.blur() }
+        }} />
+      <Ic n="busca" />
+    </div>
+    <div ref={lista} className="combo-lista" role="listbox" hidden={!aberta} onPointerDown={(e) => e.preventDefault()}>
+      {vazio && !filtro && !req && <div className="combo-item combo-limpar" onClick={() => escolher('')}>{vazio.t}</div>}
+      {itens.map((o, n) => <div key={String(o.v)} className={`combo-item ${n === marc ? 'sel' : ''}`} role="option" aria-selected={n === marc} data-v={o.v} onClick={() => escolher(String(o.v))}>{o.t}</div>)}
+      {!itens.length && <div className="combo-nada">Nada encontrado para “{filtro}”</div>}
+    </div>
+  </div>
 }
 
 // mostra mais itens de uma lista longa aos poucos

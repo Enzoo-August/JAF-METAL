@@ -12,7 +12,7 @@ import { Btn, Cab, Campo, Chips, Paginado, Tag, Vazio, type OpcaoChip } from '..
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { Ic } from '../../ui/icones.tsx'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
-import { Anexos, ativos, cidadeEmpresa, dataExtenso, jornada, LinhaPessoa, nomeF, opcoesPessoas, periodo, pode, razaoEmpresa, sensivel, TagFerias, TIPO_AUS } from './comum.tsx'
+import { Anexos, ativos, cidadeEmpresa, dataExtenso, jornada, LinhaPessoa, nomeF, opcoesPessoas, periodo, pode, razaoEmpresa, sensivel, TagFerias, TIPO_AUS, corAvatar } from './comum.tsx'
 import { feriadosMap } from './Ponto.tsx'
 
 // primeiro dia útil depois de uma data (retorno ao trabalho)
@@ -96,7 +96,7 @@ function ListaAusencias() {
     <div className="barra-filtros"><Chips atual={t} aoEscolher={setT} nome="at" opcoes={chips} />
       <input type="month" aria-label="Mês" value={m} onChange={(e) => setM(e.target.value)} className="campo-mes" />{m && <button type="button" className="btn fantasma mini" onClick={() => setM('')}>Todos os meses</button>}</div>
     <div className="mt"><Paginado itens={l} render={a => { const p = S.get('funcionarios', a.funcionario_id); return p ? <div key={a.id} className="linha clicavel" data-aus={a.id} onClick={() => pode() && void formAusencia(p, a)}>
-      <span className="avatar">{p.nome.charAt(0)}</span><div className="meio"><b>{p.nome}</b><small>{TIPO_AUS[a.tipo]}{a.motivo ? ' · ' + a.motivo : ''}{sensivel() && a.cid ? ' · CID ' + a.cid : ''} · {periodo(a.inicio, a.fim)}</small></div>
+      <span className={corAvatar(p.nome)}>{p.nome.charAt(0)}</span><div className="meio"><b>{p.nome}</b><small>{TIPO_AUS[a.tipo]}{a.motivo ? ' · ' + a.motivo : ''}{sensivel() && a.cid ? ' · CID ' + a.cid : ''} · {periodo(a.inicio, a.fim)}</small></div>
       <div className="lado">{a.abona ? <Tag s={{ cor: 'verde', txt: 'Abonado' }} /> : <Tag s={{ cor: 'vermelho', txt: 'Desconta' }} />}</div></div> : null }}
       vazio={<Vazio icone="calendario" titulo="Nada lançado" texto="Atestados, afastamentos pelo INSS, licenças, folgas e faltas aparecem aqui." />} /></div>
   </>

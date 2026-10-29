@@ -653,6 +653,15 @@ window.roteiro = async function roteiro(filtro) {
     const cat = S.lista('rh_epi_catalogo').find(x => x.ca === '99901');
     conf(!!cat && cat.fabricante === 'Fabricante Teste' && cat.validade_ca === '2027-09-06', 'EPI gravado com CA, validade e fabricante');
     const f = S.lista('funcionarios').find(x => x.nome === 'Beto Silva');
+    // "Para quem": digita parte do nome e escolhe na lista
+    Telas.rh.formEpi(); j = await espera(janela);
+    const busca = j.querySelector('[name=funcionario_id]').closest('.select-busca').querySelector('input');
+    busca.focus(); await dorme(60); digitar(busca, 'beto'); await dorme(120);
+    const itensB = [...j.querySelectorAll('.select-busca .combo-lista:not([hidden]) .combo-item[data-v]')];
+    conf(itensB.length === 1 && /Beto Silva/.test(itensB[0].textContent), 'busca de pessoa: "beto" acha só o Beto', itensB.map(x => x.textContent));
+    itensB[0]?.click(); await dorme(80);
+    conf(j.querySelector('[name=funcionario_id]').value === f.id && busca.value === 'Beto Silva', 'escolher na busca preenche a pessoa');
+    UI.fecharTodas(); await dorme(100);
     Telas.rh.formEpi(f); j = await espera(janela);
     digitar(j.querySelector('[data-campo=cat]'), cat.id); await dorme(60);
     digitar(j.querySelector('[aria-label=Tamanho]'), 'Único');

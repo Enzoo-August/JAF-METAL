@@ -9,7 +9,7 @@ import type { Funcionario, RhAso, RhEpi, RhEpiCatalogo } from '../../lib/tipos.t
 import * as U from '../../lib/util.ts'
 import { aviso } from '../../ui/avisos.ts'
 import { entregar, excel, pdfDocumento } from '../../ui/arquivos.tsx'
-import { BuscaLista, Btn, Cab, Campo, Chips, Paginado, Tag, Vazio, type OpcaoChip } from '../../ui/base.tsx'
+import { BuscaLista, Btn, Cab, Campo, Chips, Paginado, SelectBusca, Tag, Vazio, type OpcaoChip } from '../../ui/base.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { Ic } from '../../ui/icones.tsx'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
@@ -187,17 +187,20 @@ function VariosEpis() {
     <datalist id="lEpis">{U.unicos([...EPIS_COMUNS, ...S.lista('rh_epis').map(e => e.epi)]).map(x => <option key={x} value={x} />)}</datalist>
     <div className="itens-epi">{l.map((x, n) => { const c = x.cat && x.cat !== 'outro' ? S.get('rh_epi_catalogo', x.cat) : null
       return <div key={n} className="item-epi" data-item-epi={n}>
-        <select aria-label="EPI" value={x.cat} onChange={(e) => mud(n, 'cat', e.target.value)} data-campo="cat">
-          <option value="">{cats.length ? 'Escolha o EPI' : 'Digite o EPI abaixo'}</option>{cats.map(k => <option key={k.id} value={k.id}>{nomeCat(k)}</option>)}<option value="outro">Outro (digitar)</option></select>
-        {(x.cat === 'outro' || !cats.length) && <div className="linha-campos"><input aria-label="Nome do EPI" placeholder="Nome do EPI" list="lEpis" value={x.epi} onChange={(e) => mud(n, 'epi', e.target.value)} />
-          <input aria-label="CA" placeholder="CA" inputMode="numeric" value={x.ca} onChange={(e) => mud(n, 'ca', e.target.value)} /></div>}
+        <div className="item-epi-cab"><span className="item-epi-n">{n + 1}</span><b>{c ? c.descricao : x.cat === 'outro' ? (x.epi || 'Outro EPI') : 'EPI'}</b>
+          {l.length > 1 && <button type="button" className="icone-btn mini" aria-label="Tirar este EPI" onClick={() => setL(y => y.filter((_, i) => i !== n))}><Ic n="x" /></button>}</div>
+        {cats.length > 0 && <SelectBusca id={`epiCat${n}`} nome={`cat_${n}`} valor={x.cat} extra={{ 'data-campo': 'cat', 'aria-label': 'EPI', onChange: (e: { target: HTMLSelectElement }) => mud(n, 'cat', e.target.value) }}
+          opcoes={[{ v: '', t: 'Digite para buscar o EPI' }, ...cats.map(k => ({ v: k.id, t: nomeCat(k) })), { v: 'outro', t: 'Outro (digitar)' }]} />}
+        {c && <p className="item-epi-info">{[c.ca && 'CA ' + c.ca, c.fabricante, c.validade_ca && 'validade ' + U.data(c.validade_ca)].filter(Boolean).join(' · ')}</p>}
+        {(x.cat === 'outro' || !cats.length) && <div className="epi-campos dois">
+          <label className="epi-campo"><span>Nome do EPI</span><input aria-label="Nome do EPI" list="lEpis" value={x.epi} onChange={(e) => mud(n, 'epi', e.target.value)} /></label>
+          <label className="epi-campo"><span>CA</span><input aria-label="CA" inputMode="numeric" value={x.ca} onChange={(e) => mud(n, 'ca', e.target.value)} /></label></div>}
         {c?.validade_ca && c.validade_ca < hoje && <p className="nota vermelha">CA {c.ca} vencido em {U.data(c.validade_ca)}: pela NR-6 este EPI não deveria ser entregue.</p>}
-        <div className="linha-campos l3">
-          <input aria-label="Tamanho" placeholder={c?.tamanhos ? 'Tamanho (' + c.tamanhos + ')' : 'Tamanho (ou N/A)'} value={x.tamanho} onChange={(e) => mud(n, 'tamanho', e.target.value)} />
-          <input aria-label="Quantidade" placeholder="Qtd" inputMode="decimal" value={x.quantidade} onChange={(e) => mud(n, 'quantidade', e.target.value)} />
-          <input aria-label="Trocar a cada (meses)" placeholder={c?.vida_util_meses ? `Troca: ${c.vida_util_meses} meses` : 'Troca (meses)'} inputMode="numeric" value={x.vida} onChange={(e) => mud(n, 'vida', e.target.value)} />
+        <div className="epi-campos">
+          <label className="epi-campo"><span>Tamanho</span><input aria-label="Tamanho" placeholder={c?.tamanhos || 'N/A'} value={x.tamanho} onChange={(e) => mud(n, 'tamanho', e.target.value)} /></label>
+          <label className="epi-campo"><span>Quantidade</span><input aria-label="Quantidade" inputMode="decimal" value={x.quantidade} onChange={(e) => mud(n, 'quantidade', e.target.value)} /></label>
+          <label className="epi-campo"><span>Trocar (meses)</span><input aria-label="Trocar a cada (meses)" placeholder={c?.vida_util_meses ? String(c.vida_util_meses) : '—'} inputMode="numeric" value={x.vida} onChange={(e) => mud(n, 'vida', e.target.value)} /></label>
         </div>
-        {l.length > 1 && <button type="button" className="btn fantasma mini" onClick={() => setL(y => y.filter((_, i) => i !== n))}><Ic n="x" /><span>Tirar este</span></button>}
       </div> })}</div>
     <button type="button" className="btn sec mini" data-seg="addEpi" onClick={() => setL(y => [...y, { ...linhaVazia }])}><Ic n="mais" /><span>Mais um EPI</span></button>
   </>

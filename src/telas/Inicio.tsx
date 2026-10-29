@@ -86,7 +86,7 @@ export function TelaInicio() {
   const ats = e.atalhos.map(id => ATALHOS.find(a => a.id === id)).filter((a): a is Atalho => !!a && podeTudo(a.perm))
   const bls = e.blocos.map(id => BLOCOS.find(b => b.id === id)).filter((b): b is Bloco => !!b && podeTudo(b.perm))
   return <>
-    <header className="cab"><div><h1>{saud}, {(s.nome || '').split(' ')[0]}</h1><p className="sub">{U.cap(agora.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }))}</p></div>
+    <header className="cab hero"><div><h1>{saud}, {(s.nome || '').split(' ')[0]}</h1><p className="sub">{U.cap(agora.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }))}</p></div>
       <div className="acoes"><button type="button" className="btn fantasma" data-acao="personalizar" onClick={() => void personalizar()}><Ic n="lapis" /><span>Personalizar</span></button></div></header>
     {ats.length > 0 && <div className="atalhos">{ats.map((a, i) => a.ir
       ? <a key={a.id} className={`atalho${i === 0 && a.id === 'retirar' ? ' destaque' : ''}`} href={a.ir} data-atalho={a.id}><Ic n={a.ic} /><span>{a.rot}<small>{a.sub}</small></span></a>

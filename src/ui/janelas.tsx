@@ -187,7 +187,8 @@ function JanelaView({ item }: { item: Extract<Item, { tipo: 'janela' }> }) {
         const inval = [...f.querySelectorAll<HTMLInputElement>('[required]')].find(c => c.dataset.comboId !== undefined ? !c.dataset.comboId : !String(c.value || '').trim())
         if (inval) {
           setErro('Preencha: ' + (inval.closest('.campo')?.querySelector('label')?.textContent?.replace(/\*/g, '').trim() || 'campo obrigatório'))
-          inval.focus(); return
+          const alvo = (inval.dataset.busca ? inval.parentElement?.querySelector('input') : inval) as HTMLElement | null
+          alvo?.focus(); return
         }
       }
       try {
