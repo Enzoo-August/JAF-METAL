@@ -323,5 +323,5 @@ async function demoRH(ids: Record<string, string>, cargo: Record<string, string>
   await rpc('rh_salvar_processo', { autor: 'Paulo Gomes', funcionario_id: ids['Paulo Gomes'], numero: '0000000-00.2026.5.02.0000 (exemplo)', data_autuacao: dia(-5), advogado: 'Escritório Exemplo' })
   // um desligado
   const p = S.get('funcionarios', ids['Paulo Gomes'])!
-  await rpc('salvar_funcionario', { ...p, situacao: 'desligado', demissao: dia(-20), motivo_demissao: 'Pedido de demissão', privado: { ...(S.get('funcionarios_privado', p.id) || {}) } })
+  await rpc('salvar_funcionario', { ...p, situacao: 'desligado', demissao: dia(-20), privado: { ...(S.get('funcionarios_privado', p.id) || {}), motivo_demissao: 'Pedido de demissão' } })
 }

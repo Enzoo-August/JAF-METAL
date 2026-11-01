@@ -128,6 +128,13 @@ conf((await ver(alm, 'select * from public.funcionarios_privado')).length === 0,
 conf(Number((await ver(esc, 'select salario from public.funcionarios_privado'))[0].salario) === 3500.5, 'salário com vírgula gravado')
 conf((await ver(prod, 'select * from public.funcionarios')).length === 1, 'nomes dos funcionários visíveis')
 conf((await erro(alm, 'salvar_funcionario', { nome: 'X' }))?.includes('perfil não pode'), 'almoxarife não cadastra funcionário')
+// v2.4: motivo de demissão é dado sensível; senha fácil é recusada
+const fDesl = await rpc(esc, 'salvar_funcionario', { nome: 'Desligado Teste', situacao: 'desligado', demissao: '2026-01-10', privado: { motivo_demissao: 'Pedido de demissão' } })
+conf((await ver(esc, `select motivo_demissao from public.funcionarios_privado where funcionario_id = '${fDesl}'`))[0]?.motivo_demissao === 'Pedido de demissão', 'motivo do desligamento gravado na parte privada')
+conf(!('motivo_demissao' in (await ver(prod, 'select * from public.funcionarios'))[0]), 'produção não recebe o motivo do desligamento')
+conf((await ver(prod, `select * from public.funcionarios_privado where funcionario_id = '${fDesl}'`)).length === 0, 'produção não lê a parte privada de quem saiu')
+for (const fraca of ['12345678', 'jafmetal', 'aaaaaaaa', 'beto']) conf((await erro(prod, 'trocar_senha', prod, fraca)) !== null, 'senha fácil recusada: ' + fraca)
+conf((await erro(prod, 'conferir_senha', 'beto', 'senha-forte-9')) !== null, 'ninguém chama a conferência de senha direto')
 
 // ---------------------------------------------------------------- estoque / PEPS
 const mov = (uid, o) => rpc(uid, 'movimentar', o)
@@ -337,7 +344,7 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   conf((await ver(rh, 'select * from public.lancamentos')).length === 0, 'RH não vê o financeiro')
   conf((await ver(ger, 'select * from public.pecas')).length > 0, 'gerente vê o estoque')
   conf((await ver(ger, 'select * from public.funcionarios_privado')).length === 0, 'gerente não vê dados pessoais nem salário')
-  conf((await ver(rh, 'select * from public.funcionarios_privado')).length === 1, 'RH vê os dados pessoais')
+  conf((await ver(rh, 'select * from public.funcionarios_privado')).length === 2, 'RH vê os dados pessoais')
   // cargos e organograma
   const cGer = await rpc(rh, 'rh_salvar_cargo', { nome: 'Gerente de Produção', cbo: '141205' })
   const cLid = await rpc(rh, 'rh_salvar_cargo', { nome: 'Líder de Produção', superior_id: cGer })

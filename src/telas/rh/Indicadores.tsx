@@ -89,7 +89,7 @@ function calcular(ano: number): Ind {
     permanencia: naData.length ? U.soma(naData, f => mesesEntre(f.admissao!, ate)) / naData.length : 0,
     aprov: expFim.length ? passou.length / expFim.length : null, aprovN: `${passou.length} de ${expFim.length}`,
     turnover: fimAno ? (admAno.length + deslAno.length) / 2 / fimAno : 0,
-    motivos: contar(deslAno.map(f => f.motivo_demissao || 'Sem motivo informado')),
+    motivos: contar(deslAno.map(f => priv(f)?.motivo_demissao || 'Sem motivo informado')),
     sexo: contar(naData.map(f => { const s = U.sem(priv(f)?.sexo || '').toLowerCase(); return s.startsWith('f') ? 'Feminino' : s.startsWith('m') ? 'Masculino' : 'Não informado' })),
     faixa: FAIXAS.map(([t]) => ({ t, v: naData.filter(f => idadeFaixa(f) === t).length })).filter(x => x.v),
     escol: contar(naData.map(f => priv(f)?.instrucao || 'Não informado')),

@@ -61,8 +61,9 @@ function turnover(): Tabela {
     return [rotMes(m), qt, adm, desl, qt ? ((adm + desl) / 2 / qt * 100).toFixed(1).replace('.', ',') + '%' : '—']
   })
   const fs12 = U.somaMeses(U.hoje(), -12)
-  const motivos = U.agrupar(fs.filter(f => f.demissao && f.demissao >= fs12), f => f.motivo_demissao || 'Sem motivo')
-  return { titulo: 'Turnover', sub: 'Últimos 12 meses' + (motivos.size ? ' · saídas: ' + [...motivos.entries()].map(([k, l]) => `${k} ${l.length}`).join(', ') : ''),
+  const motivos = U.agrupar(fs.filter(f => f.demissao && f.demissao >= fs12), f => S.get('funcionarios_privado', f.id)?.motivo_demissao || 'Sem motivo')
+  // o motivo é dado sensível: quem só consulta (gerente) não vê
+  return { titulo: 'Turnover', sub: 'Últimos 12 meses' + (motivos.size && S.lista('funcionarios_privado').length ? ' · saídas: ' + [...motivos.entries()].map(([k, l]) => `${k} ${l.length}`).join(', ') : ''),
     cab: ['Mês', 'Pessoas no fim do mês', 'Admissões', 'Desligamentos', 'Turnover'], linhas, alinhar: [undefined, 'right', 'right', 'right', 'right'] }
 }
 

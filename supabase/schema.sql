@@ -1046,7 +1046,7 @@ declare uid uuid := gen_random_uuid(); v_login text := public.login_limpo(p_logi
 begin
   perform set_config('jaf.criando_usuario', '1', true);   -- libera o gatilho que bloqueia cadastro por fora
   if v_login !~ '^[a-z0-9._-]{3,30}$' then raise exception 'O usuário deve ter de 3 a 30 letras ou números, sem espaço nem acento'; end if;
-  if length(coalesce(p_senha, '')) < 8 then raise exception 'A senha precisa ter 8 caracteres ou mais'; end if;
+  perform public.conferir_senha(v_login, p_senha);
   if public.nz(p_nome) is null or length(public.nz(p_nome)) < 2 then raise exception 'Informe o nome'; end if;
   if p_perfil not in ('dono','escritorio','almoxarife','pcp','producao','rh','gerente') then raise exception 'Perfil inválido'; end if;
   v_email := v_login || '@jafmetal.local';
@@ -1122,7 +1122,7 @@ language plpgsql security definer set search_path = public, extensions, auth as 
 begin
   if public.meu_perfil() is null then raise exception 'Sua sessão não tem acesso. Entre de novo.'; end if;
   if not (p_user = auth.uid() or public.eh('dono')) then raise exception 'Só o Dono troca a senha de outra pessoa'; end if;
-  if length(coalesce(p_senha, '')) < 8 then raise exception 'A senha precisa ter 8 caracteres ou mais'; end if;
+  perform public.conferir_senha((select login from public.perfis where user_id = p_user), p_senha);
   update auth.users set encrypted_password = extensions.crypt(p_senha, extensions.gen_salt('bf')), updated_at = now() where id = p_user;
   if not found then raise exception 'Acesso não encontrado'; end if;
   -- trocou a própria: deixa de ser provisória. O Dono trocou a de outra pessoa: vira provisória.
@@ -1307,7 +1307,6 @@ alter table public.funcionarios add column if not exists horario text;          
 alter table public.funcionarios add column if not exists descanso text;               -- ex.: Sábado e domingo
 alter table public.funcionarios add column if not exists situacao text not null default 'ativo';
 alter table public.funcionarios add column if not exists demissao date;
-alter table public.funcionarios add column if not exists motivo_demissao text;
 alter table public.funcionarios add column if not exists ferias_base date;            -- início do período aquisitivo em aberto (acerto do RH)
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'funcionarios_registro_ck') then
@@ -1672,15 +1671,15 @@ begin
     raise exception 'Informe a data de desligamento';
   end if;
   insert into public.funcionarios (id, nome, funcao, setor, telefone, admissao, ativo, matricula, matricula_esocial, registro, cargo_id,
-                                   superior_id, horario, descanso, situacao, demissao, motivo_demissao, ferias_base)
+                                   superior_id, horario, descanso, situacao, demissao, ferias_base)
   values (v_id, v_nome, v_funcao, public.nz(p->>'setor'), public.nz(p->>'telefone'), public.dt(p, 'admissao'), v_sit <> 'desligado',
           public.nz(p->>'matricula'), public.nz(p->>'matricula_esocial'), v_reg, v_cargo, public.uid_de(p, 'superior_id'),
-          public.nz(p->>'horario'), public.nz(p->>'descanso'), v_sit, public.dt(p, 'demissao'), public.nz(p->>'motivo_demissao'),
+          public.nz(p->>'horario'), public.nz(p->>'descanso'), v_sit, public.dt(p, 'demissao'),
           public.dt(p, 'ferias_base'))
   on conflict (id) do update set nome = excluded.nome, funcao = excluded.funcao, setor = excluded.setor, telefone = excluded.telefone,
           admissao = excluded.admissao, ativo = excluded.ativo, matricula = excluded.matricula, matricula_esocial = excluded.matricula_esocial,
           registro = excluded.registro, cargo_id = excluded.cargo_id, superior_id = excluded.superior_id, horario = excluded.horario,
-          descanso = excluded.descanso, situacao = excluded.situacao, demissao = excluded.demissao, motivo_demissao = excluded.motivo_demissao,
+          descanso = excluded.descanso, situacao = excluded.situacao, demissao = excluded.demissao,
           ferias_base = excluded.ferias_base;
   if pr is not null and jsonb_typeof(pr) = 'object' then
     v_cpf := public.cpf_fmt(pr->>'cpf');
@@ -1698,7 +1697,7 @@ begin
            estado_civil, nacionalidade, naturalidade, uf_nascimento, mae, pai, instrucao, email, celular, endereco, numero, complemento,
            bairro, cep, cidade, banco, pix, emergencia_nome, emergencia_fone, telefone_corp, uniforme, calcado, chave_celular,
            chave_vestiario, indicacao, ferias, obs, obs_desligamento, ctps, raca_cor, pais_origem, telefone_fixo, rg_orgao, rg_uf, rg_emissao,
-           cnh_categoria, cnh_validade, categoria_militar)
+           cnh_categoria, cnh_validade, categoria_militar, motivo_demissao)
     values (v_id, v_sal, public.num(pr, 'salario_he'), v_cpf, public.nz(pr->>'rg'), public.nz(pr->>'pis'), public.nz(pr->>'titulo_eleitor'),
             public.nz(pr->>'reservista'), public.nz(pr->>'cnh'), public.dt(pr, 'nascimento'), public.nz(pr->>'sexo'), public.nz(pr->>'estado_civil'),
             public.nz(pr->>'nacionalidade'), public.nz(pr->>'naturalidade'), upper(public.nz(pr->>'uf_nascimento')), public.nz(pr->>'mae'),
@@ -1709,7 +1708,7 @@ begin
             public.nz(pr->>'chave_vestiario'), public.nz(pr->>'indicacao'),
             case when jsonb_typeof(pr->'ferias') = 'array' then pr->'ferias' else '[]'::jsonb end, public.nzt(pr->>'obs'), public.nzt(pr->>'obs_desligamento'),
             public.nz(pr->>'ctps'), public.nz(pr->>'raca_cor'), public.nz(pr->>'pais_origem'), public.nz(pr->>'telefone_fixo'), public.nz(pr->>'rg_orgao'),
-            upper(public.nz(pr->>'rg_uf')), public.dt(pr, 'rg_emissao'), upper(public.nz(pr->>'cnh_categoria')), public.dt(pr, 'cnh_validade'), public.nz(pr->>'categoria_militar'))
+            upper(public.nz(pr->>'rg_uf')), public.dt(pr, 'rg_emissao'), upper(public.nz(pr->>'cnh_categoria')), public.dt(pr, 'cnh_validade'), public.nz(pr->>'categoria_militar'), public.nz(pr->>'motivo_demissao'))
     on conflict (funcionario_id) do update set salario = excluded.salario, salario_he = excluded.salario_he, cpf = excluded.cpf, rg = excluded.rg,
             pis = excluded.pis, titulo_eleitor = excluded.titulo_eleitor, reservista = excluded.reservista, cnh = excluded.cnh,
             nascimento = excluded.nascimento, sexo = excluded.sexo, estado_civil = excluded.estado_civil, nacionalidade = excluded.nacionalidade,
@@ -1721,7 +1720,8 @@ begin
             chave_celular = excluded.chave_celular, chave_vestiario = excluded.chave_vestiario, indicacao = excluded.indicacao,
             ferias = excluded.ferias, obs = excluded.obs, obs_desligamento = excluded.obs_desligamento, ctps = excluded.ctps, raca_cor = excluded.raca_cor,
             pais_origem = excluded.pais_origem, telefone_fixo = excluded.telefone_fixo, rg_orgao = excluded.rg_orgao, rg_uf = excluded.rg_uf,
-            rg_emissao = excluded.rg_emissao, cnh_categoria = excluded.cnh_categoria, cnh_validade = excluded.cnh_validade, categoria_militar = excluded.categoria_militar;
+            rg_emissao = excluded.rg_emissao, cnh_categoria = excluded.cnh_categoria, cnh_validade = excluded.cnh_validade, categoria_militar = excluded.categoria_militar,
+            motivo_demissao = excluded.motivo_demissao;
   end if;
   -- admissão abre a linha do tempo
   if v_novo and public.dt(p, 'admissao') is not null then
@@ -2138,16 +2138,20 @@ begin
   for x in select * from jsonb_array_elements(coalesce(p->'pessoas', '[]')) loop
     v_id := gen_random_uuid();
     insert into public.funcionarios (id, nome, funcao, setor, telefone, admissao, ativo, matricula, matricula_esocial, registro, cargo_id, horario, descanso,
-                                     situacao, demissao, motivo_demissao, ferias_base)
+                                     situacao, demissao, ferias_base)
     values (v_id, x->>'nome', public.nz(x->>'funcao'), public.nz(x->>'setor'), public.nz(x->>'telefone'), public.dt(x, 'admissao'),
             coalesce(x->>'situacao', 'ativo') <> 'desligado', public.nz(x->>'matricula'), public.nz(x->>'matricula_esocial'), public.nz(x->>'registro'),
             (select id from public.rh_cargos where lower(nome) = lower(x->>'cargo')), public.nz(x->>'horario'), public.nz(x->>'descanso'),
-            coalesce(public.nz(x->>'situacao'), 'ativo'), public.dt(x, 'demissao'), public.nz(x->>'motivo_demissao'), public.dt(x, 'ferias_base'));
+            coalesce(public.nz(x->>'situacao'), 'ativo'), public.dt(x, 'demissao'), public.dt(x, 'ferias_base'));
     insert into _mapa values (x->>'chave', v_id);
     if jsonb_typeof(x->'privado') = 'object' then
       insert into public.funcionarios_privado
       select * from jsonb_populate_record(null::public.funcionarios_privado,
         (x->'privado') || jsonb_build_object('funcionario_id', v_id, 'ferias', '[]'::jsonb, 'atualizado_em', now()));
+    end if;
+    if public.nz(x->>'motivo_demissao') is not null then
+      insert into public.funcionarios_privado (funcionario_id, motivo_demissao) values (v_id, public.nz(x->>'motivo_demissao'))
+      on conflict (funcionario_id) do update set motivo_demissao = excluded.motivo_demissao;
     end if;
     n_p := n_p + 1;
   end loop;
@@ -2498,3 +2502,30 @@ do $$ begin
     revoke execute on function public.ha_dono() from anon;
   end if;
 end $$;
+
+-- ---------------------------------------------------------------------
+-- v2.4 — segurança: motivo de demissão só para quem vê dados sensíveis; senhas fáceis recusadas
+-- ---------------------------------------------------------------------
+alter table public.funcionarios_privado add column if not exists motivo_demissao text;
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'funcionarios' and column_name = 'motivo_demissao') then
+    insert into public.funcionarios_privado (funcionario_id, motivo_demissao)
+    select id, motivo_demissao from public.funcionarios where motivo_demissao is not null
+    on conflict (funcionario_id) do update set motivo_demissao = excluded.motivo_demissao;
+    alter table public.funcionarios drop column motivo_demissao;
+  end if;
+end $$;
+
+create or replace function public.conferir_senha(p_login text, p_senha text) returns void
+language plpgsql immutable set search_path = public as $$
+declare v text := lower(coalesce(p_senha, ''));
+begin
+  if length(v) < 8 then raise exception 'A senha precisa ter 8 caracteres ou mais'; end if;
+  if v = lower(coalesce(p_login, '')) or v ~ '^(.)\1+$'
+     or v in ('12345678','123456789','1234567890','87654321','abc12345','abcd1234','qwerty123','password','password1',
+              'senha123','senha1234','mudar123','jafmetal','jafmetal1','jafmetal123','jaf12345') then
+    raise exception 'Essa senha é fácil de adivinhar. Escolha outra.';
+  end if;
+end $$;
+revoke execute on function public.conferir_senha(text, text) from public, anon, authenticated;

@@ -52,7 +52,7 @@ export function TelaPessoas({ r }: { r: Rota }) {
   const direita = (x: Funcionario) => {
     if (f === 'experiencia') { const e = R.experiencia(x.admissao)!; return <><Tag s={{ cor: e.fase === 1 ? 'azul' : 'amarelo', txt: e.fase === 1 ? '1º período' : '2º período' }} /><small>termina {U.relativo(e.fase === 1 ? e.fim1 : e.fim2)}</small></> }
     if (f === 'aniver') return <small>dia {S.get('funcionarios_privado', x.id)?.nascimento?.slice(8, 10)}</small>
-    if (f === 'desligados') return <small>{x.demissao ? U.data(x.demissao) : ''}{x.motivo_demissao ? <><br />{x.motivo_demissao}</> : null}</small>
+    if (f === 'desligados') return <small>{x.demissao ? U.data(x.demissao) : ''}{S.get('funcionarios_privado', x.id)?.motivo_demissao ? <><br />{S.get('funcionarios_privado', x.id)?.motivo_demissao}</> : null}</small>
     const fe = rh && sens ? feriasDe(x) : null
     return <>{fe?.situacao && fe.situacao !== 'emdia' ? <TagFerias s={fe.situacao} /> : <Tag s={situacaoFunc(x)} />}</>
   }
@@ -96,7 +96,7 @@ async function exportarPessoas() {
       Botina: p.calcado, 'Chave celular': p.chave_celular, 'Chave vestiário': p.chave_vestiario,
     }
     for (let i = 0; i < 3; i++) { const o = oc[i]; linha[`Data ${i + 1}`] = d(o?.data_ocorrencia); linha[`Motivo ${i + 1}`] = o?.assunto || o?.categoria || ''; linha[`Ação corretiva ${i + 1}`] = o ? TIPO_MEDIDA[o.tipo] : '' }
-    Object.assign(linha, { 'Abono / observações': p.obs, 'Data demissão': d(f.demissao), 'Motivo demissão': f.motivo_demissao, Indicação: p.indicacao,
+    Object.assign(linha, { 'Abono / observações': p.obs, 'Data demissão': d(f.demissao), 'Motivo demissão': p.motivo_demissao, Indicação: p.indicacao,
       Situação: f.ativo ? 'Ativo' : 'Inativo', 'Limite férias': d(R.feriasPior(C.periodosFerias(f))?.limite), Registro: f.registro, 'Contato emergência': p.emergencia_nome,
       Telefone: p.emergencia_fone, 'Telefone corporativo': p.telefone_corp })
     return linha
@@ -156,7 +156,7 @@ function Resumo({ f }: { f: Funcionario }) {
       exp && ['Experiência', `1º período até ${U.data(exp.fim1)} · 2º até ${U.data(exp.fim2)}`],
       ['Horário', f.horario], ['Descanso semanal', f.descanso], ['Responde a', f.superior_id ? <a href={'#/funcionario/' + f.superior_id}>{nomeF(f.superior_id)}</a> : ''],
       ['Telefone', f.telefone ? <a href={'tel:' + f.telefone.replace(/\D/g, '')}>{f.telefone}</a> : ''],
-      !f.ativo && ['Desligado em', f.demissao ? `${U.data(f.demissao)}${f.motivo_demissao ? ' — ' + f.motivo_demissao : ''}` : 'Sim'],
+      !f.ativo && ['Desligado em', f.demissao ? `${U.data(f.demissao)}${S.get('funcionarios_privado', f.id)?.motivo_demissao ? ' — ' + S.get('funcionarios_privado', f.id)?.motivo_demissao : ''}` : 'Sim'],
       ['Acesso ao sistema', acesso ? `${acesso.login} (${Perm.nome(acesso.perfil)})` : ''],
     ]} /></section>
     {rh && <div className="grade g-auto mt">
@@ -331,13 +331,13 @@ export async function formPessoa(f?: Funcionario | null, parte = 'trabalho'): Pr
         mae: d.mae, pai: d.pai, instrucao: d.instrucao, email: d.email, celular: d.celular, endereco: d.endereco, numero: d.numero, complemento: d.complemento, bairro: d.bairro,
         cep: d.cep, cidade: d.cidade, banco: d.banco, pix: d.pix, emergencia_nome: d.emergencia_nome, emergencia_fone: d.emergencia_fone, telefone_corp: d.telefone_corp,
         uniforme: d.uniforme, calcado: d.calcado, chave_celular: d.chave_celular, chave_vestiario: d.chave_vestiario, indicacao: d.indicacao, obs: d.pobs,
-        obs_desligamento: p.obs_desligamento ?? null, ferias: p.ferias || [], ctps: d.ctps, raca_cor: d.raca_cor, pais_origem: d.pais_origem, telefone_fixo: d.telefone_fixo,
+        obs_desligamento: p.obs_desligamento ?? null, motivo_demissao: p.motivo_demissao ?? null, ferias: p.ferias || [], ctps: d.ctps, raca_cor: d.raca_cor, pais_origem: d.pais_origem, telefone_fixo: d.telefone_fixo,
         rg_orgao: d.rg_orgao, rg_uf: d.rg_uf, rg_emissao: d.rg_emissao || null, cnh_categoria: d.cnh_categoria, cnh_validade: d.cnh_validade || null, categoria_militar: d.categoria_militar,
       }
       const id = await API.rpc<string>('salvar_funcionario', { p: {
         id: b.id, nome: d.nome, cargo_id: d.cargo_id || null, funcao: d.cargo_id ? null : d.funcao, setor: d.setor, telefone: d.telefone, admissao: d.admissao || null,
         matricula: d.matricula, matricula_esocial: d.matricula_esocial, registro: d.registro, superior_id: d.superior_id || null, horario: d.horario, descanso: d.descanso,
-        situacao: b.situacao || 'ativo', demissao: b.demissao || null, motivo_demissao: b.motivo_demissao || null, ferias_base: d.ferias_base || null, privado: priv,
+        situacao: b.situacao || 'ativo', demissao: b.demissao || null, ferias_base: d.ferias_base || null, privado: priv,
       } })
       await App.gravou(['funcionarios', 'funcionarios_privado', 'rh_historico']); aviso(novo ? 'Pessoa cadastrada.' : 'Cadastro salvo.')
       if (novo) location.hash = '#/funcionario/' + id
@@ -367,14 +367,14 @@ async function desligar(f: Funcionario) {
     </>,
     botoes: [{ txt: 'Desligar', cls: 'perigo', acao: async (frm) => {
       const d = lerForm(frm)
-      await salvarCom(f, { situacao: 'desligado', ativo: false, demissao: d.demissao, motivo_demissao: d.motivo }, d.obs ? { obs_desligamento: d.obs } : {})
+      await salvarCom(f, { situacao: 'desligado', ativo: false, demissao: d.demissao }, { motivo_demissao: d.motivo, ...(d.obs ? { obs_desligamento: d.obs } : {}) })
       aviso(f.nome.split(' ')[0] + ' foi desligado(a).')
     } }],
   })
 }
 async function readmitir(f: Funcionario) {
   if (!(await confirmar(`Readmitir ${f.nome}?`, { detalhe: 'Volta para a lista de ativos. Se for uma nova contratação, mude a data de admissão em Editar.', ok: 'Readmitir' }))) return
-  try { await salvarCom(f, { situacao: 'ativo', ativo: true, demissao: null, motivo_demissao: null }); aviso('Readmitido(a).') } catch (e) { erro(e) }
+  try { await salvarCom(f, { situacao: 'ativo', ativo: true, demissao: null }, { motivo_demissao: null }); aviso('Readmitido(a).') } catch (e) { erro(e) }
 }
 
 const MOTIVOS: MotivoHist[] = ['Promoção', 'Dissídio', 'Mérito', 'Espontâneo', 'Mudança de setor', 'Correção']
@@ -426,7 +426,7 @@ async function fichaPdf(f: Funcionario) {
     }
     bloco('Trabalho', [['Função', f.funcao], ['Setor', f.setor], ['Registro', f.registro], ['Admissão', f.admissao ? `${U.data(f.admissao)} (${R.tempoCasa(f.admissao, f.demissao || U.hoje())})` : ''],
       ['Experiência', exp ? `1º até ${U.data(exp.fim1)} · 2º até ${U.data(exp.fim2)}` : ''], ['Horário', f.horario], ['Descanso', f.descanso], ['Superior direto', nomeF(f.superior_id)],
-      ['Salário', p.salario ? U.moeda(p.salario) : ''], ['Situação', situacaoFunc(f).txt], ['Desligamento', f.demissao ? `${U.data(f.demissao)} — ${f.motivo_demissao || ''}` : '']])
+      ['Salário', p.salario ? U.moeda(p.salario) : ''], ['Situação', situacaoFunc(f).txt], ['Desligamento', f.demissao ? `${U.data(f.demissao)} — ${p.motivo_demissao || ''}` : '']])
     bloco('Documentos', [['CPF', p.cpf], ['RG', p.rg], ['PIS', p.pis], ['Título de eleitor', p.titulo_eleitor], ['Reservista', p.reservista], ['CNH', p.cnh], ['Matrícula eSocial', f.matricula_esocial]])
     bloco('Pessoal e contato', [['Nascimento', p.nascimento ? `${U.data(p.nascimento)} (${R.idade(p.nascimento)} anos)` : ''], ['Naturalidade', [p.naturalidade, p.uf_nascimento].filter(Boolean).join('/')],
       ['Estado civil', p.estado_civil], ['Instrução', p.instrucao], ['Mãe', p.mae], ['Pai', p.pai], ['Celular', p.celular || f.telefone], ['E-mail', p.email],

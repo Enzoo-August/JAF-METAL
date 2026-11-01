@@ -21,11 +21,11 @@ export interface Funcionario {
   id: string; nome: string; funcao: string | null; setor: string | null; telefone: string | null; admissao: string | null
   ativo: boolean; criado_em: string; atualizado_em: string
   matricula: string | null; matricula_esocial: string | null; registro: Registro | null; cargo_id: string | null; superior_id: string | null
-  horario: string | null; descanso: string | null; situacao: SituacaoFunc; demissao: string | null; motivo_demissao: string | null; ferias_base: string | null
+  horario: string | null; descanso: string | null; situacao: SituacaoFunc; demissao: string | null; ferias_base: string | null
 }
 export interface Ferias { inicio: string; fim: string; obs?: string }
 export interface FuncionarioPrivado {
-  funcionario_id: string; salario: number | null; salario_he: number | null; cpf: string | null; rg: string | null; nascimento: string | null
+  funcionario_id: string; motivo_demissao: string | null; salario: number | null; salario_he: number | null; cpf: string | null; rg: string | null; nascimento: string | null
   endereco: string | null; pix: string | null; ferias: Ferias[]; obs: string | null; atualizado_em: string
   pis: string | null; titulo_eleitor: string | null; reservista: string | null; cnh: string | null; sexo: string | null; estado_civil: string | null
   nacionalidade: string | null; naturalidade: string | null; uf_nascimento: string | null; mae: string | null; pai: string | null; instrucao: string | null
