@@ -19,10 +19,10 @@ interface Artigo { id: string; area: string; titulo: string; palavras: string; p
 export const ARTIGOS: Artigo[] = [
   // ---------------- começo
   { id: 'menu', area: 'inicio', titulo: 'Como o sistema está organizado', palavras: 'menu áreas abas onde fica perdido navegar', perm: 'todos', corpo: [
-    'O menu tem poucas *áreas*, na ordem do que mais se usa: Início, Almoxarifado, Compras, PCP, RH, Financeiro… Cada área tem *abas* no alto da tela (ex.: no RH: Pessoas, Ponto, Férias…).',
-    'No celular, a barra de baixo tem os atalhos do seu perfil e o botão *Menu* abre todas as áreas. O *?* ao lado das abas abre a ajuda daquela área.',
+    'O menu da esquerda é organizado para o seu acesso e mostra só o que você usa. Quem cuida de uma parte (RH, PCP, Almoxarifado…) vê as próprias telas direto no menu. O Dono e o Escritório veem as *áreas* da empresa, e cada área tem *abas* no alto da tela.',
+    'No celular, a barra de baixo tem os atalhos do seu perfil e o botão *Menu* abre o menu completo.',
     'A *lupa* no topo procura peça, pessoa ou tela: digite “férias” e toque no resultado.'],
-    tour: [{ alvo: '.lateral-menu, .abas', texto: 'Aqui ficam as áreas do sistema. Toque numa área para abrir.' }, { alvo: '#buscaGeral, [data-acao=buscar]', texto: 'A lupa procura peça, pessoa ou tela pelo nome.' }, { alvo: '[data-acao=alertas]', texto: 'O sininho mostra o que precisa de atenção (férias vencendo, peça faltando…).' }] },
+    tour: [{ alvo: '.lateral-menu, .abas', texto: 'Aqui fica o menu do sistema. Toque numa opção para abrir.' }, { alvo: '#buscaGeral, [data-acao=buscar]', texto: 'A lupa procura peça, pessoa ou tela pelo nome.' }, { alvo: '[data-acao=alertas]', texto: 'O sininho mostra o que precisa de atenção (férias vencendo, peça faltando…).' }] },
   { id: 'personalizar', area: 'inicio', titulo: 'Personalizar o Início (tirar ou pôr atalhos)', palavras: 'início atalho quadro tirar pôr ordem personalizar fornecedores', perm: 'todos', rota: '#/inicio', corpo: [
     { passos: ['No *Início*, toque em *Personalizar* (canto de cima).', 'Marque o que quer ver e desmarque o que não usa.', 'Use as setas para mudar a ordem.', 'Toque em *Salvar*. Vale só para você, em qualquer aparelho. *Voltar ao padrão* desfaz.'] }],
     tour: [{ rota: '#/inicio', alvo: '[data-acao=personalizar]', texto: 'Toque aqui para escolher os atalhos e quadros do seu Início.' }] },

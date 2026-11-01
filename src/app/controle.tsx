@@ -2,7 +2,7 @@
 import { VERSAO } from '../config.ts'
 import { API, ErroApp, traduzir } from '../lib/api.ts'
 import { S } from '../lib/dados.ts'
-import type { NomeTabela } from '../lib/tipos.ts'
+import type { NomeTabela, Perfil } from '../lib/tipos.ts'
 import { gravarLocal, lerLocal } from '../lib/util.ts'
 import { aviso, erro } from '../ui/avisos.ts'
 import { Campo } from '../ui/base.tsx'
@@ -21,6 +21,10 @@ let fase: Fase = { t: 'carregando', msg: 'Carregando…' }
 let nSistema = 0
 const ouvintes = new Set<() => void>()
 const mudar = (f: Fase) => { fase = f; for (const o of ouvintes) o() }
+
+// quanto tempo parado até pedir a senha de novo: quem vê dados sensíveis sai antes (aparelho largado na mesa)
+const CHAVE_USO = 'jaf.uso'
+const minutosParado = (p: Perfil): number => ['dono', 'escritorio', 'rh', 'gerente'].includes(p) ? 60 : 12 * 60
 
 interface PedidoInstalar extends Event { prompt(): Promise<void> }
 
@@ -53,7 +57,8 @@ export const App = {
       mudar({ t: 'erro', msg: traduzir(e).message })
       return
     }
-    if (API.sessao) await App.entrarNoSistema()
+    if (API.sessao && App.parado()) await App.sairPorInatividade()
+    else if (API.sessao) await App.entrarNoSistema()
     else await App.telaLogin()
   },
 
@@ -66,6 +71,7 @@ export const App = {
   // senha provisória (criada pelo Dono): só entra depois de criar a própria senha
   async entrarNoSistema(): Promise<void> {
     fecharTodas()
+    App.marcarUso()
     if (API.sessao?.trocar_senha) { mudar({ t: 'trocar' }); return }
     mudar({ t: 'carregando', msg: 'Carregando os dados…' })
     try { await S.carregar() }
@@ -85,6 +91,19 @@ export const App = {
     await API.sair()
     location.hash = ''
     await App.telaLogin()
+  },
+
+  // ------------------------------------------------------------------ saída por inatividade
+  marcarUso(): void { gravarLocal(CHAVE_USO, Date.now()) },
+  parado(): boolean {
+    const ult = lerLocal<number>(CHAVE_USO, 0)
+    return !!API.sessao && !!ult && Date.now() - ult > minutosParado(API.sessao.perfil) * 60000
+  },
+  async sairPorInatividade(): Promise<void> {
+    fecharTodas()
+    await API.sair()
+    location.hash = ''
+    await App.telaLogin('Por segurança, o sistema saiu sozinho depois de um tempo parado. Entre de novo.')
   },
 
   // sessão caiu no meio do uso: pede a senha numa janela, sem perder a tela

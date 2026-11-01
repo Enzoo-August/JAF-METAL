@@ -10,7 +10,7 @@ import { useDados, useRota } from '../ui/ganchos.ts'
 import { Ic } from '../ui/icones.tsx'
 import { confirmar, modal, useJanela } from '../ui/janelas.tsx'
 import { ROTAS, Telas } from '../telas/index.ts'
-import { abasDeBaixo, areaDaRota, areasVisiveis, chaveDaRota, ondeEstou, subsDe } from './areas.ts'
+import { abasDeBaixo, areaDaRota, areasVisiveis, chaveDaRota, gruposDoMenu, menuPlano, ondeEstou, subsDe } from './areas.ts'
 import { App } from './controle.tsx'
 
 const classeCorpo = (cls: string, on: boolean) => document.body.classList.toggle(cls, on)
@@ -44,12 +44,19 @@ export function Casca() {
 
   // ---------------------------------------------------------------- busca de novidades, rede
   useEffect(() => {
-    const t = setInterval(() => void App.tick(), 45000)
-    const vis = () => { if (document.visibilityState === 'visible') void App.tick(true) }
+    const t = setInterval(() => { if (App.parado()) void App.sairPorInatividade(); else void App.tick() }, 45000)
+    const vis = () => {
+      if (document.visibilityState !== 'visible') return
+      if (App.parado()) void App.sairPorInatividade(); else void App.tick(true)
+    }
+    // só o que a pessoa faz conta como uso (a busca automática de novidades não); no máximo uma gravação por minuto
+    let ultMarca = 0
+    const usou = () => { if (Date.now() - ultMarca > 60000) { ultMarca = Date.now(); App.marcarUso() } }
+    for (const ev of ['pointerdown', 'keydown', 'scroll'] as const) window.addEventListener(ev, usou, { passive: true, capture: true })
     const rede = () => setSemRede(!navigator.onLine)
     document.addEventListener('visibilitychange', vis)
     document.addEventListener('jaf:rede', rede)
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', vis); document.removeEventListener('jaf:rede', rede); classeCorpo('menu-aberto', false); classeCorpo('busca-aberta', false) }
+    return () => { clearInterval(t); for (const ev of ['pointerdown', 'keydown', 'scroll'] as const) window.removeEventListener(ev, usou, { capture: true }); document.removeEventListener('visibilitychange', vis); document.removeEventListener('jaf:rede', rede); classeCorpo('menu-aberto', false); classeCorpo('busca-aberta', false) }
   }, [])
 
   // ---------------------------------------------------------------- rota → tela
@@ -57,7 +64,9 @@ export function Casca() {
   const permitida = !def?.perm || Perm.pode(def.perm)
   const chave = chaveDaRota(r)
   const { area } = ondeEstou(r)
-  const subs = area ? subsDe(area) : []
+  // quem cuida de uma parte só já vê tudo no menu da esquerda: não precisa das abas de cima
+  const plano = menuPlano(s.perfil)
+  const subs = area && !plano ? subsDe(area) : []
   useLayoutEffect(() => { window.scrollTo(0, 0) }, [r.nome, r.id])
   useEffect(() => {
     const t = def && permitida ? (typeof def.titulo === 'function' ? def.titulo(r) : def.titulo) : ''
@@ -65,7 +74,7 @@ export function Casca() {
   })
 
   const cont = contadores()
-  const areas = areasVisiveis()
+  const grupos = gruposDoMenu(s.perfil)
   const al = C.alertas()
   const urgentes = al.some(a => a.nivel === 'alto')
   const podeRetirar = Perm.pode('retirar')
@@ -87,11 +96,15 @@ export function Casca() {
         {!podeRetirar && Perm.pode('producao_editar') && <div className="lateral-acoes">
           <button type="button" className="btn pri" data-acao="novaOrdem" onClick={novaOrdem}><Ic n="mais" /><span>Nova ordem</span></button>
         </div>}
-        <nav className="lateral-menu" aria-label="Áreas do sistema">{areas.map(a => {
-          const ss = subsDe(a), n = ss.reduce((t, x) => t + (cont[x.rota] || 0), 0)
-          return <a key={a.id} href={'#/' + ss[0].rota} data-rota={ss[0].rota} data-area={a.id} className={a.id === area?.id ? 'on' : ''} onClick={fecharMenu}>
-            <Ic n={a.ic} /><span>{a.rot}</span><b className="cont" data-cont={a.id} hidden={!n}>{n || ''}</b></a>
-        })}</nav>
+        <nav className="lateral-menu" aria-label="Menu do sistema">{grupos.map((g, i) => <div key={i} className="menu-grupo">
+          {g.titulo && <div className="grupo">{g.titulo}</div>}
+          {g.itens.map(x => {
+            const n = x.contam.reduce((t, k) => t + (cont[k] || 0), 0)
+            const on = plano ? x.rota === chave : x.area === area?.id
+            return <a key={x.rota} href={'#/' + x.rota} data-rota={x.rota} data-area={x.area} className={on ? 'on' : ''} aria-current={on ? 'page' : undefined} onClick={fecharMenu}>
+              <Ic n={x.ic} /><span>{x.rot}</span><b className="cont" data-cont={x.rota} hidden={!n}>{n || ''}</b></a>
+          })}
+        </div>)}</nav>
         <div className="lateral-usuario">
           <a href="#/conta" className="usuario" onClick={fecharMenu}><span className="avatar">{(s.nome || '?').trim().charAt(0).toUpperCase()}</span>
             <span><b>{s.nome}</b><small>{Perm.nome(s.perfil)}</small></span></a>

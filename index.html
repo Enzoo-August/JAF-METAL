@@ -14,11 +14,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./assets/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
-  <script>
-    // tema antes de desenhar (evita "piscar" claro no modo escuro)
-    try { var t = localStorage.getItem('jaf.tema') || 'auto';
-      document.documentElement.dataset.tema = (t === 'escuro' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)) ? 'escuro' : 'claro'; } catch (e) {}
-  </script>
+  <script src="./tema.js"></script>
 </head>
 <body>
   <div id="app"><div class="carregando-tela"><img src="./assets/logo.png" alt="JAF Metal"><div class="giro"></div><p>Carregando…</p></div></div>

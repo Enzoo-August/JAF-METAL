@@ -109,7 +109,7 @@ async function entrar(login: string, senha: string): Promise<Sessao> {
 
 async function sair(): Promise<void> {
   API.sessao = null
-  if (API.modo === 'nuvem') { try { await sb!.auth.signOut() } catch { /* já saiu */ } }
+  if (API.modo === 'nuvem') { try { await sb!.auth.signOut({ scope: 'local' }) } catch { /* já saiu */ } }
   else gravarLocal('jaf.teste.sessao', null)
 }
 

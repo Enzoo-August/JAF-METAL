@@ -12,6 +12,9 @@ const raiz = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const pasta = path.join(raiz, 'dist-teste')
 if (!existsSync(path.join(pasta, 'index.html'))) { console.log('Falta o build de teste: rode "npm run build:teste" antes.'); process.exit(2) }
 
+// a mesma regra de segurança do site publicado (só o modo teste precisa rodar o banco em WebAssembly)
+const CSP = readFileSync(path.join(raiz, 'public', '_headers'), 'utf8').match(/Content-Security-Policy: (.+)/)[1].replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")
+
 // servidor simples só para esta pasta
 const TIPOS = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.wasm': 'application/wasm', '.webmanifest': 'application/manifest+json', '.data': 'application/octet-stream', '.tar.gz': 'application/gzip' }
 const servidor = createServer((req, res) => {
@@ -21,7 +24,7 @@ const servidor = createServer((req, res) => {
   if (!arq.startsWith(pasta)) { res.writeHead(404); res.end(); return }
   let corpo // lê direto (sem conferir antes e ler depois): não existe = 404
   try { corpo = readFileSync(arq) } catch { res.writeHead(404); res.end(); return }
-  res.writeHead(200, { 'Content-Type': TIPOS[path.extname(arq)] || 'application/octet-stream' })
+  res.writeHead(200, { 'Content-Type': TIPOS[path.extname(arq)] || 'application/octet-stream', 'Content-Security-Policy': CSP })
   res.end(corpo)
 }).listen(0, '127.0.0.1')
 await new Promise(ok => servidor.once('listening', ok))
@@ -36,7 +39,10 @@ async function abrir(largura, altura, toque) {
   const ctx = await navegador.newContext({ viewport: { width: largura, height: altura }, hasTouch: !!toque, isMobile: !!toque, deviceScaleFactor: 1 })
   const p = await ctx.newPage()
   p.on('pageerror', (e) => { console.log('  ERRO NA PÁGINA:', e.message); falhou = true })
-  p.on('console', (m) => { if (m.type() === 'error' && !/favicon|Failed to load resource/.test(m.text())) console.log('  console:', m.text().slice(0, 300)) })
+  p.on('console', (m) => {
+    if (m.type() === 'error' && !/favicon|Failed to load resource/.test(m.text())) console.log('  console:', m.text().slice(0, 300))
+    if (/Content Security Policy/i.test(m.text())) { console.log('  BLOQUEADO PELA CSP:', m.text().slice(0, 300)); falhou = true }
+  })
   await p.goto(URL_BASE + '/?banco=memoria', { waitUntil: 'load' })
   await p.waitForFunction(() => document.querySelector('#fLogin') || document.querySelector('.casca'), null, { timeout: 180000 })
   return { ctx, p }

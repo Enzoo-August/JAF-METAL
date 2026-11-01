@@ -385,7 +385,7 @@ window.roteiro = async function roteiro(filtro) {
   });
 
   await passo('RH: ponto, horas extras e fechamento', async () => {
-    const f = pessoa('Gil Prado'), m = U.hoje().slice(0, 7);
+    const f = pessoa('Gil Prado'), m = U.somaMeses(U.hoje(), -1).slice(0, 7); // mês passado: no dia 1º o mês atual pode ainda não ter dia útil
     await ir(`#/rh/ponto?f=${f.id}&m=${m}`); await espera(() => document.querySelector('#gradePonto'));
     await clicar('Preencher horário padrão', document.getElementById('view'));
     const uteis = [...document.querySelectorAll('.ponto-dia.sujo')].length;
@@ -512,6 +512,22 @@ window.roteiro = async function roteiro(filtro) {
     digitar(inp, '');
   });
 
+  // ================================================================ SAÍDA POR INATIVIDADE
+  await passo('saída por inatividade', async () => {
+    await como('helena');
+    localStorage.setItem('jaf.uso', JSON.stringify(Date.now() - 59 * 60000));
+    document.dispatchEvent(new Event('visibilitychange')); await dorme(300);
+    conf(!!document.querySelector('.casca'), 'com 59 min parado, o RH continua dentro');
+    localStorage.setItem('jaf.uso', JSON.stringify(Date.now() - 61 * 60000));
+    document.dispatchEvent(new Event('visibilitychange')); await espera(() => document.querySelector('#fLogin'));
+    conf(!API.sessao && document.body.textContent.includes('saiu sozinho'), 'com 61 min parado, o RH sai e o login explica o motivo');
+    await como('almox');
+    localStorage.setItem('jaf.uso', JSON.stringify(Date.now() - 61 * 60000));
+    document.dispatchEvent(new Event('visibilitychange')); await dorme(300);
+    conf(!!document.querySelector('.casca'), 'no almoxarifado o limite é maior (aparelho do dia a dia)');
+    localStorage.setItem('jaf.uso', JSON.stringify(Date.now()));
+  });
+
   // ================================================================ PRODUÇÃO
   await passo('perfil produção', async () => {
     await como('operador');
@@ -549,8 +565,8 @@ window.roteiro = async function roteiro(filtro) {
     await ir('#/financeiro'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'almoxarife sem financeiro');
     await ir('#/equipe'); conf(!document.getElementById('view').textContent.includes('Folha'), 'almoxarife não vê folha/salários');
     const menuA = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
-    conf(menuA.includes('Almoxarifado') && !menuA.includes('PCP') && !menuA.includes('Fábrica'), 'almoxarife: área Almoxarifado, sem PCP', menuA);
-    await ir('#/maquinas'); conf(!document.getElementById('view').textContent.includes('Sem acesso') && document.querySelector('.subabas')?.textContent.includes('Máquinas'), 'máquinas dentro do Almoxarifado');
+    conf(menuA.includes('Peças') && menuA.includes('O que comprar') && !menuA.includes('Ordens de produção') && !menuA.includes('Fábrica'), 'almoxarife: telas do almoxarifado e compras direto no menu, sem PCP', menuA);
+    await ir('#/maquinas'); conf(!document.getElementById('view').textContent.includes('Sem acesso') && !document.querySelector('.subabas') && !!document.querySelector('.lateral-menu a.on[data-rota=maquinas]'), 'máquinas marcada no menu, sem abas em cima');
     const ped = S.lista('pedidos_compra').find(p => p.status === 'aguardando');
     await ir('#/pedido/' + ped.id); await clicar('Receber', document.getElementById('view'));
     const j = await espera(janela);
@@ -561,7 +577,7 @@ window.roteiro = async function roteiro(filtro) {
   await passo('perfil PCP', async () => {
     await como('pcp');
     const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
-    conf(menu.join('|') === 'Início|Almoxarifado|PCP|Ajuda', 'menu do PCP: Início, Almoxarifado (consulta), PCP e Ajuda', menu);
+    conf(menu.join('|') === 'Início|Ordens de produção|Equipe|Peças|Ajuda', 'menu do PCP: as telas dele direto, ordens primeiro', menu);
     conf(!document.querySelector('.lateral [data-acao=retirar]') && !!document.querySelector('.lateral [data-acao=novaOrdem]'), 'PCP tem "Nova ordem" e não "Retirar peça"');
     conf(S.lista('movimentos').length === 0 && S.lista('lancamentos').length === 0 && S.lista('clientes').length > 0, 'banco manda ordens e clientes, sem movimentações nem financeiro');
     for (const r of ['#/maquinas', '#/movimentos', '#/compras', '#/financeiro', '#/rh']) { await ir(r); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'PCP sem ' + r); }
@@ -581,6 +597,10 @@ window.roteiro = async function roteiro(filtro) {
   // ================================================================ ESCRITÓRIO
   await passo('perfil escritório', async () => {
     await como('escritorio');
+    const mEsc = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
+    conf(mEsc.includes('RH') && mEsc.includes('Almoxarifado') && !mEsc.includes('Pessoas'), 'escritório: menu por áreas', mEsc);
+    conf([...document.querySelectorAll('.lateral-menu .grupo')].map(g => g.textContent).join('|') === 'Operação|Gestão|Sistema', 'áreas agrupadas em Operação, Gestão e Sistema');
+    await ir('#/rh/ponto'); conf(!!document.querySelector('.subabas') && !!document.querySelector('.lateral-menu a.on[data-area=rh]'), 'escritório: dentro do RH, abas em cima');
     await ir('#/admin'); const t = document.getElementById('view').textContent;
     conf(!t.includes('Novo acesso') && !t.includes('Importar planilha') && t.includes('Empresa'), 'escritório: sem acessos/importação, com empresa', t.slice(0, 120));
     await ir('#/financeiro'); conf(!document.getElementById('view').textContent.includes('Sem acesso'), 'escritório vê financeiro');
@@ -590,7 +610,10 @@ window.roteiro = async function roteiro(filtro) {
   await passo('perfil RH', async () => {
     await como('helena');
     const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
-    conf(menu.join('|') === 'Início|RH|Ajuda', 'menu do RH: só Início, RH e Ajuda', menu);
+    conf(menu.join('|') === 'Início|Pessoas|Ponto|Férias|Treinamentos|EPI e exames|Advertências|Processos|Organograma|Relatórios|Indicadores|Ajustes|Ajuda', 'menu do RH: as abas do RH direto no menu da esquerda', menu);
+    conf([...document.querySelectorAll('.lateral-menu .grupo')].map(g => g.textContent).join('|') === 'Dia a dia|Gestão|Sistema', 'menu do RH separado em Dia a dia, Gestão e Sistema');
+    await ir('#/rh/ponto'); conf(!document.querySelector('.subabas') && !!document.querySelector('.lateral-menu a.on[data-rota="rh/ponto"]'), 'RH sem abas em cima; a tela aberta fica marcada no menu');
+    await ir('#/inicio');
     conf(!document.querySelector('.lateral [data-acao=retirar]'), 'RH não tem "Retirar peça"');
     conf(S.lista('pecas').length === 0 && S.lista('lancamentos').length === 0 && S.lista('movimentos').length === 0, 'banco não manda estoque nem financeiro para o RH');
     await ir('#/pecas'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'estoque bloqueado para o RH');
