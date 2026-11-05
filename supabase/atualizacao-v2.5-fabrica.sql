@@ -180,7 +180,7 @@ create table if not exists public.vendas (
   descricao       text,
   pedido          text,               -- número do pedido do cliente
   prazo           date,
-  qtd             numeric(14,3) not null check (qtd > 0),
+  qtd             numeric(14,3) not null,
   valor           numeric(14,4) not null default 0 check (valor >= 0),   -- preço unitário
   entregue        numeric(14,3) not null default 0 check (entregue >= 0),
   entregue_em     date,
@@ -192,6 +192,9 @@ create table if not exists public.vendas (
 );
 create index if not exists vendas_prazo on public.vendas (prazo);
 create index if not exists vendas_produto on public.vendas (produto_id);
+-- quantidade zero só em item cancelado (a planilha tem itens zerados pelo cliente)
+alter table public.vendas drop constraint if exists vendas_qtd_check;
+alter table public.vendas add constraint vendas_qtd_check check (qtd > 0 or (qtd = 0 and cancelado));
 
 create table if not exists public.vendas_entregas (
   id         uuid primary key default gen_random_uuid(),
@@ -663,7 +666,7 @@ declare v_id uuid := coalesce(public.uid_de(p, 'id'), gen_random_uuid()); v_cli 
 begin
   perform public.exigir('dono','escritorio','pcp');
   if v_cli is null and public.nz(p->>'cliente_nome') is null then raise exception 'Escolha o cliente'; end if;
-  if v_q is null or v_q <= 0 then raise exception 'Informe a quantidade'; end if;
+  if v_q is null or v_q < 0 or (v_q = 0 and not coalesce((p->>'cancelado')::boolean, false)) then raise exception 'Informe a quantidade'; end if;
   if v_prod is null and public.nz(p->>'codigo') is not null then select id into v_prod from public.produtos where lower(codigo) = lower(p->>'codigo'); end if;
   select * into pr from public.produtos where id = v_prod;
   if pr.id is null and public.nz(p->>'codigo') is null and public.nz(p->>'descricao') is null then raise exception 'Informe o código ou a descrição do item'; end if;
@@ -873,12 +876,12 @@ begin
   end if;
 
   if p_parte = 'vendas' then
-    insert into public.vendas (cliente_id, cliente_nome, produto_id, codigo, codigo_cliente, descricao, pedido, prazo, qtd, valor, entregue, entregue_em, obs, criado_por)
+    insert into public.vendas (cliente_id, cliente_nome, produto_id, codigo, codigo_cliente, descricao, pedido, prazo, qtd, valor, entregue, entregue_em, cancelado, obs, criado_por)
     select public._cliente_por_nome(x->>'cliente'), x->>'cliente', pr.id, public.nz(x->>'codigo'), public.nz(x->>'codigo_cliente'), public.nz(x->>'descricao'),
-           public.nz(x->>'pedido'), public.dt(x, 'prazo'), public.num(x, 'qtd'), greatest(coalesce(public.num(x, 'valor'), 0), 0),
-           greatest(coalesce(public.num(x, 'entregue'), 0), 0), public.dt(x, 'entregue_em'), public.nz(x->>'obs'), null
-      from jsonb_array_elements(p) x left join public.produtos pr on lower(pr.codigo) = lower(x->>'codigo')
-     where public.num(x, 'qtd') > 0;
+           public.nz(x->>'pedido'), public.dt(x, 'prazo'), greatest(coalesce(public.num(x, 'qtd'), 0), 0), greatest(coalesce(public.num(x, 'valor'), 0), 0),
+           greatest(coalesce(public.num(x, 'entregue'), 0), 0), public.dt(x, 'entregue_em'), coalesce(public.num(x, 'qtd'), 0) <= 0,
+           nullif(concat_ws('; ', public.nz(x->>'obs'), case when coalesce(public.num(x, 'qtd'), 0) <= 0 then 'Quantidade zerada na planilha' end), ''), null
+      from jsonb_array_elements(p) x left join public.produtos pr on lower(pr.codigo) = lower(x->>'codigo');
     get diagnostics n = row_count;
     -- a planilha guarda o cliente com o nome curto: fica o nome do cadastro
     update public.vendas v set cliente_nome = c.nome from public.clientes c where c.id = v.cliente_id and v.cliente_nome is distinct from c.nome;

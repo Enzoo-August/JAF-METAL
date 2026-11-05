@@ -580,6 +580,13 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   conf((await erro(ger, 'entregar_venda', { venda_id: v, qtd: 1 }))?.includes('perfil não pode'), 'gerente vê os pedidos mas não lança entrega')
   conf((await ver(ger, 'select * from public.vendas')).length === 1 && (await ver(prod, 'select * from public.vendas')).length === 0, 'produção não vê pedidos de clientes (preços)')
   conf((await ver(rh, 'select * from public.produtos')).length === 0 && (await ver(rh, 'select * from public.ofs')).length === 0, 'RH não vê a fábrica')
+  // a planilha tem itens zerados pelo cliente: entram como cancelados, nada fica de fora
+  await imp('vendas', [{ cliente: 'Cliente Fab', codigo: 'P-1', pedido: 'PC2', prazo: '2026-02-01', qtd: 0, valor: 5 }])
+  const vz = (await q(`select id, cancelado, qtd::float q, obs from public.vendas where pedido = 'PC2'`))[0]
+  conf(vz?.cancelado && vz.q === 0 && vz.obs?.includes('zerada'), 'item zerado na planilha entra como cancelado', vz)
+  conf((await erro(pcp, 'entregar_venda', { venda_id: vz.id, qtd: 1 }))?.includes('cancelado'), 'item cancelado não recebe entrega')
+  conf((await erro(pcp, 'salvar_venda', { cliente_nome: 'Cliente Fab Teste', codigo: 'P-1', qtd: 0 }))?.includes('quantidade'), 'item novo com quantidade zero recusado')
+  conf(!!(await rpc(pcp, 'salvar_venda', { id: vz.id, cliente_nome: 'Cliente Fab Teste', codigo: 'P-1', qtd: 0, cancelado: true, obs: 'ok' })), 'item cancelado zerado pode ser editado')
 
   // registros (técnico, PCP, manutenção)
   const alt = await rpc(prod, 'salvar_registro', { tipo: 'alteracao', titulo: 'Trocar o raio da dobra', dados: { solicitante: 'Beto' } })
