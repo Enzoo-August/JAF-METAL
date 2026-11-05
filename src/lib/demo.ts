@@ -156,6 +156,8 @@ export async function criarDemo(): Promise<void> {
   await API.rpc('criar_acesso', { p_login: 'operador', p_senha: senha, p_nome: 'Beto (teste)', p_perfil: 'producao', p_func: ids['Beto Silva'] })
   await API.rpc('criar_acesso', { p_login: 'helena', p_senha: senha, p_nome: 'Helena (teste)', p_perfil: 'rh', p_func: ids['Helena Costa'] })
   await API.rpc('criar_acesso', { p_login: 'gerente', p_senha: senha, p_nome: 'Ivo (teste)', p_perfil: 'gerente', p_func: ids['Ivo Martins'] })
+  await API.rpc('criar_acesso', { p_login: 'tecnico', p_senha: senha, p_nome: 'Tiago (teste)', p_perfil: 'tecnico', p_func: null })
+  await API.rpc('criar_acesso', { p_login: 'manut', p_senha: senha, p_nome: 'Márcio (teste)', p_perfil: 'manutencao', p_func: null })
 
   // na demonstração as senhas já são as definitivas (no sistema real o Dono cria provisórias)
   await API._pg!.query(`update public.perfis set trocar_senha = false`)
@@ -215,6 +217,7 @@ export async function criarDemo(): Promise<void> {
   await API.rpc('salvar_config', { p_chave: 'empresa', p_valor: { nome: 'JAF Metal (teste)', cidade: 'São Paulo', uf: 'SP' } })
   await API.rpc('salvar_config', { p_chave: 'saldo_inicial', p_valor: { valor: 25000, data: dia(-30) } })
   await demoRH(ids, cargo, dia)
+  await demoFabrica(dia)
 
   await API.sair()
   API.precisaDemo = false
@@ -324,4 +327,99 @@ async function demoRH(ids: Record<string, string>, cargo: Record<string, string>
   // um desligado
   const p = S.get('funcionarios', ids['Paulo Gomes'])!
   await rpc('salvar_funcionario', { ...p, situacao: 'desligado', demissao: dia(-20), privado: { ...(S.get('funcionarios_privado', p.id) || {}), motivo_demissao: 'Pedido de demissão' } })
+}
+
+// ------------------------------------------------------------------ fábrica (PCP, pedidos de clientes, técnico, manutenção) — tudo inventado.
+// Entra pelo mesmo caminho da importação das planilhas reais (importar_fabrica), para testar esse caminho também.
+async function demoFabrica(dia: (n: number) => string): Promise<void> {
+  const imp = (parte: string, p: unknown, sub = false) => API.rpc('importar_fabrica', { p_parte: parte, p, p_substituir: sub })
+  const aa = dia(0).slice(2, 4)
+  await imp('inicio', {})
+  await imp('fornecedores', [{ nome: 'Aço Exemplo Distribuidora', cidade: 'São Paulo', uf: 'SP' }, { nome: 'Zincagem Exemplo', cidade: 'Diadema', uf: 'SP' }])
+  await imp('config', { codigo_inteligente: {
+    liga: [{ c: 'AB', d: 'Aço SAE 1008' }, { c: 'AE', d: 'Aço SAE 1020' }, { c: 'IA', d: 'Inox 304' }],
+    perfil: [{ c: '01', d: 'Redondo' }, { c: '05', d: 'Chapa' }, { c: '07', d: 'Tubo redondo' }],
+    processo: [{ c: 'A', d: 'Laminado' }, { c: 'B', d: 'Trefilado' }],
+    estado: [{ c: '01', d: 'h9' }, { c: '05', d: 'Decapado e oleado' }],
+    medida: [{ c: 'ac', d: '6,35' }, { c: 'bb', d: '2,0' }, { c: 'bw', d: '1200' }, { c: 'cg', d: '25,4' }] },
+    codigos: { siglas: [{ nome: 'Upgrade Barras de Apoio', sigla: 'UP' }, { nome: 'Cliente Exemplo Ltda.', sigla: 'CX' }],
+      tipos: [{ prefixo: 'CF', tipo: '02', descricao: 'Componente fabricado' }, { prefixo: 'CC', tipo: '03', descricao: 'Componente comprado' }, { prefixo: 'SC', tipo: '04', descricao: 'Sub-conjunto' }] } })
+  await imp('clientes', [{ nome: 'Upgrade Barras de Apoio', sigla: 'UP' }, { nome: 'Cliente Exemplo Ltda.', sigla: 'CX', contato2: 'Qualidade' }])
+  await imp('produtos', [
+    { codigo: 'AE01.B01.ac', descricao: 'Aço SAE 1020 redondo trefilado h9 6,35', classe: 'mp' },
+    { codigo: 'AB05.A05.bb x bw', descricao: 'Aço SAE 1008 chapa laminada decapada 2,0 x 1200', classe: 'mp' },
+    { codigo: 'IA07.B01.cg', descricao: 'Tubo inox 304 redondo 25,4', classe: 'mp' },
+    { codigo: 'CF 02.0001', descricao: 'Pino 6 x 40', classe: 'peca', mp_codigo: 'AE01.B01.ac', mp_qtd: 0.012, mp_unidade: 'Kg', operacao: 'Tornear', cliente: 'Cliente Exemplo Ltda.', codigo_cliente: 'CX-1001', checks: { desenhos: true, rf_pc: true } },
+    { codigo: 'CF 02.0002', descricao: 'Suporte dobrado', classe: 'peca', mp_codigo: 'AB05.A05.bb x bw', mp_qtd: 0.35, mp_unidade: 'Kg', operacao: 'Estampar e dobrar', checks: { desenhos: true } },
+    { codigo: 'CF 02.0003', descricao: 'Tubo cortado 400 mm', classe: 'peca', mp_codigo: 'IA07.B01.cg', mp_qtd: 0.42, mp_unidade: 'Kg', operacao: 'Cortar e curvar' },
+    { codigo: 'CC 03.0001', descricao: 'Parafuso M6 x 20 (comprado)', classe: 'peca' },
+    { codigo: 'UP 01.0002', descricao: 'Barra reta 400 mm inox', classe: 'peca', cliente: 'Upgrade Barras de Apoio', codigo_cliente: 'BR-400', pecas_mes: 300, checks: { solic_desenv: true, desenhos: true, planos_montagem: true } },
+    { codigo: 'UP 01.0004', descricao: 'Barra reta 800 mm inox', classe: 'peca', cliente: 'Upgrade Barras de Apoio', codigo_cliente: 'BR-800' },
+  ])
+  await imp('estrutura', [
+    { pai: 'UP 01.0002', filho: 'CF 02.0003', qtd: 1, unidade: 'Pç', ordem: 1 }, { pai: 'UP 01.0002', filho: 'CF 02.0002', qtd: 2, unidade: 'Pç', ordem: 2 }, { pai: 'UP 01.0002', filho: 'CC 03.0001', qtd: 4, unidade: 'Pç', ordem: 3 },
+    { pai: 'UP 01.0004', filho: 'CF 02.0002', qtd: 2, unidade: 'Pç', ordem: 1 }, { pai: 'UP 01.0004', filho: 'CC 03.0001', qtd: 4, unidade: 'Pç', ordem: 2 },
+  ])
+  await imp('lotes', [
+    { ri: 1001, codigo: 'AE01.B01.ac', qtd: 120, data: dia(-60), nota: '1234', fornecedor: 'Aço Exemplo Distribuidora', pedido: '55', status: 'Aprovado' },
+    { ri: 1002, codigo: 'AB05.A05.bb x bw', qtd: 800, data: dia(-30), nota: '1301', fornecedor: 'Aço Exemplo Distribuidora', status: 'Aprovado' },
+    { ri: 1003, codigo: 'IA07.B01.cg', qtd: 60, data: dia(-12), nota: '1320', fornecedor: 'Aço Exemplo Distribuidora', status: 'Aprovado' },
+    { ri: 1004, codigo: 'AE01.B01.ac', qtd: 100, data: dia(-2), nota: '1388', fornecedor: 'Aço Exemplo Distribuidora', status: 'Aguardando' },
+  ])
+  await imp('vendas', [
+    { cliente: 'Upgrade', codigo: 'UP 01.0002', descricao: 'Barra reta 400 mm inox', pedido: 'PC 018/26', prazo: dia(-2), qtd: 50, valor: 38.5, entregue: 20, entregue_em: dia(-4) },
+    { cliente: 'Upgrade', codigo: 'UP 01.0004', descricao: 'Barra reta 800 mm inox', pedido: 'PC 019/26', prazo: dia(10), qtd: 30, valor: 52 },
+    { cliente: 'Cliente Exemplo', codigo: 'CF 02.0001', codigo_cliente: 'CX-1001', pedido: '4500-77', prazo: dia(0), qtd: 1000, valor: 0.9 },
+    { cliente: 'Cliente Exemplo', codigo: 'CF 02.0001', codigo_cliente: 'CX-1001', pedido: '4500-61', prazo: dia(-20), qtd: 500, valor: 0.9, entregue: 500, entregue_em: dia(-21) },
+    { cliente: 'Cliente Exemplo', descricao: 'Amostra de bucha (sem cadastro)', pedido: '4500-80', prazo: dia(25), qtd: 10 },
+  ])
+  await imp('ofs', [
+    { numero: Number(aa) * 10000 + 1, tipo: 'componente', codigo: 'CF 02.0001', qtd: 500, produzido: 500, ri: 1001, kg: 6, emitido_por: 'Paula', emitida_em: dia(-25), realizado_por: 'Beto', realizada_em: dia(-22), status: 'encerrada' },
+    { numero: Number(aa) * 10000 + 2, tipo: 'componente', codigo: 'CF 02.0002', qtd: 100, ri: 1002, kg: 35, emitido_por: 'Paula', emitida_em: dia(-6), status: 'aberta' },
+    { numero: Number(aa) * 10000 + 3, tipo: 'componente', codigo: 'CF 02.0003', qtd: 50, ri: 1003, kg: 21, emitido_por: 'Paula', emitida_em: dia(-6), status: 'aberta' },
+    { numero: Number(aa) * 10000 + 4, tipo: 'componente', codigo: 'CF 02.0001', qtd: 300, ri: 1099, kg: 3.6, emitido_por: 'Paula', emitida_em: dia(-1), status: 'aberta', obs: 'R.I. sem entrada (exemplo do que a planilha tem)' },
+    { numero: Number(aa) * 100000 + 1, tipo: 'conjunto', codigo: 'UP 01.0002', qtd: 50, emitido_por: 'Paula', emitida_em: dia(-6), status: 'aberta',
+      componentes: [{ codigo: 'CF 02.0003', qtd: 50, ref: String(Number(aa) * 10000 + 3) }, { codigo: 'CF 02.0002', qtd: 100, ref: String(Number(aa) * 10000 + 2) }, { codigo: 'CC 03.0001', qtd: 200, ref: null }] },
+  ])
+  await imp('maquinas', [
+    { codigo: 'TA 25', nome: 'Torno automático TA 25', grupo: 'Máquina', preventiva_dias: 90, checklist: ['Nível de óleo', 'Folga do cabeçote', 'Limpeza do cavaco', 'Correias', 'Parte elétrica'] },
+    { codigo: 'DD 01', nome: 'Dispositivo de dobra 01', grupo: 'Dispositivo', preventiva_dias: 180, checklist: ['Pinos guia', 'Desgaste da matriz', 'Fixação'] },
+    { codigo: 'PRED MAT', nome: 'Predial — Matriz', grupo: 'Predial', preventiva_dias: 365, checklist: ['Telhado e calhas', 'Extintores', 'Quadro elétrico', 'Iluminação', 'Compressor'] },
+  ])
+  await imp('preventivas', [
+    { maquina: 'TA 25', data: dia(-20), responsavel: 'Márcio', resultados: [{ item: 'Nível de óleo', situacao: 'Ok' }, { item: 'Folga do cabeçote', situacao: 'Corrigir' }, { item: 'Limpeza do cavaco', situacao: 'Ok' }, { item: 'Correias', situacao: 'Ok' }, { item: 'Parte elétrica', situacao: 'Ok' }] },
+    { maquina: 'PRED MAT', data: dia(-380), responsavel: 'Márcio', resultados: [{ item: 'Telhado e calhas', situacao: 'Ok' }, { item: 'Extintores', situacao: 'Ocorrência 1' }] },
+  ])
+  await imp('manutencoes', [{ numero: 900, maquina: 'DD 01', data: dia(-45), tipo: 'corretiva', status: 'concluida', problema: 'Pino guia gasto', solucao: 'Troca do pino guia', custo: 120, horas_parada: 2,
+    concluida_em: dia(-44), solicitante: 'Beto', responsavel: 'Márcio', pecas: 'Pino guia (feito na ferramentaria)', aprovacao: 'Ivo', equipamento: 'DD 01' }])
+  const r = (tipo: string, x: Record<string, unknown>) => ({ tipo, ...x })
+  await imp('registros', [
+    r('desenvolvimento', { numero: 1, codigo: 'UP 01.0004', titulo: 'Barra reta 800 mm inox', status: 'Em andamento', prazo: dia(-3), responsavel: 'Tiago', data: dia(-40), dados: { cliente: 'Upgrade', codigo_cliente: 'BR-800' } }),
+    r('desenvolvimento', { numero: 2, codigo: 'CF 02.0001', titulo: 'Pino 6 x 40', status: 'Concluído', concluido_em: dia(-90), responsavel: 'Tiago', data: dia(-120), dados: { cliente: 'Cliente Exemplo' } }),
+    r('alteracao', { numero: 1, data: dia(-10), titulo: 'Aumentar o raio de dobra do suporte para não trincar', prazo: dia(20), responsavel: 'Tiago', status: 'Em andamento', codigo: 'CF 02.0002', dados: { solicitante: 'Beto', setor: 'Produção', justificativa: 'Peças trincando na dobra' } }),
+    r('melhoria', { numero: 1, data: dia(-30), titulo: 'Organizar o cavaco do TA 25 em caçamba separada', prazo: dia(15), responsavel: 'Ivo', status: 'Em andamento', dados: { equipe: 'Produção', situacao_atual: 'Cavaco misturado' } }),
+    r('desvio', { numero: 1, data: dia(-8), codigo: 'CF 02.0001', titulo: 'Material com dureza no limite superior', status: 'Aprovado', responsavel: 'Tiago', concluido_em: dia(-7), dados: { qtd: '300', solicitante: 'Paula' } }),
+    r('desenho', { numero: 1, codigo: 'CF 02.0001', data: dia(-200), responsavel: 'Tiago', status: 'Em uso', dados: { rev: 'B', data_rev: dia(-210) } }),
+    r('desenho', { numero: 2, codigo: 'CF 02.0002', data: dia(-150), responsavel: 'Tiago', status: 'Em uso', dados: { rev: 'A' } }),
+    r('copia', { numero: 1, codigo: 'CF 02.0001', data: dia(-199), status: 'Distribuída', dados: { op: '10', rev: 'B', local: 'Tornos' } }),
+    r('imds', { numero: 1, codigo: 'UP 01.0002', prazo: dia(30), status: 'Em andamento', data: dia(30), dados: { codigo_cliente: 'BR-400' } }),
+    r('ata', { numero: 1, data: dia(-14), titulo: 'Reunião de qualidade do mês', responsavel: 'Ivo', status: 'Concluído', dados: { participantes: 'Ivo, Tiago, Paula', local: 'Escritório', hora: '09:00', assuntos: 'Trinca no suporte: Tiago abre alteração até sexta.' } }),
+    r('setup', { numero: 1, codigo: 'CF 02.0001', status: 'Ativo', dados: { operacao: 'Tornear', setup_horas: 1.5, pecas_hora: 240 } }),
+    r('servico_externo', { numero: 1, data: dia(-4), codigo: 'CF 02.0002', titulo: 'Zincagem branca', status: 'Fora (no fornecedor)', responsavel: 'Paula', dados: { qtd: 100, fornecedor: 'Zincagem Exemplo', saida: dia(-4), of: String(Number(aa) * 10000 + 2) } }),
+    r('requisicao', { numero: 1, data: dia(-2), codigo: 'CC 03.0001', status: 'Em aberto', responsavel: 'Beto', dados: { qtd: 200, of: String(Number(aa) * 100000 + 1) } }),
+    r('servico_manut', { data: dia(-15), titulo: 'Revisão do quadro elétrico', valor: 480, status: 'Pago', maquina: 'PRED MAT', dados: { prestador: 'Eletricista Exemplo', horas: 4, valor_hora: 120 } }),
+    r('gasto_manut', { data: dia(-9), titulo: 'Óleo de corte 20 L', valor: 390, status: 'Pago', dados: { fornecedor: 'Aço Exemplo Distribuidora', plano: 'Manutenção', grupo: 'Máquina' } }),
+    r('gasto_manut', { data: dia(-3), titulo: 'Correia do TA 25', valor: 145, status: 'Aguardando', dados: { grupo: 'Máquina', codigo: 'TA 25' } }),
+    r('peca_critica', { titulo: 'Correia do cabeçote', maquina: 'TA 25', status: 'Comprar', valor: 145, data: dia(-200), prazo: dia(-20), dados: { vida_dias: 180, qtd: 0, min: 1, max: 2 } }),
+    r('peca_critica', { titulo: 'Pino guia', maquina: 'DD 01', status: 'Ok', valor: 40, data: dia(-44), prazo: dia(130), dados: { vida_dias: 180, qtd: 2, min: 1 } }),
+    r('pendencia', { titulo: '1: Trocar extintor vencido do galpão', maquina: 'PRED MAT', prazo: dia(-10), status: 'Aberta' }),
+    r('ferramentaria', { data: dia(-6), titulo: 'Afiar a matriz de corte', prazo: dia(2), valor: 220, status: 'Aguardando', dados: { fornecedor: 'Ferramentaria Exemplo' } }),
+  ])
+  await imp('fim', { demo: true })
+  // e o que se faz pelo sistema: uma OF nova, uma entrega e um check-list
+  await S.carregar(); await S.garantir(['produtos', 'vendas', 'ofs'])
+  const pr = S.lista('produtos').find(p => p.codigo === 'CF 02.0001')!
+  await API.rpc('emitir_of', { p: { produto_id: pr.id, qtd: 200, ri: 1001, prazo: dia(3), emitido_por: 'Paula' } })
+  const v = S.lista('vendas').find(x => x.pedido === 'PC 018/26')!
+  await API.rpc('entregar_venda', { p: { venda_id: v.id, qtd: 10, data: dia(-1), nf: '7001' } })
 }

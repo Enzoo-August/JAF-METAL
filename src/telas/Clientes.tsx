@@ -42,8 +42,9 @@ function Ficha({ id }: { id: string }) {
   const ords = S.lista('ordens').filter(o => o.cliente_id === c.id).sort((a, b) => b.numero - a.numero)
   const contas = S.lista('lancamentos').filter(l => l.cliente_id === c.id).sort((a, b) => a.vencimento < b.vencimento ? 1 : -1)
   const ano = U.hoje().slice(0, 4)
-  const dados: [string, React.ReactNode][] = [['Contato', c.contato || ''], ['Telefone', U.tel(c.telefone || '')], ['E-mail', c.email ? <a href={'mailto:' + c.email}>{c.email}</a> : ''],
-    ['Cidade', [c.cidade, c.uf].filter(Boolean).join('/')], ['Observações', c.obs ? <Texto t={c.obs} /> : '']]
+  const dados: [string, React.ReactNode][] = [['Sigla', c.sigla || ''], ['Contato', c.contato || ''], ['Telefone', U.tel(c.telefone || '')], ['Contato 2', [c.contato2, U.tel(c.telefone2 || '')].filter(Boolean).join(' · ')],
+    ['E-mail', c.email ? <a href={'mailto:' + c.email}>{c.email}</a> : ''], ['Site', c.site ? <a href={U.site(c.site)} target="_blank" rel="noreferrer">{c.site}</a> : ''],
+    ['Endereço', [c.endereco, c.bairro, c.cep].filter(Boolean).join(' · ')], ['Cidade', [c.cidade, c.uf].filter(Boolean).join('/')], ['IE', c.ie || ''], ['Observações', c.obs ? <Texto t={c.obs} /> : '']]
   return <>
     <Voltar para="#/clientes" txt="Clientes" />
     <header className="cab"><div><h1>{c.nome}</h1><p className="sub">{[c.razao, c.cnpj].filter(Boolean).join(' · ')}</p></div>
@@ -68,10 +69,13 @@ export async function form(c?: Cliente | null, nomeInicial?: string): Promise<st
     titulo: novo ? 'Novo cliente' : 'Editar cliente',
     corpo: <>
       <AutoPreencher />
-      <Campo nome="nome" rotulo="Nome" valor={b.nome} req />
-      <div className="linha-campos"><Campo nome="cnpj" rotulo="CNPJ" valor={b.cnpj} /><Campo nome="razao" rotulo="Razão social" valor={b.razao} /></div>
+      <div className="linha-campos"><Campo nome="nome" rotulo="Nome" valor={b.nome} req /><Campo nome="sigla" rotulo="Sigla (código inteligente)" valor={b.sigla} attrs={{ maxLength: 4 }} placeholder="Ex.: AE" /></div>
+      <div className="linha-campos"><Campo nome="cnpj" rotulo="CNPJ" valor={b.cnpj} /><Campo nome="ie" rotulo="Inscrição estadual" valor={b.ie} /><Campo nome="razao" rotulo="Razão social" valor={b.razao} /></div>
       <div className="linha-campos"><Campo nome="contato" rotulo="Contato" valor={b.contato} /><Campo nome="telefone" rotulo="Telefone" tipo="tel" valor={b.telefone} /></div>
-      <div className="linha-campos"><Campo nome="email" rotulo="E-mail" tipo="email" valor={b.email} /><Campo nome="cidade" rotulo="Cidade" valor={b.cidade} /><Campo nome="uf" rotulo="UF" valor={b.uf} attrs={{ maxLength: 2 }} /></div>
+      <div className="linha-campos"><Campo nome="contato2" rotulo="Contato 2" valor={b.contato2} /><Campo nome="telefone2" rotulo="Telefone 2" tipo="tel" valor={b.telefone2} /></div>
+      <div className="linha-campos"><Campo nome="email" rotulo="E-mail" tipo="email" valor={b.email} /><Campo nome="site" rotulo="Site" valor={b.site} /></div>
+      <div className="linha-campos"><Campo nome="endereco" rotulo="Endereço" valor={b.endereco} /><Campo nome="bairro" rotulo="Bairro" valor={b.bairro} /><Campo nome="cep" rotulo="CEP" valor={b.cep} /></div>
+      <div className="linha-campos"><Campo nome="cidade" rotulo="Cidade" valor={b.cidade} /><Campo nome="uf" rotulo="UF" valor={b.uf} attrs={{ maxLength: 2 }} /></div>
       <Campo nome="obs" rotulo="Observações" tipo="area" valor={b.obs} linhas={2} />
       {!novo && <Campo nome="ativo" rotulo="Cliente ativo" tipo="check" valor={b.ativo} />}
     </>,

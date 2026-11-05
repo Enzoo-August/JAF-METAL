@@ -278,7 +278,7 @@ conf((await q(`select cliente_nome from public.ordens where id = $1`, [op.id]))[
   conf((await ver(pcp, 'select * from public.pecas')).length > 0 && (await ver(pcp, 'select * from public.clientes')).length > 0, 'PCP consulta estoque e clientes')
   conf((await ver(pcp, 'select * from public.movimentos')).length === 0 && (await ver(pcp, 'select * from public.pedidos_compra')).length === 0
     && (await ver(pcp, 'select * from public.lancamentos')).length === 0 && (await ver(pcp, 'select * from public.funcionarios_privado')).length === 0, 'PCP não vê movimentações, compras, financeiro nem dados pessoais')
-  conf((await erro(pcp, 'salvar_cliente', { nome: 'X' }))?.includes('perfil não pode'), 'PCP não cadastra cliente')
+  conf(!!(await rpc(pcp, 'salvar_cliente', { nome: 'Cliente do PCP' })), 'PCP cadastra cliente (recebe os pedidos)')
   conf((await erro(pcp, 'salvar_maquina', { nome: 'X' }))?.includes('perfil não pode'), 'PCP não cadastra máquina')
   conf((await erro(alm, 'salvar_ordem', { produto: 'x', qtd: 1 }))?.includes('perfil não pode'), 'almoxarifado não cria ordem (é do PCP)')
 }
@@ -492,6 +492,128 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   conf((await ver(rh, 'select count(*)::int n from public.rh_indicadores'))[0].n === 1, 'mês vazio apaga o lançamento')
   conf((await erro(rh, 'rh_salvar_indicadores', { ano: 2026, meses: [{ mes: 3, receita: -1 }] }))?.includes('negativo'), 'valor negativo recusado')
   conf((await erro(ger, 'rh_salvar_indicadores', { ano: 2026, meses: [] }))?.includes('perfil não pode') && (await ver(ger, 'select * from public.rh_indicadores')).length === 0, 'indicadores (receita) só para RH, Escritório e Dono')
+}
+
+// ---------------------------------------------------------------- v2.5: fábrica (PCP, pedidos de clientes, técnico, manutenção) — dados inventados
+{
+  const pcp = (await q(`select user_id from public.perfis where login = 'paula.pcp'`))[0].user_id
+  const rh = (await q(`select user_id from public.perfis where login = 'rita.rh'`))[0].user_id
+  const ger = (await q(`select user_id from public.perfis where login = 'gil.ger'`))[0].user_id
+  const tec = await rpc(dono, 'criar_acesso', 'tiago.tec', 'senha-forte-10', 'Tiago Técnico', 'tecnico', null)
+  const man = await rpc(dono, 'criar_acesso', 'marcio.man', 'senha-forte-11', 'Márcio Manutenção', 'manutencao', null)
+  conf(!!tec && !!man, 'perfis novos: técnico e manutenção')
+  conf((await erro(dono, 'criar_acesso', 'x.y', 'senha-forte-12', 'X', 'qualquer', null))?.length > 0, 'perfil inventado recusado')
+
+  // importação das planilhas (pedaços, como o botão faz)
+  const imp = (parte, p, sub = false) => rpc(dono, 'importar_fabrica', parte, p, sub)
+  conf((await erro(esc, 'importar_fabrica', 'inicio', {}, false))?.includes('perfil não pode'), 'só o Dono importa as planilhas da fábrica')
+  await imp('inicio', {})
+  await imp('clientes', [{ nome: 'Cliente Fab Teste', sigla: 'CF' }])
+  await imp('fornecedores', [{ nome: 'Usina Teste' }])
+  await imp('config', { codigo_inteligente: { liga: [{ c: 'AA', d: 'Aço teste' }] } })
+  await imp('produtos', [{ codigo: 'MP-1', descricao: 'Barra teste', classe: 'mp' }, { codigo: 'P-1', descricao: 'Peça teste', mp_codigo: 'MP-1', mp_qtd: 0.5, mp_unidade: 'Kg', cliente: 'Cliente Fab' },
+    { codigo: 'P-2', descricao: 'Peça 2' }, { codigo: 'CJ-1', descricao: 'Conjunto teste' }, { codigo: 'p-1', descricao: 'duplicado em minúscula' }])
+  conf((await q(`select count(*)::int n from public.produtos`))[0].n === 4, 'produtos importados (código repetido fica um só)')
+  conf((await q(`select c.nome from public.produtos p join public.clientes c on c.id = p.cliente_id where p.codigo = 'P-1'`))[0]?.nome === 'Cliente Fab Teste', 'cliente do produto achado pelo nome curto')
+  await imp('estrutura', [{ pai: 'CJ-1', filho: 'P-1', qtd: 2, ordem: 1 }, { pai: 'CJ-1', filho: 'P-2', qtd: 1, ordem: 2 }, { pai: 'CJ-1', filho: 'NAO-EXISTE', qtd: 1 }])
+  conf((await q(`select count(*)::int n from public.produto_estrutura`))[0].n === 2, 'estrutura importada (componente sem cadastro fica fora)')
+  await imp('lotes', [{ ri: 5001, codigo: 'MP-1', qtd: 100, data: '2026-10-01', fornecedor: 'Usina Teste' }, { ri: 5002, codigo: 'MP-1', qtd: 50, data: '2026-10-02', status: 'Reprovado' }])
+  await imp('vendas', [{ cliente: 'Cliente Fab', codigo: 'CJ-1', pedido: 'PC1', prazo: '2026-01-10', qtd: 10, valor: 5 }])
+  conf((await q(`select cliente_nome from public.vendas`))[0].cliente_nome === 'Cliente Fab Teste', 'pedido fica com o nome do cadastro do cliente')
+  await imp('ofs', [{ numero: 260001, tipo: 'componente', codigo: 'P-1', qtd: 20, ri: 5001, kg: 10, emitida_em: '2026-10-05', status: 'encerrada', produzido: 20 },
+    { numero: 2600001, tipo: 'conjunto', codigo: 'CJ-1', qtd: 10, emitida_em: '2026-10-05', componentes: [{ codigo: 'P-1', qtd: 20, ref: '260001' }] }])
+  conf((await q(`select (select numero from public.ofs where id = f.pai_id) p from public.ofs f where numero = 260001`))[0].p === 2600001, 'OF de componente ligada à OF do conjunto')
+  await imp('maquinas', [{ codigo: 'TA 01', nome: 'Torno teste', grupo: 'Máquina', preventiva_dias: 90, checklist: ['Óleo', 'Correia'] }, { codigo: 'PRED MAT', nome: 'Predial', grupo: 'Predial' }])
+  await imp('preventivas', [{ maquina: 'TA 01', data: '2026-09-01', resultados: [{ item: 'Óleo', situacao: 'Ok' }] }])
+  const osApp = await rpc(alm, 'salvar_manutencao', { maquina_id: (await q(`select id from public.maquinas where codigo = 'TA 01'`))[0].id, problema: 'Aberta no sistema antes da importação' })
+  const nApp = (await q(`select numero from public.manutencoes where id = $1`, [osApp]))[0].numero
+  await imp('manutencoes', [{ numero: nApp, maquina: 'TA 01', problema: 'OS da planilha', data: '2026-08-01', status: 'concluida' }])
+  const nums = await q(`select numero, problema from public.manutencoes where problema in ('OS da planilha', 'Aberta no sistema antes da importação') order by numero`)
+  conf(nums.length === 2 && nums.find(x => x.problema === 'OS da planilha').numero === nApp && nums[0].numero !== nums[1].numero, 'OS da planilha fica com o número dela; a do sistema ganha outro', nums)
+  await imp('registros', [{ tipo: 'desenvolvimento', numero: 1, codigo: 'P-1', titulo: 'Teste', dados: { cliente: 'Cliente Fab' } }, { tipo: 'gasto_manut', titulo: 'Óleo', valor: 50, maquina: 'TA 01' },
+    { tipo: 'inventado', titulo: 'x' }])
+  conf((await q(`select count(*)::int n from public.registros`))[0].n === 2, 'registros importados (tipo desconhecido fica fora)')
+  await imp('pecas', [{ codigo: 'PM-1', descricao: 'Rolamento' }, { codigo: null, descricao: 'sem código' }])
+  const fim = await imp('fim', {})
+  conf(fim.ofs === 2 && fim.lotes === 2, 'fim da importação devolve as contagens', fim)
+  conf((await erro(dono, 'importar_fabrica', 'inicio', {}, false))?.includes('já foram importadas'), 'importar de novo pede para marcar substituir')
+
+  // matéria-prima e OFs
+  const lote = await rpc(alm, 'salvar_lote', { produto_id: (await q(`select id from public.produtos where codigo = 'MP-1'`))[0].id, qtd: 80, fornecedor_nome: 'Usina Teste' })
+  conf(lote.ri === 5003, 'R.I. novo = o próximo número', lote)
+  conf((await erro(prod, 'salvar_lote', { produto_id: 'x', qtd: 1 }))?.includes('perfil não pode'), 'produção não lança entrada de material')
+  const p1 = (await q(`select id from public.produtos where codigo = 'P-1'`))[0].id
+  const cj = (await q(`select id from public.produtos where codigo = 'CJ-1'`))[0].id
+  conf((await erro(pcp, 'emitir_of', { produto_id: p1, qtd: 10, ri: 5002 }))?.includes('reprovado'), 'OF com R.I. reprovado recusada')
+  conf((await erro(pcp, 'emitir_of', { produto_id: p1, qtd: 10, ri: 9999 }))?.includes('não existe'), 'OF com R.I. sem entrada recusada')
+  const of1 = await rpc(pcp, 'emitir_of', { produto_id: p1, qtd: 10, ri: 5001, emitida_em: '2026-11-03' })
+  conf(of1.numero === 260002, 'número da OF de componente segue a planilha (AA + sequência)', of1)
+  conf((await q(`select kg::float k from public.ofs where id = $1`, [of1.id]))[0].k === 5, 'kg da OF calculado pelo cadastro (qtd × kg por peça)')
+  conf(Number((await q('select public.consumo_lote(5001) c'))[0].c) === 15, 'consumo do lote = soma das OFs')
+  const of2 = await rpc(pcp, 'emitir_of', { produto_id: cj, qtd: 5, emitida_em: '2026-11-03', gerar_componentes: true })
+  const filhos = await q(`select numero, qtd::float q from public.ofs where pai_id = $1 order by numero`, [of2.id])
+  conf(of2.numero === 2600002 && filhos.length === 1 && filhos[0].q === 10, 'OF de conjunto gera as OFs dos componentes fabricados', { of2, filhos })
+  conf((await q(`select componentes from public.ofs where id = $1`, [of2.id]))[0].componentes.find(c => c.codigo === 'P-1').ref === String(filhos[0].numero), 'conjunto guarda o nº da OF de cada componente')
+  conf((await erro(prod, 'emitir_of', { produto_id: p1, qtd: 1 }))?.includes('perfil não pode'), 'produção não emite OF')
+  await rpc(prod, 'apontar_of', { id: of1.id, produzido: 10, status: 'encerrada' })
+  const o1 = (await q(`select status, realizado_por, realizada_em is not null d from public.ofs where id = $1`, [of1.id]))[0]
+  conf(o1.status === 'encerrada' && o1.realizado_por === 'Beto Torno' && o1.d, 'produção aponta e encerra a OF', o1)
+  conf((await erro(prod, 'apontar_of', { id: of1.id, status: 'aberta' }))?.includes('PCP'), 'reabrir OF é com o PCP')
+  conf((await erro(pcp, 'emitir_of', { id: of1.id, produto_id: p1, qtd: 3 }))?.includes('reabra'), 'OF encerrada não se altera sem reabrir')
+  await rpc(alm, 'ajustar_lote', { id: (await q(`select id from public.mp_lotes where ri = 5001`))[0].id, contado: 70 })
+  const l1 = (await q(`select qtd::float - public.consumo_lote(ri)::float - baixa::float s from public.mp_lotes where ri = 5001`))[0].s
+  conf(l1 === 70, 'inventário acerta o saldo do lote', l1)
+  await rpc(dono, 'salvar_produto', { id: p1, codigo: 'P-1', descricao: 'Peça teste', situacao: 'bloqueado', mp_codigo: 'MP-1', mp_qtd: 0.5 })
+  conf((await erro(pcp, 'emitir_of', { produto_id: p1, qtd: 1 }))?.includes('bloqueado'), 'código bloqueado não vai para OF')
+  conf((await erro(tec, 'salvar_produto', { id: cj, codigo: 'CJ-1', descricao: 'Conj', estrutura: [{ codigo: 'CJ-1', qtd: 1 }] }))?.includes('ele mesmo'), 'estrutura não aceita o próprio produto')
+  const p2 = (await q(`select id from public.produtos where codigo = 'P-2'`))[0].id
+  conf((await erro(tec, 'salvar_produto', { id: p2, codigo: 'P-2', descricao: 'P2', estrutura: [{ codigo: 'CJ-1', qtd: 1 }] }))?.includes('já leva'), 'estrutura recusa ciclo (A dentro de B dentro de A)')
+  conf((await erro(prod, 'salvar_produto', { codigo: 'Z', descricao: 'z' }))?.includes('perfil não pode'), 'produção não cadastra produto')
+
+  // pedidos de clientes
+  const v = (await q(`select id from public.vendas limit 1`))[0].id
+  await rpc(pcp, 'entregar_venda', { venda_id: v, qtd: 4, nf: '123' })
+  const e2 = await rpc(pcp, 'entregar_venda', { venda_id: v, qtd: 6, data: '2026-11-04' })
+  conf((await q(`select entregue::float e from public.vendas where id = $1`, [v]))[0].e === 10, 'entregas somam no pedido')
+  await rpc(pcp, 'excluir_entrega', e2)
+  conf((await q(`select entregue::float e from public.vendas where id = $1`, [v]))[0].e === 4, 'desfazer entrega volta o saldo')
+  conf((await erro(ger, 'entregar_venda', { venda_id: v, qtd: 1 }))?.includes('perfil não pode'), 'gerente vê os pedidos mas não lança entrega')
+  conf((await ver(ger, 'select * from public.vendas')).length === 1 && (await ver(prod, 'select * from public.vendas')).length === 0, 'produção não vê pedidos de clientes (preços)')
+  conf((await ver(rh, 'select * from public.produtos')).length === 0 && (await ver(rh, 'select * from public.ofs')).length === 0, 'RH não vê a fábrica')
+
+  // registros (técnico, PCP, manutenção)
+  const alt = await rpc(prod, 'salvar_registro', { tipo: 'alteracao', titulo: 'Trocar o raio da dobra', dados: { solicitante: 'Beto' } })
+  conf(alt.numero === 1, 'produção pede alteração e ganha o número', alt)
+  conf((await erro(prod, 'salvar_registro', { id: alt.id, tipo: 'alteracao', titulo: 'mudei' }))?.includes('perfil não pode'), 'produção não edita a alteração depois de pedir')
+  conf((await erro(rh, 'salvar_registro', { tipo: 'alteracao', titulo: 'x' }))?.includes('perfil não pode'), 'RH não pede alteração')
+  conf((await erro(prod, 'salvar_registro', { tipo: 'desvio', titulo: 'x' }))?.includes('perfil não pode'), 'desvio só o técnico lança')
+  const dv = await rpc(tec, 'salvar_registro', { tipo: 'desvio', titulo: 'Dureza no limite', codigo: 'P-1' })
+  conf(dv.numero === 1, 'técnico lança desvio numerado')
+  conf((await erro(tec, 'salvar_registro', { tipo: 'gasto_manut', titulo: 'x' }))?.includes('perfil não pode'), 'técnico não lança gasto da manutenção')
+  await rpc(man, 'salvar_registro', { tipo: 'peca_critica', titulo: 'Correia', status: 'Comprar' })
+  conf((await ver(prod, `select * from public.registros where tipo = 'gasto_manut'`)).length === 0, 'produção não vê gastos da manutenção')
+  conf((await ver(prod, `select * from public.registros where tipo = 'alteracao'`)).length === 1, 'produção vê as alterações (técnico)')
+  conf((await ver(man, `select * from public.registros where tipo = 'gasto_manut'`)).length === 1, 'manutenção vê os gastos')
+  const se = await rpc(pcp, 'salvar_registro', { tipo: 'servico_externo', titulo: 'Zincagem', codigo: 'P-1' })
+  conf(se.numero === 1, 'PCP lança serviço externo numerado')
+  conf((await erro(prod, 'excluir_registro', alt.id))?.includes('perfil não pode'), 'produção não exclui registro')
+  await rpc(tec, 'excluir_registro', dv.id)
+  conf((await q(`select count(*)::int n from public.registros where id = $1`, [dv.id]))[0].n === 0, 'técnico exclui registro dele')
+
+  // manutenção
+  const maq = (await q(`select id from public.maquinas where codigo = 'TA 01'`))[0].id
+  const os = await rpc(man, 'salvar_manutencao', { maquina_id: maq, problema: 'Vazamento', tipo: 'preditiva', responsavel: 'Márcio' })
+  const o = (await q(`select numero, solicitante, tipo from public.manutencoes where id = $1`, [os]))[0]
+  conf(o.numero > 0 && o.solicitante === 'Márcio Manutenção' && o.tipo === 'preditiva', 'manutenção abre OS numerada (preditiva) e fica como solicitante', o)
+  const pv = await rpc(man, 'salvar_preventiva', { maquina_id: maq, data: '2026-11-04', resultados: [{ item: 'Óleo', situacao: 'Ok' }, { item: 'Correia', situacao: 'Trocar' }] })
+  conf(!!pv && (await ver(prod, 'select * from public.preventivas')).length === 2, 'check-list da preventiva gravado (produção consulta)')
+  conf((await erro(prod, 'salvar_preventiva', { maquina_id: maq }))?.includes('perfil não pode'), 'produção não preenche preventiva')
+  conf((await erro(prod, 'salvar_maquina', { nome: 'X' }))?.includes('perfil não pode'), 'produção não cadastra máquina')
+  const mq2 = await rpc(man, 'salvar_maquina', { codigo: 'PE 09', nome: 'Prensa teste', grupo: 'Máquina', checklist: ['Freio', 'Embreagem'] })
+  conf((await q(`select jsonb_array_length(checklist) n from public.maquinas where id = $1`, [mq2]))[0].n === 2, 'manutenção cadastra máquina com check-list')
+  conf((await erro(man, 'salvar_maquina', { codigo: 'pe 09', nome: 'Outra' }))?.length > 0, 'código de máquina repetido recusado')
+  conf((await ver(man, 'select * from public.lancamentos')).length === 0 && (await ver(man, 'select * from public.rh_ponto')).length === 0, 'manutenção não vê financeiro nem RH')
+  conf((await ver(tec, 'select * from public.clientes')).length > 0 && (await ver(tec, 'select * from public.lancamentos')).length === 0, 'técnico vê clientes, não vê financeiro')
 }
 
 // ---------------------------------------------------------------- funções liberadas

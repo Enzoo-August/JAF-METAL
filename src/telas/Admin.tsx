@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { App } from '../app/controle.tsx'
 import { API, ErroApp, traduzir } from '../lib/api.ts'
-import { C, S, ultimaCopia } from '../lib/dados.ts'
+import { C, FABRICA, S, ultimaCopia } from '../lib/dados.ts'
 import { ler as lerPlanilha, sugerirMaquina, type Leitura } from '../lib/importar.ts'
 import { Perm } from '../lib/perm.ts'
 import type { Historico, PerfilAcesso } from '../lib/tipos.ts'
@@ -20,10 +20,12 @@ const DESC_PERFIL: Record<string, string> = {
   dono: 'Tudo, inclusive acessos, importação e histórico de alterações.',
   escritorio: 'Tudo do dia a dia: financeiro, salários, compras, almoxarifado e PCP. Não cria acessos.',
   almoxarife: 'Almoxarifado (peças, retiradas, entradas, máquinas e manutenção), compras e fornecedores. Não vê PCP, financeiro nem salários.',
-  pcp: 'PCP: cria e acompanha as ordens de produção (fila, produzindo, pronta, entregue). Consulta o estoque e os clientes. Não vê compras, financeiro nem RH.',
-  producao: 'Retirar peça, ver estoque (sem preços), atualizar as ordens de produção e abrir chamados de máquina.',
+  pcp: 'PCP: emite e acompanha as OFs, matéria-prima (R.I.), pedidos de clientes, necessidade, serviço externo e requisições. Cadastra clientes e produtos. Não vê compras, financeiro nem RH.',
+  producao: 'Retirar peça, ver estoque (sem preços), apontar as OFs, abrir OS de máquina e pedir alteração no produto.',
   rh: 'Só o RH: pessoas, documentos, salários, ponto, férias, treinamentos, exames e advertências. Não vê estoque nem financeiro.',
-  gerente: 'Almoxarifado (estoque, retirar, máquinas), acompanha as ordens do PCP e consulta o RH da equipe — sem salários, documentos pessoais nem CID.',
+  gerente: 'Almoxarifado (estoque, retirar, máquinas), acompanha OFs, pedidos de clientes e a manutenção, e consulta o RH da equipe — sem salários, documentos pessoais nem CID.',
+  tecnico: 'Departamento técnico e qualidade: produtos (cadastro técnico, estrutura, código inteligente), desenvolvimento, alterações, melhorias, projetos, desvios, desenhos, cópias controladas, IMDS, atas e setup. Consulta OFs e matéria-prima.',
+  manutencao: 'Manutenção: ordens de serviço, preventiva (check-lists e plano anual), máquinas, peças críticas, serviços, gastos e ferramentaria. Retira peças do almoxarifado.',
 }
 
 export function TelaAdmin({ r }: { r: Rota }) {
@@ -37,7 +39,7 @@ export function TelaAdmin({ r }: { r: Rota }) {
     <nav className="abas-tela">{abas.map(([k, t]) => <button key={k} type="button" data-aba={k} className={k === atual ? 'on' : ''} onClick={() => setAba(k)}>{t}</button>)}</nav>
     {atual === 'acessos' && <Acessos />}
     {atual === 'empresa' && <Empresa />}
-    {atual === 'importar' && <><Importar /><ImportarRH /></>}
+    {atual === 'importar' && <><ImportarFabrica /><Importar /><ImportarRH /></>}
     {atual === 'copia' && <Copia />}
     {atual === 'historico' && <HistoricoAlt />}
   </>
@@ -134,6 +136,66 @@ function Empresa() {
       <div className="linha-campos"><Campo nome="pagar" rotulo="Despesas (a pagar)" tipo="area" linhas={10} valor={cats.pagar.join('\n')} /><Campo nome="receber" rotulo="Receitas (a receber)" tipo="area" linhas={10} valor={cats.receber.join('\n')} /></div>
       <Btn txt="Salvar categorias" icone="ok" cls="pri" data-salvar="categorias" onClick={() => salvar('categorias')} /></form>
   </>
+}
+
+// ---------------------------------------------------------------- importar as planilhas da fábrica (PCP, Controle de Pedidos, Depto. Técnico, Manutenção, Preventiva)
+type CargaFab = Record<string, unknown[]> & { versao?: number; gerado_em?: string; config?: Record<string, unknown> }
+const PARTES: [parte: string, chave: string, rot: string][] = [['clientes', 'clientes', 'Clientes'], ['fornecedores', 'fornecedores', 'Fornecedores'], ['config', 'config', 'Código inteligente'],
+  ['produtos', 'produtos', 'Produtos'], ['estrutura', 'estrutura', 'Estruturas'], ['lotes', 'lotes', 'Lotes de matéria-prima (R.I.)'], ['vendas', 'vendas', 'Pedidos de clientes'], ['ofs', 'ofs', 'OFs'],
+  ['maquinas', 'maquinas', 'Máquinas e equipamentos'], ['preventivas', 'preventivas', 'Check-lists de preventiva'], ['manutencoes', 'manutencoes', 'Ordens de serviço'],
+  ['registros', 'registros', 'Registros (técnico, PCP, manutenção)'], ['pecas', 'pecas', 'Peças de manutenção']]
+function ImportarFabrica() {
+  const [carga, setCarga] = useState<CargaFab | null>(null)
+  const [erroArq, setErroArq] = useState('')
+  const [passo, setPasso] = useState('')
+  const [feito, setFeito] = useState<Record<string, number> | null>(null)
+  const escolher = async (arq: File | undefined) => {
+    if (!arq) return
+    setErroArq(''); setFeito(null)
+    try {
+      const d = JSON.parse(await arq.text()) as CargaFab
+      if (!Array.isArray(d.ofs) || !Array.isArray(d.produtos) || !Array.isArray(d.registros)) throw new Error('Esse arquivo não é a carga da fábrica.')
+      setCarga(d)
+    } catch (e) { setCarga(null); setErroArq((e as Error).message) }
+  }
+  const importar = async () => {
+    if (!carga) return
+    await S.garantir(FABRICA)
+    const tem = S.lista('produtos').length + S.lista('ofs').length
+    if (tem) {
+      const ok = await modal({ titulo: 'Importar de novo?', corpo: <><p>As planilhas da fábrica já foram importadas. Importar de novo <b>apaga</b> produtos, OFs, matéria-prima, pedidos de clientes e os registros importados, e coloca os das planilhas. O que foi lançado direto no sistema (OS, check-lists e registros) fica.</p>
+        <Campo nome="conf" rotulo="Digite SUBSTITUIR para confirmar" req /></>,
+        botoes: [{ txt: 'Substituir', cls: 'perigo', acao: (f) => { if (String(lerForm(f).conf).toUpperCase() !== 'SUBSTITUIR') throw new ErroApp('Digite SUBSTITUIR.'); return true } }] })
+      if (!ok) return
+    }
+    await API.rpc('importar_fabrica', { p_parte: 'inicio', p: {}, p_substituir: !!tem })
+    for (const [parte, chave, rot] of PARTES) {
+      const v = carga[chave] as unknown
+      if (!Array.isArray(v)) { if (v && typeof v === 'object') { setPasso(rot); await API.rpc('importar_fabrica', { p_parte: parte, p: v }) } continue }
+      for (let i = 0; i < v.length; i += 1000) {
+        setPasso(`${rot}: ${U.qtd(Math.min(i + 1000, v.length))} de ${U.qtd(v.length)}`)
+        await API.rpc('importar_fabrica', { p_parte: parte, p: v.slice(i, i + 1000) })
+      }
+    }
+    setPasso('Conferindo…')
+    const res = await API.rpc<Record<string, number>>('importar_fabrica', { p_parte: 'fim', p: { gerado_em: carga.gerado_em || null } })
+    await S.carregar(); await S.garantir(FABRICA)
+    setFeito(res); setCarga(null); setPasso(''); aviso('Planilhas da fábrica importadas.')
+  }
+  return <section className="card"><h2>Importar as planilhas da fábrica</h2>
+    <p>Traz de uma vez o <b>PCP</b> (OFs, OF de conjunto, E.S.M., cadastros, requisições e serviço externo), o <b>Controle de Pedidos</b>, o <b>Sistema do Departamento Técnico</b> (desenvolvimento, alterações, melhorias, projetos, desvios, desenhos, cópias, IMDS, atas, setup, código inteligente, clientes e fornecedores), a <b>Manutenção</b> (OS, serviços, fluxo de caixa, peças críticas, ferramentaria, predial) e a <b>Manut. Preventiva</b> (check-lists e plano anual).</p>
+    <p className="sub">Use o arquivo <b>JAF - carga da fabrica.json</b> (na pasta “Sobre JAF”). Nada é gravado antes de você confirmar. Pode levar alguns minutos: deixe a tela aberta até terminar.</p>
+    <label className="btn sec mt" style={{ cursor: 'pointer' }}><Ic n="enviar" /><span>Escolher o arquivo da carga</span>
+      <input type="file" id="arqFab" accept=".json,application/json" hidden onChange={(e) => { void escolher(e.target.files?.[0]); e.target.value = '' }} /></label>
+    {erroArq && <p className="nota vermelha mt">{erroArq}</p>}
+    {carga && <div className="mt">
+      <Dl pares={PARTES.filter(([, k]) => Array.isArray(carga[k])).map(([, k, rot]) => [rot, U.qtd((carga[k] as unknown[]).length)])} />
+      {passo ? <p className="nota amarela mt"><span className="giro" style={{ display: 'inline-block', width: 16, height: 16, verticalAlign: 'middle', marginRight: 8 }} />Importando — {passo}</p>
+        : <div className="grupo-btn mt"><Btn txt="Importar agora" icone="ok" cls="pri" data-imp="fabrica" onClick={() => importar().catch((e) => { setPasso(''); throw e })} /><button type="button" className="btn fantasma" onClick={() => setCarga(null)}>Cancelar</button></div>}
+    </div>}
+    {feito && <p className="nota verde mt">Importado: {U.qtd(feito.produtos)} produtos, {U.qtd(feito.estrutura)} linhas de estrutura, {U.qtd(feito.lotes)} lotes de matéria-prima, {U.qtd(feito.ofs)} OFs, {U.qtd(feito.vendas)} itens de pedido,
+      {' '}{U.qtd(feito.maquinas)} máquinas e equipamentos, {U.qtd(feito.preventivas)} check-lists, {U.qtd(feito.manutencoes)} OS e {U.qtd(feito.registros)} registros.</p>}
+  </section>
 }
 
 // ---------------------------------------------------------------- importar as planilhas do RH (arquivo de carga montado a partir das 9 planilhas)
@@ -273,8 +335,8 @@ function Copia() {
       ['Controle de Pedidos', S.lista('pedido_itens').map(i => { const ped = S.get('pedidos_compra', i.pedido_id), p = S.get('pecas', i.peca_id)
         return { 'Nº': ped?.numero, 'Data': d(ped?.data), 'Código': p?.codigo, 'Descrição': p?.descricao, 'Qde': i.qtd, 'Chegou': i.recebido, 'Fornecedor': fn(ped?.fornecedor_id || null), 'Documento': ped?.documento,
           'Valor': i.valor, 'Prazo': d(ped?.prazo), 'Status': ped?.status === 'recebido' ? 'Entregue' : ped?.status === 'cancelado' ? 'Cancelado' : 'Aguardando', 'Frete do pedido': ped?.frete, 'Obs.': ped?.obs } })],
-      ['Máquinas', S.lista('maquinas').map(m => ({ 'Nome': m.nome, 'Tipo': m.tipo, 'Fabricante': m.fabricante, 'Modelo': m.modelo, 'Nº série': m.numero_serie, 'Setor': m.setor, 'Ano': m.ano, 'Preventiva (dias)': m.preventiva_dias, 'Obs.': m.obs, 'Ativa': m.ativo ? 'sim' : 'não' }))],
-      ['Manutenções', S.lista('manutencoes').map(m => ({ 'Data': d(m.data), 'Máquina': S.get('maquinas', m.maquina_id)?.nome, 'Tipo': m.tipo, 'Situação': m.status, 'Problema': m.problema, 'Solução': m.solucao,
+      ['Máquinas', S.lista('maquinas').map(m => ({ 'Código': m.codigo, 'Grupo': m.grupo, 'Local': m.local, 'Check-list': (m.checklist || []).join(' | '), 'Nome': m.nome, 'Tipo': m.tipo, 'Fabricante': m.fabricante, 'Modelo': m.modelo, 'Nº série': m.numero_serie, 'Setor': m.setor, 'Ano': m.ano, 'Preventiva (dias)': m.preventiva_dias, 'Obs.': m.obs, 'Ativa': m.ativo ? 'sim' : 'não' }))],
+      ['Manutenções', S.lista('manutencoes').map(m => ({ 'Nº OS': m.numero, 'Solicitante': m.solicitante, 'Responsável': m.responsavel, 'Prazo': d(m.prazo), 'Peças': m.pecas, 'Aprovação': m.aprovacao, 'Data': d(m.data), 'Máquina': S.get('maquinas', m.maquina_id)?.nome, 'Tipo': m.tipo, 'Situação': m.status, 'Problema': m.problema, 'Solução': m.solucao,
         'Técnico de fora': fn(m.fornecedor_id), 'Da equipe': S.get('funcionarios', m.funcionario_id)?.nome, 'Custo serviço': m.custo_servico, 'Horas parada': m.horas_parada, 'Concluída em': d(m.concluida_em) }))],
       ['Ordens de produção', S.lista('ordens').map(o => ({ 'OP': o.numero, 'Cliente': o.cliente_nome, 'Pedido do cliente': o.pedido_cliente, 'Produto': o.produto, 'Código': o.codigo, 'Qtd': o.qtd, 'Produzido': o.produzido,
         'Unidade': o.unidade, 'Prazo': d(o.prazo), 'Situação': o.status, 'Máquina': S.get('maquinas', o.maquina_id)?.nome, 'Responsável': S.get('funcionarios', o.responsavel_id)?.nome, 'Entregue em': d(o.entregue_em), 'Obs.': o.obs }))],
@@ -305,6 +367,23 @@ function Copia() {
       abas.push(['RH - Matrizes', S.lista('rh_matriz_niveis').map(n => { const it = S.get('rh_matriz_itens', n.item_id)
         return { matriz: S.get('rh_matrizes', it?.matriz_id)?.nome || '', item: it?.nome || '', pessoa: nf(n.funcionario_id), nivel: n.nivel, data: d(n.data), obs: n.obs } })])
     }
+    // fábrica (PCP, pedidos de clientes, técnico, manutenção)
+    await S.garantir(FABRICA)
+    const np = (id: string | null) => S.get('produtos', id)?.codigo || ''
+    const semId = (l: object[], troca: Record<string, (v: string) => string> = {}) => l.map((x) => { const o: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(x)) { if (k === 'id' || k === 'atualizado_em' || k === 'criado_por') continue; o[k] = troca[k] ? troca[k](v as string) : v && typeof v === 'object' ? JSON.stringify(v) : v }
+      return o })
+    const fab: [string, object[], Record<string, (v: string) => string>?][] = [
+      ['Produtos', S.lista('produtos'), { cliente_id: (v) => S.get('clientes', v)?.nome || '' }],
+      ['Estrutura', S.lista('produto_estrutura'), { pai_id: np, filho_id: np }],
+      ['E.S.M. (R.I.)', S.lista('mp_lotes'), { produto_id: np, fornecedor_id: fn }],
+      ['OFs', S.lista('ofs'), { produto_id: np, pai_id: (v) => String(S.get('ofs', v)?.numero || ''), venda_id: (v) => v ? 'sim' : '', maquina_id: (v) => S.get('maquinas', v)?.nome || '' }],
+      ['Pedidos de clientes', S.lista('vendas'), { cliente_id: (v) => S.get('clientes', v)?.nome || '', produto_id: np }],
+      ['Entregas', S.lista('vendas_entregas'), { venda_id: (v) => { const x = S.get('vendas', v); return x ? `${x.cliente_nome} ${x.codigo || ''} ${x.pedido || ''}` : '' } }],
+      ['Check-lists preventiva', S.lista('preventivas'), { maquina_id: (v) => S.get('maquinas', v)?.nome || '' }],
+      ['Registros', S.lista('registros'), { maquina_id: (v) => S.get('maquinas', v)?.nome || '', cliente_id: (v) => S.get('clientes', v)?.nome || '', fornecedor_id: fn }],
+    ]
+    for (const [n, l, t] of fab) if (l.length) abas.push([n, semId(l, t)])
     await excel(`JAF Metal - copia dos dados ${U.hoje()}.xlsx`, abas, true)
     try { localStorage.setItem('jaf.ultimaCopia', U.hoje()) } catch { /* modo privado */ }
     setUlt(U.hoje())
@@ -321,7 +400,9 @@ const TAB: Record<string, string> = { pecas: 'Peça', fornecedores: 'Fornecedor'
   manutencoes: 'Manutenção', ordens: 'Ordem de produção', lancamentos: 'Conta', funcionarios: 'Funcionário', funcionarios_privado: 'Dados pessoais', clientes: 'Cliente',
   config: 'Configuração', perfis: 'Acesso', importacao: 'Importação da planilha', rh_setores: 'Setor (RH)', rh_cargos: 'Cargo (RH)', rh_historico: 'Cargo e salário',
   rh_ausencias: 'Férias / ausência', rh_ponto: 'Ponto', rh_ponto_meses: 'Fechamento do ponto', rh_feriados: 'Feriado', rh_matrizes: 'Matriz de treinamento', rh_matriz_itens: 'Item de matriz',
-  rh_matriz_niveis: 'Nível de treinamento', rh_plano_treinos: 'Plano de treinamento', rh_metas: 'Meta', rh_epis: 'Entrega de EPI', rh_asos: 'Exame (ASO)', rh_ocorrencias: 'Advertência', rh_anexos: 'Anexo' }
+  rh_matriz_niveis: 'Nível de treinamento', rh_plano_treinos: 'Plano de treinamento', rh_metas: 'Meta', rh_epis: 'Entrega de EPI', rh_asos: 'Exame (ASO)', rh_ocorrencias: 'Advertência', rh_anexos: 'Anexo',
+  produtos: 'Produto', produto_estrutura: 'Estrutura de produto', mp_lotes: 'Lote de matéria-prima (R.I.)', vendas: 'Pedido de cliente', vendas_entregas: 'Entrega ao cliente', ofs: 'OF',
+  preventivas: 'Check-list de preventiva', registros: 'Registro (técnico / PCP / manutenção)' }
 const ACAO: Record<string, string> = { insert: 'criou', update: 'alterou', delete: 'apagou', importar: 'importou' }
 function HistoricoAlt() {
   const [hist, setHist] = useState<Historico[] | null>(null)

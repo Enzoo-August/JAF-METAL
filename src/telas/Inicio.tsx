@@ -21,6 +21,12 @@ import { formOcorrencia } from './rh/Disciplina.tsx'
 import { formAusencia, programarFerias, proximoDiaUtil } from './rh/Ferias.tsx'
 import { formPessoa } from './rh/Pessoas.tsx'
 import { formAso, formEpi } from './rh/Seguranca.tsx'
+import { ComTabelas } from './fabrica/comum.tsx'
+import { formOF, LinhaOF } from './fabrica/OFs.tsx'
+import { formLote } from './fabrica/MP.tsx'
+import { detalhe as detalheVenda, formVenda } from './fabrica/Pedidos.tsx'
+import { formProduto } from './fabrica/Produtos.tsx'
+import { defReg, formReg } from './fabrica/Registros.tsx'
 
 // ------------------------------------------------------------------ o que dá para pôr no Início
 interface Atalho { id: string; rot: string; sub: string; ic: NomeIcone; perm: Acao[]; ir?: string; fazer?: () => unknown }
@@ -33,7 +39,23 @@ export const ATALHOS: Atalho[] = [
   { id: 'estoque', rot: 'Estoque', sub: 'todas as peças', ic: 'estoque', perm: ['estoque_ver'], ir: '#/pecas' },
   { id: 'novaOrdem', rot: 'Nova ordem', sub: 'de produção', ic: 'producao', perm: ['producao_editar'], fazer: () => formOrdem() },
   { id: 'ordens', rot: 'Ordens', sub: 'fila e produção', ic: 'producao', perm: ['pcp'], ir: '#/producao' },
-  { id: 'chamado', rot: 'Máquina com problema', sub: 'abrir chamado', ic: 'chave', perm: ['manutencao'], fazer: () => formManutencao({ tipo: 'corretiva' }) },
+  { id: 'chamado', rot: 'Máquina com problema', sub: 'abrir OS', ic: 'chave', perm: ['manutencao'], fazer: () => formManutencao({ tipo: 'corretiva' }) },
+  { id: 'os', rot: 'Ordens de serviço', sub: 'manutenção', ic: 'chave', perm: ['manut_ver'], ir: '#/os' },
+  { id: 'preventiva', rot: 'Preventiva', sub: 'check-list e plano', ic: 'ok', perm: ['manut_ver'], ir: '#/preventiva' },
+  { id: 'pecasCriticas', rot: 'Peças críticas', sub: 'o que comprar', ic: 'estoque', perm: ['manut_gestao'], ir: '#/reg/peca_critica' },
+  { id: 'novaOF', rot: 'Nova OF', sub: 'ordem de fabricação', ic: 'producao', perm: ['of_emitir'], fazer: () => formOF() },
+  { id: 'ofs', rot: 'OFs', sub: 'ordens de fabricação', ic: 'producao', perm: ['of_menu'], ir: '#/ofs' },
+  { id: 'entradaMP', rot: 'Entrada de material', sub: 'matéria-prima (R.I.)', ic: 'entrada', perm: ['mp_editar'], fazer: () => formLote() },
+  { id: 'pedidosClientes', rot: 'Pedidos de clientes', sub: 'prazos e entregas', ic: 'cliente', perm: ['vendas'], ir: '#/pedidos' },
+  { id: 'novoPedidoCliente', rot: 'Novo pedido', sub: 'de cliente', ic: 'mais', perm: ['vendas_editar'], fazer: () => formVenda() },
+  { id: 'necessidade', rot: 'Necessidade', sub: 'o que fabricar e comprar', ic: 'lista', perm: ['necessidade'], ir: '#/necessidade' },
+  { id: 'produtos', rot: 'Produtos', sub: 'cadastro técnico', ic: 'estoque', perm: ['produtos_menu'], ir: '#/produtos' },
+  { id: 'novoProduto', rot: 'Novo produto', sub: 'código JAF', ic: 'mais', perm: ['produtos_editar'], fazer: () => formProduto() },
+  { id: 'solicitarAlteracao', rot: 'Pedir alteração', sub: 'no produto ou processo', ic: 'desfazer', perm: ['solicitar'], fazer: () => formReg(defReg('alteracao')!) },
+  { id: 'sugerirMelhoria', rot: 'Sugerir melhoria', sub: 'para a fábrica', ic: 'ok', perm: ['solicitar'], fazer: () => formReg(defReg('melhoria')!) },
+  { id: 'desenvolvimento', rot: 'Desenvol­vimento', sub: 'peças novas', ic: 'lapis', perm: ['tecnico_menu'], ir: '#/reg/desenvolvimento' },
+  { id: 'desvio', rot: 'Desvio', sub: 'lançar desvio', ic: 'alerta', perm: ['tecnico_editar'], fazer: () => formReg(defReg('desvio')!) },
+  { id: 'ata', rot: 'Ata de reunião', sub: 'nova ata', ic: 'equipe', perm: ['tecnico_editar'], fazer: () => formReg(defReg('ata')!) },
   { id: 'novaConta', rot: 'Nova conta', sub: 'a pagar ou receber', ic: 'dinheiro', perm: ['financeiro'], fazer: () => formConta({}) },
   { id: 'contas', rot: 'Contas', sub: 'a pagar e receber', ic: 'dinheiro', perm: ['financeiro'], ir: '#/financeiro' },
   { id: 'fluxo', rot: 'Fluxo de caixa', sub: 'previsão do saldo', ic: 'relatorio', perm: ['financeiro'], ir: '#/financeiro/fluxo' },
@@ -61,14 +83,20 @@ export const BLOCOS: Bloco[] = [
   { id: 'ultimas', rot: 'Últimas movimentações', sub: 'entradas e retiradas', perm: ['historico_mov'], El: () => <Ultimas /> },
   { id: 'minhasOrdens', rot: 'Ordens em andamento', sub: 'as suas primeiro', perm: ['pcp'], El: () => <MinhasOrdens /> },
   { id: 'minhasRetiradas', rot: 'Minhas retiradas de hoje', sub: 'o que você tirou', perm: ['retirar'], El: () => <MinhasRetiradas /> },
+  { id: 'ofsAbertas', rot: 'OFs em aberto', sub: 'atrasadas primeiro', perm: ['of_menu'], El: () => <ComTabelas tabs={['ofs', 'produtos']}>{() => <OFsAbertas />}</ComTabelas> },
+  { id: 'pedidosAtraso', rot: 'Pedidos de clientes', sub: 'atrasados e de hoje', perm: ['vendas'], El: () => <ComTabelas tabs={['vendas', 'produtos']}>{() => <PedidosAtraso />}</ComTabelas> },
+  { id: 'osAbertas', rot: 'OS em aberto', sub: 'manutenção', perm: ['manut_ver'], El: () => <OSAbertas /> },
+  { id: 'tecnicoPendentes', rot: 'Engenharia', sub: 'prazos vencidos', perm: ['tecnico_menu'], El: () => <ComTabelas tabs={['registros']}>{() => <TecnicoPendentes />}</ComTabelas> },
 ]
 const PADRAO: Record<Perfil, { atalhos: string[]; blocos: string[] }> = {
-  dono: { atalhos: ['retirar', 'entrada', 'listaCompras', 'fornecedores', 'novaOrdem', 'novaConta'], blocos: ['atencao', 'numeros', 'foraHoje', 'chegando', 'ultimas'] },
-  escritorio: { atalhos: ['retirar', 'entrada', 'listaCompras', 'novaConta', 'fornecedores', 'pessoas'], blocos: ['atencao', 'numeros', 'chegando', 'ultimas'] },
-  almoxarife: { atalhos: ['retirar', 'entrada', 'listaCompras', 'novoPedido', 'fornecedores', 'chamado'], blocos: ['atencao', 'numeros', 'chegando', 'ultimas'] },
-  pcp: { atalhos: ['novaOrdem', 'ordens', 'estoque'], blocos: ['atencao', 'minhasOrdens'] },
-  producao: { atalhos: ['retirar', 'estoque', 'ordens', 'chamado'], blocos: ['atencao', 'minhasOrdens', 'minhasRetiradas'] },
-  gerente: { atalhos: ['retirar', 'ordens', 'chamado', 'pessoas', 'ponto'], blocos: ['atencao', 'foraHoje', 'minhasOrdens'] },
+  dono: { atalhos: ['retirar', 'entrada', 'novaOF', 'pedidosClientes', 'listaCompras', 'fornecedores', 'novaConta'], blocos: ['atencao', 'numeros', 'pedidosAtraso', 'ofsAbertas', 'foraHoje', 'chegando'] },
+  escritorio: { atalhos: ['retirar', 'entrada', 'pedidosClientes', 'listaCompras', 'novaConta', 'fornecedores'], blocos: ['atencao', 'numeros', 'pedidosAtraso', 'chegando', 'ultimas'] },
+  almoxarife: { atalhos: ['retirar', 'entrada', 'entradaMP', 'listaCompras', 'novoPedido', 'chamado'], blocos: ['atencao', 'numeros', 'chegando', 'ultimas'] },
+  pcp: { atalhos: ['novaOF', 'ofs', 'entradaMP', 'pedidosClientes', 'necessidade', 'produtos'], blocos: ['atencao', 'pedidosAtraso', 'ofsAbertas'] },
+  producao: { atalhos: ['ofs', 'retirar', 'chamado', 'estoque', 'solicitarAlteracao'], blocos: ['atencao', 'ofsAbertas', 'minhasRetiradas'] },
+  gerente: { atalhos: ['ofs', 'pedidosClientes', 'chamado', 'pessoas', 'ponto'], blocos: ['atencao', 'ofsAbertas', 'pedidosAtraso', 'foraHoje'] },
+  tecnico: { atalhos: ['produtos', 'novoProduto', 'solicitarAlteracao', 'desenvolvimento', 'desvio', 'ata'], blocos: ['atencao', 'tecnicoPendentes'] },
+  manutencao: { atalhos: ['chamado', 'preventiva', 'os', 'retirar', 'pecasCriticas'], blocos: ['atencao', 'osAbertas'] },
   rh: { atalhos: ['novaPessoa', 'ponto', 'programarFerias', 'atestado', 'aso', 'advertencia'], blocos: ['atencao', 'rhNumeros', 'foraHoje', 'aniversariantes'] },
 }
 const podeTudo = (p: Acao[]) => p.every(a => Perm.pode(a))
@@ -226,4 +254,35 @@ function MinhasRetiradas() {
   const movs = S.lista('movimentos').filter(m => m.data === hoje && m.criado_por === API.sessao?.uid).reverse()
   return <section className="card mt"><div className="card-cab"><h2>Minhas retiradas de hoje</h2></div>
     {movs.length ? <div className="lista">{movs.map(m => <LinhaMov key={m.id} m={m} curta />)}</div> : <p className="sub">Você ainda não retirou nada hoje.</p>}</section>
+}
+
+// ------------------------------------------------------------------ quadros da fábrica
+function OFsAbertas() {
+  const l = U.ordenar(S.lista('ofs').filter(o => o.status === 'aberta'), o => (C.situacaoOF(o).atrasada ? '0' : '1') + (o.prazo || '9999') + String(o.numero).padStart(8, '0'))
+  const atr = l.filter(o => C.situacaoOF(o).atrasada).length
+  return <section className="card"><div className="card-cab"><h2>OFs em aberto</h2><a href="#/ofs" className="sub">{U.plural(l.length, 'OF')}{atr ? ` · ${atr} atrasada${atr > 1 ? 's' : ''}` : ''}</a></div>
+    {l.length ? <div className="lista">{l.slice(0, 6).map(o => <LinhaOF key={o.id} o={o} />)}</div> : <p className="sub">Nenhuma OF em aberto.</p>}</section>
+}
+function PedidosAtraso() {
+  const l = U.ordenar(S.lista('vendas').filter(v => ['atraso', 'atencao'].includes(C.situacaoVenda(v).cod)), v => v.prazo || '')
+  return <section className="card"><div className="card-cab"><h2>Pedidos de clientes</h2><a href="#/pedidos" className="sub">ver todos</a></div>
+    {l.length ? <div className="lista">{l.slice(0, 6).map(v => <div key={v.id} className="linha clicavel" onClick={() => void detalheVenda(v.id)}><div className="meio"><b>{v.cliente_nome} · {v.codigo || v.descricao}</b>
+      <small>saldo {U.qtd(C.saldoVenda(v))} · prazo {U.dataCurta(v.prazo)}</small></div><div className="lado"><Tag s={C.situacaoVenda(v)} /></div></div>)}
+      {l.length > 6 && <a className="linha" href="#/pedidos"><div className="meio"><small>+ {l.length - 6} itens</small></div></a>}</div>
+      : <p className="sub">Nenhum pedido atrasado ou para hoje.</p>}</section>
+}
+function OSAbertas() {
+  const l = U.ordenar(S.lista('manutencoes').filter(m => m.status !== 'concluida'), m => (m.tipo === 'corretiva' ? '0' : '1') + m.data)
+  return <section className="card"><div className="card-cab"><h2>OS em aberto</h2><a href="#/os" className="sub">{U.plural(l.length, 'OS', 'OS')}</a></div>
+    {l.length ? <div className="lista">{l.slice(0, 6).map(m => { const q = S.get('maquinas', m.maquina_id)
+      return <div key={m.id} className="linha clicavel" onClick={() => void formManutencao(m)}><div className="meio"><b>{m.numero ? 'OS ' + m.numero + ' · ' : ''}{C.nomeMaquina(q)}</b><small>{m.problema.slice(0, 80)} · {U.dataCurta(m.data)}</small></div></div> })}</div>
+      : <p className="sub">Nenhuma OS em aberto.</p>}</section>
+}
+function TecnicoPendentes() {
+  const l = U.ordenar(S.lista('registros').filter(r => r.prazo && r.prazo < U.hoje() && !r.concluido_em && !/conclu|aprovad|ok|cancel|retornou|entregue|pago/i.test(r.status || '')
+    && ['desenvolvimento', 'projeto', 'melhoria', 'alteracao', 'imds'].includes(r.tipo)), r => r.prazo || '')
+  return <section className="card"><div className="card-cab"><h2>Engenharia: prazos vencidos</h2><a href="#/tecnico" className="sub">painel</a></div>
+    {l.length ? <div className="lista">{l.slice(0, 8).map(r => <a key={r.id} className="linha" href={`#/reg/${r.tipo}?id=${r.id}`}><div className="meio"><b>{defReg(r.tipo)?.nome}{r.numero ? ' nº ' + r.numero : ''}</b>
+      <small>{[r.codigo, (r.titulo || '').slice(0, 60), r.responsavel].filter(Boolean).join(' · ')}</small></div><div className="lado"><small>prazo {U.dataCurta(r.prazo)}</small></div></a>)}</div>
+      : <p className="sub">Nada atrasado.</p>}</section>
 }

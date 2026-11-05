@@ -577,8 +577,8 @@ window.roteiro = async function roteiro(filtro) {
   await passo('perfil PCP', async () => {
     await como('pcp');
     const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
-    conf(menu.join('|') === 'Início|Ordens de produção|Equipe|Peças|Ajuda', 'menu do PCP: as telas dele direto, ordens primeiro', menu);
-    conf(!document.querySelector('.lateral [data-acao=retirar]') && !!document.querySelector('.lateral [data-acao=novaOrdem]'), 'PCP tem "Nova ordem" e não "Retirar peça"');
+    conf(menu.join('|') === 'Início|Ordens de fabricação|Matéria-prima|Necessidade|Serviço externo|Requisições|Equipe|Pedidos de clientes|Clientes|Produtos|Peças|Ajuda', 'menu do PCP: as telas dele direto, OFs primeiro', menu);
+    conf(!document.querySelector('.lateral [data-acao=retirar]') && !!document.querySelector('.lateral [data-acao=novaOF]'), 'PCP tem "Nova OF" e não "Retirar peça"');
     conf(S.lista('movimentos').length === 0 && S.lista('lancamentos').length === 0 && S.lista('clientes').length > 0, 'banco manda ordens e clientes, sem movimentações nem financeiro');
     for (const r of ['#/maquinas', '#/movimentos', '#/compras', '#/financeiro', '#/rh']) { await ir(r); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'PCP sem ' + r); }
     await ir('#/pecas'); conf(!document.getElementById('view').textContent.includes('Sem acesso') && !botao('Nova peça', document.getElementById('view')), 'PCP consulta as peças sem editar');
@@ -592,6 +592,86 @@ window.roteiro = async function roteiro(filtro) {
     Telas.producao.abrir(o.id); const k = await espera(janela);
     conf(!!botao('Começar a produzir', k), 'PCP mexe na ordem');
     UI.fecharTodas();
+  });
+
+  // ================================================================ FÁBRICA (v2.5: planilhas PCP, Controle de Pedidos, Depto. Técnico, Manutenção)
+  await passo('PCP emite e aponta OF', async () => {
+    await como('pcp');
+    await clicar(document.querySelector('.lateral [data-acao="novaOF"]') || document.querySelector('.aba-central[data-acao="novaOF"]'));
+    const j = await espera(janela);
+    await espera(() => S.lista('produtos').length);
+    await combo(j.querySelector('#ofProd'), 'CF 02.0001');
+    digitar(j.querySelector('[name=qtd]'), '100');
+    await espera(() => j.querySelector('[name=ri]'));
+    conf(!!j.querySelector('#lRI option[value="1001"]'), 'sugere os R.I. com saldo do material da peça');
+    digitar(j.querySelector('[name=ri]'), '1001');
+    await okJanela('Emitir OF');
+    const o = await espera(() => S.lista('ofs').find(x => x.qtd === 100 && x.ri === 1001 && x.status === 'aberta'));
+    conf(!!o && Number(o.kg) === 1.2, 'OF emitida com o material calculado (100 × 0,012 kg)', o && { kg: o.kg, erro: erroJanela(j) });
+    conf(location.hash === '#/of/' + o?.id, 'abre a ficha da OF emitida', location.hash);
+    await clicar('Apontar / encerrar', document.getElementById('view'));
+    const k = await espera(janela);
+    digitar(k.querySelector('[name=produzido]'), '98');
+    await okJanela('Encerrar OF');
+    const o2 = S.get('ofs', o.id);
+    conf(o2.status === 'encerrada' && Number(o2.produzido) === 98 && o2.realizado_por, 'OF encerrada com o produzido e quem fez', o2 && { st: o2.status, p: o2.produzido });
+    await ir('#/mp'); await espera(() => document.querySelector('[data-ri-sem-entrada]'));
+    conf(!!document.querySelector('[data-ri-sem-entrada]'), 'avisa os R.I. usados em OF sem entrada lançada');
+    await ir('#/necessidade'); await espera(() => document.querySelector('#tNecP'));
+    conf(!!document.querySelector('#tNecP tbody tr'), 'necessidade explode os pedidos em peças');
+  });
+  await passo('pedido de cliente: entrega e situação', async () => {
+    await ir('#/pedidos'); await espera(() => document.querySelector('#lVen [data-venda]'));
+    const v = S.lista('vendas').find(x => x.pedido === 'PC 019/26');
+    conf(C.situacaoVenda(S.lista('vendas').find(x => x.pedido === 'PC 018/26')).cod === 'atraso', 'pedido vencido aparece como Atraso (regra da planilha)');
+    Telas.fabrica.entregar(v); const j = await espera(janela);
+    digitar(j.querySelector('[name=qtd]'), '30'); digitar(j.querySelector('[name=nf]'), '7002');
+    await okJanela('Registrar');
+    await espera(() => Number(S.get('vendas', v.id).entregue) === 30);
+    conf(C.situacaoVenda(S.get('vendas', v.id)).cod === 'ok', 'entregue tudo: situação Ok', S.get('vendas', v.id).entregue);
+  });
+  await passo('produção: OFs sem preço, pede alteração', async () => {
+    await como('operador');
+    const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
+    conf(menu.includes('Ordens de fabricação') && menu.includes('Ordens de serviço') && !menu.includes('Pedidos de clientes') && !menu.includes('Desvios'), 'produção: OFs e OS no menu, sem pedidos de clientes nem engenharia', menu);
+    await ir('#/pedidos'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'produção não abre pedidos de clientes');
+    await ir('#/inicio'); await clicar(document.querySelector('[data-atalho=solicitarAlteracao]'));
+    const j = await espera(janela);
+    digitar(j.querySelector('[name=titulo]'), 'Chanfrar a borda do pino'); digitar(j.querySelector('[name=d__setor]'), 'Tornos');
+    await okJanela('Lançar');
+    conf(!document.body.contains(j), 'produção pede alteração pelo Início', erroJanela(j));
+  });
+  await passo('técnico: vê a alteração e lança desvio', async () => {
+    await como('tecnico');
+    const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
+    conf(menu[1] === 'Produtos' && menu.includes('Desvios') && !menu.includes('Contas a pagar e receber'), 'técnico: engenharia primeiro no menu', menu);
+    await ir('#/reg/alteracao'); await espera(() => document.querySelector('#lReg [data-reg]'));
+    conf(document.getElementById('view').textContent.includes('Chanfrar a borda do pino'), 'técnico vê o pedido de alteração da produção');
+    await ir('#/reg/desvio'); await clicar('Novo', document.getElementById('view'));
+    const j = await espera(janela);
+    digitar(j.querySelector('[name=codigo]'), 'CF 02.0002'); digitar(j.querySelector('[name=titulo]'), 'Chapa com espessura no limite');
+    await okJanela('Lançar');
+    const r = await espera(() => S.lista('registros').find(x => x.tipo === 'desvio' && x.titulo === 'Chapa com espessura no limite'));
+    conf(r && r.numero === 2, 'desvio lançado com o próximo número', r?.numero);
+    await ir('#/produto/' + S.lista('produtos').find(x => x.codigo === 'UP 01.0002').id);
+    conf(document.getElementById('view').textContent.includes('Estrutura (componentes)'), 'ficha do produto mostra a estrutura');
+  });
+  await passo('manutenção: OS e check-list', async () => {
+    await como('manut');
+    await clicar(document.querySelector('.aba-central[data-acao=novaOS]') || document.querySelector('.lateral [data-acao=retirar]') && (Telas.maquinas.formManutencao({ tipo: 'corretiva' }), document.body));
+    const j = await espera(janela);
+    await combo(j.querySelector('#mMaq'), 'TA 25');
+    digitar(j.querySelector('[name=problema]'), 'Vazamento de óleo no cabeçote');
+    await okJanela('Abrir chamado');
+    const os = await espera(() => S.lista('manutencoes').find(m => m.problema === 'Vazamento de óleo no cabeçote'));
+    conf(os && os.numero > 0 && os.solicitante, 'OS aberta com número e solicitante', os && { n: os.numero, s: os.solicitante, erro: erroJanela(j) });
+    await ir('#/preventiva'); await espera(() => document.querySelector('#tPlano'));
+    const m = S.lista('maquinas').find(x => x.codigo === 'TA 25');
+    Telas.fabrica.preencher(m); const k = await espera(janela);
+    conf(k.querySelectorAll('.check-item').length === 5, 'check-list com os itens da máquina', k.querySelectorAll('.check-item').length);
+    for (const inp of k.querySelectorAll('.check-item input')) digitar(inp, 'Ok');
+    await okJanela('Registrar preventiva');
+    conf(C.ultimaPreventiva(m.id) === U.hoje(), 'preventiva de hoje registrada', C.ultimaPreventiva(m.id));
   });
 
   // ================================================================ ESCRITÓRIO

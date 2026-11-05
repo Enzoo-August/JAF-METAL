@@ -139,7 +139,7 @@ export const App = {
         if (!(await API.conferirSessao())) { void App.sessaoCaiu(); return }
       }
       // recarga completa de tempos em tempos; com janela aberta, só o que mudou (nada some da frente da pessoa)
-      if (Date.now() - S.carregadoEm > 15 * 60000 && !janelaAberta()) await S.carregar()
+      if (Date.now() - S.carregadoEm > 15 * 60000 && !janelaAberta()) await S.carregar({ periodica: true })
       else await S.atualizar()
     } catch (e) {
       if (traduzir(e).sessao) void App.sessaoCaiu()

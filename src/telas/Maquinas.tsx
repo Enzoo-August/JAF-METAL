@@ -12,10 +12,13 @@ import { ComboFornecedor, ComboFuncionario, ComboMaquina } from '../ui/Combo.tsx
 import { useLembrar, type Rota } from '../ui/ganchos.ts'
 import { Ic } from '../ui/icones.tsx'
 import { lerForm, modal } from '../ui/janelas.tsx'
+import { imprimirOS } from './fabrica/Manutencao.tsx'
 import { retirar } from './Movimentos.tsx'
 import { LinhaPeca } from './Pecas.tsx'
 
-const TIPO: Record<string, string> = { preventiva: 'Preventiva', corretiva: 'Corretiva (problema)', melhoria: 'Melhoria' }
+export const TIPO_MANUT: Record<string, string> = { corretiva: 'Corretiva (problema)', preventiva: 'Preventiva', preditiva: 'Preditiva', melhoria: 'Melhoria' }
+const TIPO = TIPO_MANUT
+const GRUPOS = ['Máquina', 'Dispositivo', 'Ferramenta', 'Predial', 'Outro']
 const ST: Record<string, [string, 'vermelho' | 'amarelo' | 'verde']> = { aberta: ['Aberta', 'vermelho'], andamento: ['Em andamento', 'amarelo'], concluida: ['Concluída', 'verde'] }
 
 // custo de peças retiradas para a máquina (pela máquina escolhida na retirada)
@@ -24,7 +27,7 @@ const custoPecas = (maq: Maquina, de: string) => U.soma(C.consumos(m => m.maquin
 function Cartao({ m }: { m: Maquina }) {
   const prox = C.proximaPreventiva(m), ab = C.manutAbertas(m.id)
   return <a className="card linha-card" href={'#/maquina/' + m.id} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}><div><b>{m.nome}</b><div className="sub">{[m.tipo, m.setor].filter(Boolean).join(' · ') || '—'}</div></div><Tag s={C.situacaoMaquina(m)} /></div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}><div><b>{C.nomeMaquina(m)}</b><div className="sub">{[m.grupo !== 'Máquina' ? m.grupo : '', m.tipo, m.local || m.setor].filter(Boolean).join(' · ') || '—'}</div></div><Tag s={C.situacaoMaquina(m)} /></div>
     <p className="sub mt" style={{ marginBottom: 0 }}>{ab.length ? <><Ic n="alerta" /> {ab[0].problema.slice(0, 70)}</> : prox ? <>Próxima preventiva: <b>{U.relativo(prox)}</b></> : m.preventiva_dias ? 'Registre a última preventiva' : 'Sem preventiva programada'}</p></a>
 }
 
@@ -33,36 +36,38 @@ export function LinhaManut({ m, comMaquina = true }: { m: Manutencao; comMaquina
   const [st, cor] = ST[m.status] || [m.status, 'cinza']
   const custo = (Number(m.custo_servico) || 0) + U.soma(C.consumos(x => x.manutencao_id === m.id), 'valor')
   const quem = S.get('fornecedores', m.fornecedor_id)?.nome || S.get('funcionarios', m.funcionario_id)?.nome || ''
-  return <div className="linha clicavel" data-manut={m.id} onClick={() => void formManutencao(S.get('manutencoes', m.id) || m)}><div className="meio"><b>{comMaquina && mq ? mq.nome + ' · ' : ''}{m.problema}</b>
+  return <div className="linha clicavel" data-manut={m.id} onClick={() => void formManutencao(S.get('manutencoes', m.id) || m)}><div className="meio"><b>{m.numero ? 'OS ' + m.numero + ' · ' : ''}{comMaquina && mq ? C.nomeMaquina(mq) + ' · ' : ''}{m.problema}</b>
     <small>{U.data(m.data)} · {TIPO[m.tipo]}{quem ? ' · ' + quem : ''}{m.horas_parada ? ' · ' + U.qtd(m.horas_parada) + ' h parada' : ''}</small></div>
     <div className="lado"><Tag s={{ txt: st, cor }} />{Perm.pode('precos') && custo ? <small>{U.moeda(custo)}</small> : null}</div></div>
 }
 
 export function TelaMaquinas({ r }: { r: Rota }) { return r.nome === 'maquina' ? <Ficha id={r.id!} /> : <Lista r={r} /> }
-export const tituloMaquinas = (r: Rota) => r.nome === 'maquina' ? (S.get('maquinas', r.id)?.nome || 'Máquina') : 'Máquinas'
+export const tituloMaquinas = (r: Rota) => r.nome === 'maquina' ? (C.nomeMaquina(S.get('maquinas', r.id)) || 'Máquina') : 'Máquinas'
 
 function Lista({ r }: { r: Rota }) {
   const [f, setF] = useLembrar('maq.f', 'todas')
   const [busca, setBusca] = useLembrar('maq.busca', '')
+  const [g, setG] = useLembrar('maq.g', '')
   useEffect(() => { const q = r.q.get('f'); if (q) setF(q) }, [r.hash, r.q, setF])
   const at = S.lista('maquinas').filter(m => m.ativo)
   const cod = (m: Maquina) => C.situacaoMaquina(m).cod
   const prob = at.filter(m => ['parada', 'manut'].includes(cod(m))).length
   const prev = at.filter(m => ['prevvencida', 'prevlogo', 'semprev'].includes(cod(m))).length
   const abertas = U.ordenar(C.manutAbertas(), m => m.data, true)
-  let l = f === 'inativas' ? S.lista('maquinas').filter(m => !m.ativo) : at
+  let l = (f === 'inativas' ? S.lista('maquinas').filter(m => !m.ativo) : at).filter(m => !g || m.grupo === g)
   if (f === 'problema') l = l.filter(m => ['parada', 'manut'].includes(cod(m)))
   if (f === 'preventiva') l = l.filter(m => ['prevvencida', 'prevlogo', 'semprev'].includes(cod(m)))
-  l = busca.trim() ? U.buscar(l, busca, m => [m.nome, m.tipo || '', m.setor || '', m.fabricante || ''])
+  l = busca.trim() ? U.buscar(l, busca, m => [m.codigo || '', m.nome, m.tipo || '', m.setor || '', m.local || '', m.fabricante || ''])
     : U.ordenar(l, m => { const c = cod(m); return (c === 'parada' ? '0' : c === 'manut' ? '1' : c === 'prevvencida' ? '2' : '5') + U.sem(m.nome) })
   return <>
-    <Cab titulo="Máquinas e manutenção" sub="Situação de cada máquina, preventivas e chamados">
+    <Cab titulo="Máquinas e equipamentos" sub="Máquinas, dispositivos, ferramentas e predial: situação, preventivas e chamados">
       <Btn txt="Máquina com problema" icone="chave" cls="pri" data-m="chamado" onClick={() => void formManutencao({ tipo: 'corretiva' })} />
       {Perm.pode('maquinas_editar') && <Btn txt="Nova máquina" icone="mais" data-m="nova" onClick={() => void form()} />}
     </Cab>
     {abertas.length > 0 && <section className="card"><div className="card-cab"><h2>Chamados abertos</h2></div><div className="lista">{abertas.map(m => <LinhaManut key={m.id} m={m} />)}</div></section>}
     <div className="barra-filtros mt"><BuscaLista id="bMaq" valor={busca} placeholder="Buscar máquina" aoMudar={setBusca} /></div>
     <Chips atual={f} aoEscolher={setF} opcoes={[{ v: 'todas', t: 'Todas' }, { v: 'problema', t: 'Com problema', n: prob || null }, { v: 'preventiva', t: 'Preventiva', n: prev || null }, { v: 'inativas', t: 'Desativadas' }]} />
+    {S.lista('maquinas').some(m => m.grupo && m.grupo !== 'Máquina') && <Chips nome="g" atual={g} aoEscolher={setG} opcoes={[{ v: '', t: 'Todos os grupos' }, ...GRUPOS.map(x => ({ v: x, t: x === 'Máquina' ? 'Máquinas' : x === 'Predial' ? 'Predial' : x + 's' }))]} />}
     <div className="grade g-auto mt" id="gMaq">{l.length ? l.map(m => <Cartao key={m.id} m={m} />)
       : <Vazio icone="maquina" titulo="Nenhuma máquina aqui" texto={Perm.pode('maquinas_editar') ? 'Cadastre as máquinas da fábrica para controlar manutenção e o gasto de peças de cada uma.' : ''} />}</div>
   </>
@@ -79,13 +84,17 @@ function Ficha({ id }: { id: string }) {
   const cs = U.soma(manut.filter(x => x.data >= de12), 'custo_servico')
   const horas = U.soma(manut.filter(x => x.data >= de12), 'horas_parada')
   const pecas = U.ordenar(S.lista('pecas').filter(p => p.ativo && p.utilizacao && U.sem(p.utilizacao).includes(U.sem(m.nome))), p => U.sem(p.codigo))
-  const dados: [string, React.ReactNode][] = [['Número de série', m.numero_serie || ''], ['Ano', m.ano || ''], ['Observações', m.obs ? <Texto t={m.obs} /> : '']]
+  const dados: [string, React.ReactNode][] = [['Número de série', m.numero_serie || ''], ['Ano', m.ano || ''], ['Aplicação', m.aplicacao || ''],
+    ['Check-list da preventiva', (m.checklist || []).length ? U.plural(m.checklist.length, 'item', 'itens') + ': ' + m.checklist.slice(0, 6).join(' · ') + (m.checklist.length > 6 ? '…' : '') : ''],
+    ['Observações', m.obs ? <Texto t={m.obs} /> : '']]
   return <>
     <Voltar para="#/maquinas" txt="Máquinas" />
-    <header className="cab"><div><h1>{m.nome} <Tag s={C.situacaoMaquina(m)} /></h1><p className="sub">{[m.tipo, m.fabricante, m.modelo, m.setor].filter(Boolean).join(' · ')}</p></div>
+    <header className="cab"><div><h1>{C.nomeMaquina(m)} <Tag s={C.situacaoMaquina(m)} /></h1><p className="sub">{[m.grupo, m.tipo, m.fabricante, m.modelo, m.local, m.setor].filter(Boolean).join(' · ')}</p></div>
       <div className="acoes">
         <Btn txt="Abrir chamado" icone="chave" cls="pri" data-m="chamado" onClick={() => void formManutencao({ tipo: 'corretiva', maquina_id: m.id })} />
-        <Btn txt="Registrar preventiva" icone="ok" data-m="prev" onClick={() => void formManutencao({ tipo: 'preventiva', maquina_id: m.id, status: 'concluida', problema: 'Manutenção preventiva' })} />
+        {(m.checklist || []).length > 0 && Perm.pode('manut_editar')
+          ? <Btn txt="Check-list preventiva" icone="ok" data-m="prev" onClick={() => void import('./fabrica/Manutencao.tsx').then(x => x.preencher(m))} />
+          : <Btn txt="Registrar preventiva" icone="ok" data-m="prev" onClick={() => void formManutencao({ tipo: 'preventiva', maquina_id: m.id, status: 'concluida', problema: 'Manutenção preventiva' })} />}
         {Perm.pode('maquinas_editar') && <Btn txt="Editar" icone="lapis" cls="fantasma" data-m="editar" onClick={() => void form(m)} />}
       </div></header>
     <div className="grade g4">
@@ -109,17 +118,22 @@ export async function form(m?: Maquina | null, nomeInicial?: string): Promise<st
   return modal<string>({
     titulo: novo ? 'Nova máquina' : 'Editar máquina',
     corpo: <>
-      <Campo nome="nome" rotulo="Nome / identificação" valor={b.nome} req ajuda="Ex.: Torno CNC 02, TA 25" />
-      <div className="linha-campos"><Campo nome="tipo" rotulo="Tipo" valor={b.tipo} placeholder="Torno, fresadora, prensa…" />
-        <Campo nome="setor" rotulo="Setor" valor={b.setor} attrs={{ list: 'lSetor' }} /></div><datalist id="lSetor">{setores.map(s => <option key={s} value={s} />)}</datalist>
+      <div className="linha-campos"><Campo nome="codigo" rotulo="Código" valor={b.codigo} placeholder="Ex.: TA 25, PE 03" ajuda="O código da planilha de manutenção" />
+        <Campo nome="nome" rotulo="Nome / identificação" valor={b.nome} req ajuda="Ex.: Torno automático, Prensa excêntrica" /></div>
+      <div className="linha-campos"><Campo nome="grupo" rotulo="Grupo" tipo="select" valor={b.grupo || 'Máquina'} opcoes={GRUPOS.map(v => ({ v, t: v }))} />
+        <Campo nome="tipo" rotulo="Tipo" valor={b.tipo} placeholder="Torno, fresadora, prensa…" />
+        <Campo nome="setor" rotulo="Setor" valor={b.setor} attrs={{ list: 'lSetor' }} /><Campo nome="local" rotulo="Local" valor={b.local} placeholder="Matriz, filial…" /></div><datalist id="lSetor">{setores.map(s => <option key={s} value={s} />)}</datalist>
       <div className="linha-campos"><Campo nome="fabricante" rotulo="Fabricante" valor={b.fabricante} /><Campo nome="modelo" rotulo="Modelo" valor={b.modelo} /></div>
       <div className="linha-campos"><Campo nome="numero_serie" rotulo="Nº de série" valor={b.numero_serie} /><Campo nome="ano" rotulo="Ano" tipo="num" valor={b.ano} />
         <Campo nome="preventiva_dias" rotulo="Preventiva a cada (dias)" tipo="num" valor={b.preventiva_dias} ajuda="Em branco = sem preventiva programada" /></div>
+      <Campo nome="aplicacao" rotulo="Aplicação" valor={b.aplicacao} placeholder="Para que é usada" />
+      <Campo nome="checklist" rotulo="Check-list da preventiva (um item por linha)" tipo="area" linhas={4} valor={(b.checklist || []).join('\n')} ajuda="Os itens que a manutenção confere em cada preventiva" />
       <Campo nome="obs" rotulo="Observações" tipo="area" valor={b.obs} linhas={2} />
       {!novo && <Campo nome="ativo" rotulo="Máquina ativa" tipo="check" valor={b.ativo} />}
     </>,
     botoes: [{ txt: novo ? 'Cadastrar' : 'Salvar', acao: async (f) => {
       const d = lerForm(f); if (novo) d.ativo = true
+      d.checklist = String(d.checklist || '').split('\n').map(x => x.trim()).filter(Boolean) as unknown as string
       const r = await API.rpc<string>('salvar_maquina', { p: { ...d, id: b.id } })
       await App.gravou(['maquinas']); aviso(novo ? 'Máquina cadastrada.' : 'Máquina salva.'); return r
     } }],
@@ -132,14 +146,19 @@ export async function formManutencao(m: Partial<Manutencao> = {}): Promise<unkno
   const podeCusto = Perm.pode('precos')
   const usadas = m.id ? C.consumos(x => x.manutencao_id === m.id) : []
   return modal({
-    titulo: novo ? (m.tipo === 'preventiva' ? 'Registrar preventiva' : 'Máquina com problema') : 'Manutenção',
+    titulo: novo ? (m.tipo === 'preventiva' ? 'Registrar preventiva' : 'Abrir OS (máquina com problema)') : `OS ${m.numero || ''}`,
     corpo: <>
       <ComboMaquina id="mMaq" nome="maquina_id" rotulo="Máquina" req placeholder="Digite para buscar" inicial={S.get('maquinas', m.maquina_id)} />
       <div className="linha-campos"><Campo nome="tipo" rotulo="Tipo" tipo="select" valor={m.tipo || 'corretiva'} opcoes={Object.entries(TIPO).map(([v, t]) => ({ v, t }))} />
         <Campo nome="data" rotulo="Data" tipo="date" valor={m.data || U.hoje()} />
         <Campo nome="status" rotulo="Situação" tipo="select" valor={m.status || 'aberta'} opcoes={Object.entries(ST).map(([v, [t]]) => ({ v, t }))} /></div>
       <Campo nome="problema" rotulo={m.tipo === 'preventiva' ? 'O que foi feito' : 'O que está acontecendo'} tipo="area" valor={m.problema} req linhas={2} placeholder="Ex.: barulho no cabeçote, vazamento de óleo…" />
-      <Campo nome="solucao" rotulo="Solução / serviço feito" tipo="area" valor={m.solucao} linhas={2} />
+      <div className="linha-campos"><Campo nome="solicitante" rotulo="Solicitante" valor={m.solicitante || (novo ? API.sessao?.nome : '')} />
+        <Campo nome="responsavel" rotulo="Responsável (manutenção)" valor={m.responsavel} /><Campo nome="prazo" rotulo="Prazo" tipo="date" valor={m.prazo} /></div>
+      <Campo nome="solucao" rotulo="Serviço executado" tipo="area" valor={m.solucao} linhas={2} />
+      {!novo && <><Campo nome="pecas" rotulo="Peças substituídas / fornecedor / valor" tipo="area" valor={m.pecas} linhas={2} />
+        <Campo nome="aprovacao" rotulo="Aprovação após manutenção" valor={m.aprovacao} placeholder="Quem aprovou e quando" /></>}
+      {m.equipamento && !m.maquina_id && <p className="sub">Equipamento na planilha: {m.equipamento}</p>}
       <div className="linha-campos">
         <ComboFuncionario id="mFunc" nome="funcionario_id" rotulo="Quem cuidou (da equipe)" placeholder="Nome" inicial={S.get('funcionarios', m.funcionario_id || (novo ? API.sessao?.funcionario_id : null))} />
         {Perm.pode('compras') && <ComboFornecedor id="mForn" nome="fornecedor_id" rotulo="Técnico / empresa de fora" placeholder="Eletricista, mecânico…" inicial={S.get('fornecedores', m.fornecedor_id)} />}
@@ -150,6 +169,7 @@ export async function formManutencao(m: Partial<Manutencao> = {}): Promise<unkno
       {!novo && <p className="sub">Para ligar uma peça a esta manutenção, use <b>Retirar peça</b> e escolha esta máquina.</p>}
     </>,
     botoes: [
+      ...(novo ? [] : [{ txt: 'Imprimir OS', cls: 'sec', validar: false, acao: async () => { await imprimirOS(S.get('manutencoes', m.id!) || (m as Manutencao)); return false } }]),
       ...(novo || m.status === 'concluida' ? [] : [{ txt: 'Retirar peça para esta manutenção', cls: 'sec', validar: false, acao: async () => { void retirar(); return true } }]),
       { txt: novo ? (m.tipo === 'preventiva' ? 'Registrar' : 'Abrir chamado') : 'Salvar', acao: async (f: HTMLFormElement) => {
         const d = lerForm(f)

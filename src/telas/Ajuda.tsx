@@ -48,11 +48,45 @@ export const ARTIGOS: Artigo[] = [
   { id: 'chamado', area: 'almoxarifado', titulo: 'A máquina deu problema', palavras: 'máquina quebrou chamado manutenção corretiva', perm: 'manutencao', corpo: [
     'Em *Almoxarifado → Máquinas e manutenção* toque em *Máquina com problema* (ou ponha esse atalho no Início), escolha a máquina e descreva. Quando resolver, abra o chamado, escreva a solução e marque *Concluída*.'] },
   // ---------------- PCP
-  { id: 'novaOrdemAjuda', area: 'pcp', titulo: 'Como criar uma ordem de produção', palavras: 'nova ordem produção op pcp planejamento criar cliente prazo', perm: 'producao_editar', rota: '#/producao', corpo: [
+  { id: 'novaOrdemAjuda', area: 'pcp', titulo: 'Ordens de produção (quadro antigo de OP)', palavras: 'nova ordem produção op pcp planejamento criar cliente prazo', perm: 'producao_editar', rota: '#/producao', corpo: [
     { passos: ['Em *PCP → Ordens de produção* toque em *Nova ordem*.', 'Escolha o cliente, o pedido do cliente e o produto (código, quantidade, unidade e prazo).', 'Se quiser, escolha a máquina, o responsável e marque *Urgente*.', 'Toque em *Criar ordem*. A ordem entra *Na fila* com número automático (OP 1, OP 2…).'] }],
     tour: [{ rota: '#/producao', alvo: '[data-o=nova]', texto: 'Toque aqui para criar uma ordem de produção.' }] },
   { id: 'ordens', area: 'pcp', titulo: 'Como funcionam as ordens de produção', palavras: 'ordem produção op fila pronta entregue pcp', perm: 'producao_status', corpo: [
     'Cada ordem anda: *Na fila → Produzindo → Pronta → Entregue*. Abra a ordem para começar, anotar quantas já foram feitas e marcar pronta. A entrega e o cancelamento são marcados pelo PCP ou pelo escritório.'] },
+  // ---------------- fábrica (planilhas PCP, Controle de Pedidos, Depto. Técnico e Manutenção)
+  { id: 'planilhasFab', area: 'pcp', titulo: 'Onde ficou cada planilha da fábrica', palavras: 'planilha excel onde ficou pcp controle de pedidos técnico manutenção esm of ri', perm: 'of_ver', corpo: [
+    'Cada planilha virou uma tela, com os mesmos nomes de antes:',
+    '*Controle de OF* (OF, R.I., Kg, Emitido/Realizado por) → *PCP → Ordens de fabricação*.',
+    '*E.S.M.* (entrada de matéria-prima, R.I., certificado) e o *Inventário de MP* → *PCP → Matéria-prima*.',
+    '*Controle de Pedidos* (Pedido, Item, Prazo, Entregue, Saldo, Situação) → *Comercial → Pedidos de clientes*; a conta de quanto produzir → *PCP → Necessidade*.',
+    '*Cadastro de códigos* e *Estrutura de produto* → *Engenharia → Produtos*.',
+    '*Depto. Técnico* (Desenvolvimento, Alterações, Melhorias, Projetos, Desvios, Desenhos, Cópias, IMDS, Atas, Setup) → *Engenharia*, uma tela para cada.',
+    '*Manutenção* (OS, Plano de preventiva, Check-list, Peças críticas, Gastos, Ferramentaria, Pendências) → *Manutenção*.',
+    'Os formulários impressos (FORM.034/042 da OF, Identificação de Material, OS, Check-list) saem pelo botão *Imprimir* de cada ficha.'] },
+  { id: 'novaOF', area: 'pcp', titulo: 'Emitir uma OF (ordem de fabricação)', palavras: 'nova of emitir ordem fabricação ri lote kg material', perm: 'of_emitir', rota: '#/ofs', corpo: [
+    { passos: ['Toque em *Nova OF* (botão do meio no celular).', 'Escolha o produto pelo código: o sistema já mostra o material e quantos kg vão.', 'Digite a quantidade e o prazo.', 'No *R.I.*, escolha o lote de matéria-prima: a lista mostra só os lotes do material certo que ainda têm saldo.', 'Se for um conjunto, deixe marcado *Emitir também as OFs dos componentes*.', 'Toque em *Emitir OF*. O número sai sozinho e o botão *Imprimir* gera a folha FORM.034/042.'] }],
+    tour: [{ rota: '#/ofs', alvo: '[data-acao=novaOF]', texto: 'Toque aqui para emitir uma OF nova.' }] },
+  { id: 'apontarOF', area: 'pcp', titulo: 'Apontar e encerrar a OF', palavras: 'apontar encerrar of produzido refugo realizado', perm: 'of_apontar', corpo: [
+    'Abra a OF e toque em *Apontar / encerrar*. Digite quanto foi produzido (e o refugo, se teve). *Salvar sem encerrar* guarda o andamento; *Encerrar OF* fecha e anota quem fez e quando.'] },
+  { id: 'mpAjuda', area: 'pcp', titulo: 'Matéria-prima: entrada, R.I. e inventário', palavras: 'matéria prima mp entrada ri lote certificado inventário etiqueta esm', perm: 'mp_ver', rota: '#/mp', corpo: [
+    'Cada chegada de material é um *R.I.* (lote), como na E.S.M. Em *Nova entrada* informe material, fornecedor, NF, peso e o certificado. Depois o sistema oferece imprimir a *etiqueta de Identificação de Material*.',
+    'O saldo do lote baixa sozinho com as OFs. Se aparecer o aviso amarelo de *R.I. usado em OF sem entrada*, é só tocar no R.I. e lançar a entrada que faltou.',
+    'Para conferir a balança com o sistema use *Inventário*: digite o peso real de cada lote.'] },
+  { id: 'pedidosAjuda', area: 'comercial', titulo: 'Pedidos de clientes e entregas', palavras: 'pedido cliente entrega saldo situação atraso nf controle de pedidos', perm: 'vendas', rota: '#/pedidos', corpo: [
+    'É a planilha *Controle de Pedidos*: cada linha é um item de um pedido, com prazo. A *Situação* é calculada sozinha: *Atraso* (passou do prazo com saldo), *Hoje*, *Em dia* ou *Ok* (entregue tudo).',
+    'Para lançar um pedido com vários itens use *Salvar e lançar outro item*. Na entrega, abra o item → *Registrar entrega* → quantidade e NF. Dá para desfazer uma entrega errada.',
+    'Em *PCP → Necessidade* o sistema soma o saldo dos pedidos, desconta o estoque e as OFs abertas, e mostra o que falta produzir e quanto material precisa.'] },
+  { id: 'produtosAjuda', area: 'tecnico', titulo: 'Cadastrar um produto (código e estrutura)', palavras: 'produto código cadastro estrutura componente conjunto peça revisão desenho', perm: 'produtos_ver', rota: '#/produtos', corpo: [
+    'Em *Engenharia → Produtos → Novo* escolha se é *Peça*, *Conjunto* ou *Matéria-prima*. O sistema monta o *código inteligente* do mesmo jeito da planilha (prefixo do cliente + tipo + sequência; na MP, liga + perfil + medidas).',
+    'Num conjunto, adicione os componentes na *Estrutura*. A ficha do produto mostra onde ele é usado, os lotes, as OFs e os registros técnicos dele.'] },
+  { id: 'registrosAjuda', area: 'tecnico', titulo: 'Registros técnicos (alteração, desvio, melhoria…)', palavras: 'alteração desvio melhoria desenvolvimento projeto desenho cópia imds ata setup registro técnico', perm: 'produtos_ver', corpo: [
+    'Cada aba da planilha do Depto. Técnico é uma tela da *Engenharia*, com número automático, status e prazo. Atrasados ficam em vermelho e aparecem no *Painel* da engenharia.',
+    'Qualquer pessoa da fábrica pode *pedir uma alteração* ou *sugerir uma melhoria* pelo Início; o técnico vê, responde e fecha. O botão *Imprimir* gera a ficha com espaço para assinaturas.'] },
+  { id: 'osAjuda', area: 'manutencao', titulo: 'Abrir e fechar uma OS de manutenção', palavras: 'os ordem de serviço manutenção corretiva chamado máquina quebrou', perm: 'manutencao', rota: '#/os', corpo: [
+    { passos: ['Toque em *Abrir OS* (botão do meio no celular).', 'Escolha a máquina pelo código (ex.: TA 25) e descreva o problema.', 'Toque em *Abrir chamado*: a OS ganha número e fica *Aberta*.', 'Quando resolver, abra a OS, escreva o que foi feito, as peças e o custo, e marque *Concluída*. *Imprimir OS* gera a folha.'] }] },
+  { id: 'preventivaAjuda', area: 'manutencao', titulo: 'Plano de preventiva e check-list', palavras: 'preventiva plano check list checklist inspeção mensal máquina', perm: 'manutencao', rota: '#/preventiva', corpo: [
+    'O *Plano* mostra o ano inteiro de cada máquina: verde é feito, amarelo é o mês devido, vermelho é atrasado.',
+    'Toque na máquina para preencher o *Check-list*: cada item recebe Ok, Corrigir, Trocar ou Não se aplica. Se algum item deu problema, o sistema oferece abrir uma OS na hora.'] },
   // ---------------- RH
   { id: 'rhVisao', area: 'rh', titulo: 'RH: o que tem e onde fica', palavras: 'rh recursos humanos planilhas excel onde', perm: 'rh_ver', rota: '#/rh', corpo: [
     'O RH junta as planilhas: *Relação de funcionários* e *Banco de dados* → aba *Pessoas*; *Planilha de horas extras* → *Ponto e horas extras*; datas limite de férias → *Férias e ausências*; *Plano de treinamentos*, *Procedimentos SGQ* e *Versatilidade* → *Treinamentos*; ASO e EPI → *EPI e exames*; modelos de advertência e suspensão → *Advertências*; organograma → *Organograma*.',

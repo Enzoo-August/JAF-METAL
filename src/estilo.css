@@ -946,3 +946,42 @@ body { background: var(--grad-fundo), var(--fundo); background-attachment: fixed
   .combo-item { padding: 12px; }
   .lateral-menu a { padding: 11px 10px; }
 }
+
+/* ---------------------------------------------------------------- fábrica (v2.5) */
+.carregando-parte { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px; color: var(--texto-2); }
+.carregando-parte .giro { margin: 0; width: 22px; height: 22px; }
+.tabela-fab { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.tabela-fab th, .tabela-fab td { padding: 7px 8px; border-bottom: 1px solid var(--borda); text-align: left; vertical-align: top; }
+.tabela-fab th { font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; color: var(--texto-2); font-weight: 600; }
+.tabela-fab td.n, .tabela-fab th.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tabela-fab tr.clicavel { cursor: pointer; }
+.tabela-fab tr.clicavel:hover td { background: var(--cartao-2); }
+.rolagem-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.estrutura-linha { display: grid; grid-template-columns: 1fr 90px 70px 36px; gap: 8px; align-items: end; margin-bottom: 8px; }
+.estrutura-linha .campo { margin: 0; }
+.check-item { display: grid; grid-template-columns: 1fr 150px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--borda); }
+.check-item input { width: 100%; }
+.plano-ano { border-collapse: collapse; font-size: .8rem; min-width: 640px; }
+.plano-ano th, .plano-ano td { border: 1px solid var(--borda); padding: 4px 6px; text-align: center; }
+.plano-ano td:first-child, .plano-ano th:first-child { text-align: left; white-space: nowrap; }
+.plano-ano .feito { background: var(--verde-f); color: var(--verde); font-weight: 700; }
+.plano-ano .devido { background: var(--amarelo-f); }
+.plano-ano .vencido { background: var(--vermelho-f); }
+.mono { font-family: var(--mono); }
+@media (max-width: 640px) {
+  .estrutura-linha { grid-template-columns: 1fr 70px 36px; }
+  .estrutura-linha .so-largo { display: none; }
+  .check-item { grid-template-columns: 1fr 110px; }
+  .tabela-fab .so-largo { display: none; }
+}
+
+.alerta-card { border-left: 4px solid var(--amarelo); background: linear-gradient(90deg, var(--amarelo-f), var(--cartao) 60%); }
+/* palavra comprida no atalho (ex.: "Desenvolvimento") quebra em vez de empurrar a tela para o lado */
+.atalho { min-width: 0; }
+.atalho > span { min-width: 0; overflow-wrap: break-word; hyphens: auto; }
+/* campos soltos (fora do formulário padrão) com a mesma altura de toque dos outros */
+.acoes select, .barra-filtros input[type=date], .check-item input { min-height: 40px; border: 1px solid var(--borda-forte); border-radius: var(--raio-p); background: var(--cartao); color: var(--texto); font: inherit; padding: 0 10px; }
+/* plano de preventiva: nome do equipamento parado ao rolar os meses; mês atual marcado */
+.plano-ano td:first-child, .plano-ano th:first-child { position: sticky; left: 0; z-index: 1; background: var(--cartao); box-shadow: 1px 0 0 var(--borda); }
+.plano-ano th.mes-atual { background: var(--marca); color: #fff; }
+:root[data-tema="escuro"] .plano-ano th.mes-atual { color: #0b1220; }

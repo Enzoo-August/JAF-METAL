@@ -1,6 +1,6 @@
 /* Linhas das tabelas do banco (iguais ao supabase/schema.sql). Datas: 'AAAA-MM-DD'; horários: ISO. */
 
-export type Perfil = 'dono' | 'escritorio' | 'almoxarife' | 'pcp' | 'producao' | 'rh' | 'gerente'
+export type Perfil = 'dono' | 'escritorio' | 'almoxarife' | 'pcp' | 'producao' | 'rh' | 'gerente' | 'tecnico' | 'manutencao'
 
 export interface PerfilAcesso {
   user_id: string; nome: string; login: string; perfil: Perfil; funcionario_id: string | null
@@ -72,7 +72,9 @@ export interface RhAnexo { id: string; tabela: string; registro_id: string; nome
 export interface Maquina {
   id: string; nome: string; tipo: string | null; fabricante: string | null; modelo: string | null; numero_serie: string | null
   setor: string | null; ano: number | null; preventiva_dias: number | null; obs: string | null; ativo: boolean; criado_em: string; atualizado_em: string
+  codigo: string | null; grupo: GrupoMaquina; local: string | null; checklist: string[]; aplicacao: string | null
 }
+export type GrupoMaquina = 'Máquina' | 'Dispositivo' | 'Ferramenta' | 'Predial' | 'Outro'
 export interface Peca {
   id: string; codigo: string; descricao: string; utilizacao: string | null; fornecedor_id: string | null; unidade: string
   est_min: number; est_max: number; local: string | null; obs: string | null; ativo: boolean; estoque: number; criado_em: string; atualizado_em: string
@@ -80,6 +82,7 @@ export interface Peca {
 export interface Cliente {
   id: string; nome: string; razao: string | null; cnpj: string | null; contato: string | null; telefone: string | null
   email: string | null; cidade: string | null; uf: string | null; obs: string | null; ativo: boolean; criado_em: string; atualizado_em: string
+  sigla: string | null; contato2: string | null; telefone2: string | null; endereco: string | null; bairro: string | null; cep: string | null; ie: string | null; site: string | null
 }
 export interface PedidoCompra {
   id: string; numero: number; data: string; fornecedor_id: string; documento: string | null; prazo: string | null
@@ -88,9 +91,45 @@ export interface PedidoCompra {
 }
 export interface PedidoItem { id: string; pedido_id: string; peca_id: string; qtd: number; valor: number; recebido: number; ordem: number }
 export interface Manutencao {
-  id: string; maquina_id: string; data: string; tipo: 'preventiva' | 'corretiva' | 'melhoria'; status: 'aberta' | 'andamento' | 'concluida'
+  id: string; maquina_id: string; data: string; tipo: 'preventiva' | 'corretiva' | 'preditiva' | 'melhoria'; status: 'aberta' | 'andamento' | 'concluida'
   problema: string; solucao: string | null; fornecedor_id: string | null; funcionario_id: string | null; custo_servico: number
   horas_parada: number | null; concluida_em: string | null; criado_por: string | null; criado_em: string; atualizado_em: string
+  numero: number | null; solicitante: string | null; responsavel: string | null; prazo: string | null; pecas: string | null; aprovacao: string | null; equipamento: string | null
+}
+
+// ------------------------------------------------------------------ fábrica (PCP, comercial, técnico, manutenção)
+export interface Produto {
+  id: string; codigo: string; descricao: string; classe: 'mp' | 'peca'; mp_codigo: string | null; mp_qtd: number | null; mp_unidade: string | null
+  operacao: string | null; cliente_id: string | null; codigo_cliente: string | null; desenho_cliente: string | null; revisao: string | null
+  data_revisao: string | null; data_entrada: string | null; pecas_mes: number | null; situacao: 'ativo' | 'inativo' | 'bloqueado'
+  checks: Record<string, boolean>; obs: string | null; criado_em: string; atualizado_em: string
+}
+export interface Estrutura { id: string; pai_id: string; filho_id: string; qtd: number; unidade: string; ordem: number; atualizado_em: string }
+export interface LoteMP {
+  id: string; ri: number; produto_id: string; qtd: number; data: string; nota: string | null; fornecedor_id: string | null; fornecedor_nome: string | null
+  pedido: string | null; status: 'Aprovado' | 'Reprovado' | 'Aguardando'; baixa: number; obs: string | null; criado_por: string | null; criado_em: string; atualizado_em: string
+}
+export interface Venda {
+  id: string; cliente_id: string | null; cliente_nome: string | null; produto_id: string | null; codigo: string | null; codigo_cliente: string | null
+  descricao: string | null; pedido: string | null; prazo: string | null; qtd: number; valor: number; entregue: number; entregue_em: string | null
+  cancelado: boolean; obs: string | null; criado_por: string | null; criado_em: string; atualizado_em: string
+}
+export interface Entrega { id: string; venda_id: string; data: string; qtd: number; nf: string | null; obs: string | null; criado_por: string | null; criado_em: string }
+export interface ComponenteOF { codigo: string; qtd: number; ref: string | null }
+export interface OF {
+  id: string; numero: number; tipo: 'componente' | 'conjunto'; produto_id: string; qtd: number; produzido: number | null; ri: number | null; kg: number | null
+  emitido_por: string | null; emitida_em: string; realizado_por: string | null; realizada_em: string | null; status: 'aberta' | 'encerrada' | 'cancelada'
+  pai_id: string | null; venda_id: string | null; prazo: string | null; maquina_id: string | null; componentes: ComponenteOF[]; obs: string | null
+  criado_por: string | null; criado_em: string; atualizado_em: string
+}
+export interface ItemChecklist { item: string; situacao: string }
+export interface Preventiva { id: string; maquina_id: string; data: string; responsavel: string | null; resultados: ItemChecklist[]; obs: string | null; os: string | null; criado_por: string | null; criado_em: string; atualizado_em: string }
+export type TipoRegistro = 'desenvolvimento' | 'projeto' | 'melhoria' | 'alteracao' | 'desvio' | 'desenho' | 'copia' | 'imds' | 'ata' | 'setup'
+  | 'servico_externo' | 'requisicao' | 'servico_manut' | 'gasto_manut' | 'peca_critica' | 'pendencia' | 'ferramentaria'
+export interface RegistroFab {
+  id: string; tipo: TipoRegistro; numero: number | null; data: string | null; codigo: string | null; titulo: string | null; status: string | null
+  prazo: string | null; concluido_em: string | null; responsavel: string | null; valor: number | null; maquina_id: string | null; cliente_id: string | null
+  fornecedor_id: string | null; dados: Record<string, unknown>; criado_por: string | null; criado_em: string; atualizado_em: string
 }
 export type Motivo = 'compra' | 'retirada' | 'ajuste' | 'devolucao' | 'importado' | 'estorno'
 export interface Movimento {
@@ -125,6 +164,7 @@ export interface Tabelas {
   rh_feriados: RhFeriado; rh_matrizes: RhMatriz; rh_matriz_itens: RhMatrizItem; rh_matriz_niveis: RhNivel; rh_plano_treinos: RhPlano
   rh_metas: RhMeta; rh_epis: RhEpi; rh_asos: RhAso; rh_ocorrencias: RhOcorrencia; rh_anexos: RhAnexo; rh_processos: RhProcesso
   rh_cargos_salarios: RhCargoSalario; rh_epi_catalogo: RhEpiCatalogo; rh_indicadores: RhIndicador
+  produtos: Produto; produto_estrutura: Estrutura; mp_lotes: LoteMP; vendas: Venda; vendas_entregas: Entrega; ofs: OF; preventivas: Preventiva; registros: RegistroFab
 }
 export type NomeTabela = keyof Tabelas
 

@@ -1,6 +1,7 @@
 /* Ganchos do React: dados, rota (endereço #/...) e filtros que ficam lembrados ao trocar de tela */
-import { useCallback, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { S } from '../lib/dados.ts'
+import type { NomeTabela } from '../lib/tipos.ts'
 
 // redesenha quando os dados do banco mudam
 export const useDados = (): number => useSyncExternalStore(S.ouvir, () => S.versao)
@@ -36,3 +37,11 @@ export function useLembrar<T>(chave: string, inicial: T): [T, (v: T | ((x: T) =>
   return [v, set]
 }
 export const esquecerLembrados = (): void => lembrados.clear()
+
+// a tela pede as tabelas grandes da fábrica; devolve true quando já estão na memória
+export function useTabelas(tabs: NomeTabela[]): boolean {
+  useDados()
+  const chave = tabs.join(',')
+  useEffect(() => { void S.garantir(chave.split(',') as NomeTabela[]).catch((e) => console.error(e)) }, [chave])
+  return S.pronto(tabs)
+}

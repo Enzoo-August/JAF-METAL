@@ -20,6 +20,13 @@ import { TelaRH, tituloRH } from './rh/index.tsx'
 import { avisoFerias, formAusencia, programarFerias } from './rh/Ferias.tsx'
 import { fichaEpi, formAso, formCatalogo, formEpi, termoEpi } from './rh/Seguranca.tsx'
 import { documento, formOcorrencia } from './rh/Disciplina.tsx'
+import * as OFs from './fabrica/OFs.tsx'
+import * as MP from './fabrica/MP.tsx'
+import * as Pedidos from './fabrica/Pedidos.tsx'
+import * as Produtos from './fabrica/Produtos.tsx'
+import * as Registros from './fabrica/Registros.tsx'
+import * as Manut from './fabrica/Manutencao.tsx'
+import { TelaTecnico } from './fabrica/Tecnico.tsx'
 
 export interface DefTela { Tela: (p: { r: Rota }) => ReactNode; perm?: Acao; titulo: string | ((r: Rota) => string) }
 
@@ -28,6 +35,8 @@ const compras: DefTela = { Tela: Compras.TelaCompras, perm: 'compras', titulo: C
 const fornecedores: DefTela = { Tela: Fornecedores.TelaFornecedores, perm: 'compras', titulo: Fornecedores.tituloFornecedores }
 const maquinas: DefTela = { Tela: Maquinas.TelaMaquinas, perm: 'almox', titulo: Maquinas.tituloMaquinas }
 const clientes: DefTela = { Tela: Clientes.TelaClientes, perm: 'clientes', titulo: Clientes.tituloClientes }
+const ofs: DefTela = { Tela: OFs.TelaOFs, perm: 'of_ver', titulo: OFs.tituloOFs }
+const produtos: DefTela = { Tela: Produtos.TelaProdutos, perm: 'produtos_ver', titulo: Produtos.tituloProdutos }
 const rh: DefTela = { Tela: TelaRH, perm: 'rh_ver', titulo: tituloRH }
 // "Equipe" (quem não é do RH: PCP e produção veem nome, função e o que a pessoa fez)
 const equipe: DefTela = { Tela: TelaRH, perm: 'pcp', titulo: tituloRH }
@@ -43,6 +52,16 @@ export const ROTAS: Record<string, DefTela> = {
   producao: { Tela: Producao.TelaProducao, perm: 'pcp', titulo: 'Ordens de produção' },
   financeiro: { Tela: Financeiro.TelaFinanceiro, perm: 'financeiro', titulo: Financeiro.tituloFinanceiro },
   clientes, cliente: clientes,
+  ofs, of: ofs,
+  mp: { Tela: MP.TelaMP, perm: 'of_ver', titulo: 'Matéria-prima' },
+  pedidos: { Tela: Pedidos.TelaPedidos, perm: 'vendas', titulo: 'Pedidos de clientes' },
+  necessidade: { Tela: Pedidos.TelaPedidos, perm: 'necessidade', titulo: 'Necessidade' },
+  produtos, produto: produtos,
+  reg: { Tela: Registros.TelaRegistros, titulo: Registros.tituloRegistros },
+  tecnico: { Tela: TelaTecnico, perm: 'tecnico_ver', titulo: 'Engenharia' },
+  os: { Tela: Manut.TelaOS, perm: 'manut_ver', titulo: 'Ordens de serviço' },
+  preventiva: { Tela: Manut.TelaPreventiva, perm: 'manut_ver', titulo: 'Preventiva' },
+  manut: { Tela: Manut.TelaManutInd, perm: 'manut_gestao', titulo: 'Indicadores da manutenção' },
   rh, equipe, funcionario,
   relatorios: { Tela: TelaRelatorios, perm: 'relatorios', titulo: 'Relatórios' },
   admin: { Tela: TelaAdmin, perm: 'config', titulo: 'Administração' },
@@ -59,6 +78,8 @@ export const Telas = {
   producao: { abrir: Producao.abrir, form: Producao.form },
   financeiro: { form: Financeiro.form, abrir: Financeiro.abrir, saldoHoje: Financeiro.saldoHoje },
   clientes: { form: Clientes.form, novoRapido: Clientes.novoRapido },
+  fabrica: { formOF: OFs.formOF, apontar: OFs.apontar, imprimirOF: OFs.imprimirOF, formLote: MP.formLote, etiqueta: MP.etiqueta, formVenda: Pedidos.formVenda, entregar: Pedidos.entregar,
+    formProduto: Produtos.formProduto, formReg: Registros.formReg, defReg: Registros.defReg, preencher: Manut.preencher, imprimirOS: Manut.imprimirOS },
   equipe: { form: formPessoa },
   rh: { formPessoa, programarFerias, avisoFerias, formAusencia, formAso, formEpi, fichaEpi, termoEpi, formCatalogo, formOcorrencia, documento },
   admin: { trocarSenha },

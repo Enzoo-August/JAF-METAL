@@ -124,8 +124,8 @@ export const ComboFornecedor = (p: Atalho<Fornecedor>) => <Combo<Fornecedor>
 
 export const ComboMaquina = (p: Atalho<Maquina>) => <Combo<Maquina>
   fonte={() => S.lista('maquinas').filter(x => x.ativo)}
-  campos={(x) => [x.nome, x.tipo || '', x.setor || '']}
-  rotuloDe={(x) => x.nome || ''}
+  campos={(x) => [x.codigo || x.nome, x.nome, x.tipo || '', x.setor || '', x.local || '']}
+  rotuloDe={(x) => x.codigo && !sem(x.nome).includes(sem(x.codigo)) ? `${x.codigo} · ${x.nome}` : x.nome || ''}
   novo={Perm.pode('maquinas_editar') && cadastroRapido.maquina ? cadastroRapido.maquina : null}
   {...p} />
 

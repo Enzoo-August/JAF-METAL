@@ -1,7 +1,8 @@
 /* JAF Metal — dados em memória (S) e cálculos (C). */
 import { API } from './api.ts'
 import { Perm } from './perm.ts'
-import type { Preferencias, FuncionarioPrivado, Funcionario, Lancamento, Maquina, Movimento, NomeTabela, Ordem, Peca, PedidoCompra, PedidoItem, Situacao, Tabelas } from './tipos.ts'
+import type { Preferencias, FuncionarioPrivado, Funcionario, Lancamento, Maquina, Movimento, NomeTabela, Ordem, Peca, PedidoCompra, PedidoItem, Situacao, Tabelas,
+  Estrutura, LoteMP, OF, Produto, Venda } from './tipos.ts'
 import * as R from './rh.ts'
 import * as U from './util.ts'
 
@@ -17,7 +18,14 @@ const INCR: Record<NomeTabela, string | null> = {
   rh_plano_treinos: 'atualizado_em', rh_metas: 'atualizado_em', rh_epis: 'atualizado_em', rh_asos: 'atualizado_em',
   rh_ocorrencias: 'atualizado_em', rh_anexos: null, rh_processos: 'atualizado_em',
   rh_cargos_salarios: null, rh_epi_catalogo: 'atualizado_em', rh_indicadores: null,
+  produtos: 'atualizado_em', produto_estrutura: 'atualizado_em', mp_lotes: 'atualizado_em', vendas: 'atualizado_em', vendas_entregas: null,
+  ofs: 'atualizado_em', preventivas: 'atualizado_em', registros: 'atualizado_em',
 }
+// tabelas grandes da fábrica: só são lidas quando alguém abre uma tela que precisa delas (o sistema abre rápido no celular)
+export const FABRICA: NomeTabela[] = ['produtos', 'produto_estrutura', 'mp_lotes', 'vendas', 'vendas_entregas', 'ofs', 'preventivas', 'registros']
+const SOB_DEMANDA = new Set<NomeTabela>(FABRICA)
+const carregadas = new Set<NomeTabela>()
+const lendo = new Map<NomeTabela, Promise<void>>()
 // tabelas do RH por perfil
 const RH_BASE: NomeTabela[] = ['rh_setores', 'rh_cargos', 'rh_ausencias', 'rh_ponto', 'rh_ponto_meses', 'rh_feriados', 'rh_matrizes', 'rh_matriz_itens',
   'rh_matriz_niveis', 'rh_plano_treinos', 'rh_metas', 'rh_epis', 'rh_asos', 'rh_ocorrencias', 'rh_epi_catalogo']
@@ -41,9 +49,12 @@ export const S = {
   tabelasDoPerfil(): NomeTabela[] {
     const p = API.sessao?.perfil
     if (p === 'rh') return ['config', 'funcionarios', ...RH_SENSIVEL, ...RH_BASE]
-    if (p === 'pcp') return ['config', 'pecas', 'maquinas', 'funcionarios', 'ordens', 'clientes', 'rh_feriados']
-    const t: NomeTabela[] = ['config', 'pecas', 'maquinas', 'manutencoes', 'funcionarios', 'ordens', 'movimentos', 'rh_feriados']
+    if (p === 'pcp') return ['config', 'pecas', 'maquinas', 'funcionarios', 'ordens', 'clientes', 'fornecedores', 'rh_feriados', ...FABRICA]
+    if (p === 'tecnico') return ['config', 'maquinas', 'funcionarios', 'clientes', 'fornecedores', 'rh_feriados', ...FABRICA]
+    const t: NomeTabela[] = ['config', 'pecas', 'maquinas', 'manutencoes', 'funcionarios', 'ordens', 'movimentos', 'rh_feriados', ...FABRICA]
     if (p === 'dono' || p === 'escritorio' || p === 'almoxarife') t.push('fornecedores', 'pedidos_compra', 'pedido_itens')
+    if (p === 'manutencao') t.push('fornecedores')
+    if (p === 'gerente') t.push('clientes')
     if (p === 'dono' || p === 'escritorio') t.push('clientes', 'lancamentos', ...RH_SENSIVEL, ...RH_BASE.filter(x => x !== 'rh_feriados'))
     if (p === 'gerente') t.push(...RH_BASE.filter(x => x !== 'rh_feriados'))
     if (p === 'dono') t.push('perfis')
@@ -66,20 +77,40 @@ export const S = {
     avisar()
   },
 
-  // carrega tudo do zero
-  async carregar(): Promise<void> {
-    const tabs = S.tabelasDoPerfil()
-    for (const t of TODAS) { (d as Record<string, unknown[]>)[t] = []; i[t].clear() }
+  // carrega tudo do zero (as tabelas da fábrica só quando uma tela pedir; na recarga periódica elas só buscam o que mudou)
+  async carregar(opt: { periodica?: boolean } = {}): Promise<void> {
+    const tabs = S.tabelasDoPerfil().filter(t => !SOB_DEMANDA.has(t))
+    const manter = opt.periodica ? [...carregadas].filter(t => SOB_DEMANDA.has(t)) : []
+    if (!opt.periodica) { carregadas.clear(); lendo.clear() }
+    for (const t of TODAS) if (!manter.includes(t)) { (d as Record<string, unknown[]>)[t] = []; i[t].clear() }
     const res = await Promise.all(tabs.map(t => lerTabela(t)))
-    tabs.forEach((t, n) => { (d as Record<string, unknown[]>)[t] = res[n]; indexar(t) })
+    tabs.forEach((t, n) => { (d as Record<string, unknown[]>)[t] = res[n]; indexar(t); carregadas.add(t) })
+    if (manter.length) await S.atualizar(manter)
     await carregarNomes()
     S.carregadoEm = Date.now(); S.ultimaBusca = Date.now()
     avisar()
   },
 
+  // as telas da fábrica pedem as tabelas de que precisam (lidas uma vez; depois só o que mudou)
+  pronto(tabs: NomeTabela[]): boolean { const pode = new Set(S.tabelasDoPerfil()); return tabs.every(t => !pode.has(t) || carregadas.has(t)) },
+  async garantir(tabs: NomeTabela[]): Promise<void> {
+    const pode = new Set(S.tabelasDoPerfil())
+    const falta = tabs.filter(t => pode.has(t) && !carregadas.has(t))
+    if (!falta.length) return
+    await Promise.all(falta.map(t => {
+      let pr = lendo.get(t)
+      if (!pr) {
+        pr = lerTabela(t).then(l => { (d as Record<string, unknown[]>)[t] = l; indexar(t); carregadas.add(t) }).finally(() => lendo.delete(t))
+        lendo.set(t, pr)
+      }
+      return pr
+    }))
+    avisar()
+  },
+
   // busca só o que mudou nas tabelas pedidas (ou em todas)
   async atualizar(tabelas?: NomeTabela[], opt: { inteira?: NomeTabela[] } = {}): Promise<NomeTabela[]> {
-    const permitidas = new Set(S.tabelasDoPerfil())
+    const permitidas = new Set(S.tabelasDoPerfil().filter(t => carregadas.has(t)))
     const tabs = (tabelas || [...permitidas]).filter(t => permitidas.has(t))
     const mudou: NomeTabela[] = []
     await Promise.all(tabs.map(async (t) => {
@@ -268,13 +299,16 @@ export const C = {
   },
 
   // ---------------- máquinas / manutenção
+  // última preventiva: OS de preventiva concluída ou check-list preenchido
   ultimaPreventiva(maqId: string): string | null {
     let u: string | null = null
     for (const m of S.lista('manutencoes')) if (m.maquina_id === maqId && m.tipo === 'preventiva' && m.status === 'concluida') {
       const x = m.concluida_em || m.data; if (!u || x > u) u = x
     }
+    for (const p of S.lista('preventivas')) if (p.maquina_id === maqId && (!u || p.data > u)) u = p.data
     return u
   },
+  nomeMaquina(m: Maquina | null | undefined): string { return !m ? '' : m.codigo && !U.sem(m.nome).includes(U.sem(m.codigo)) ? `${m.codigo} · ${m.nome}` : m.nome },
   proximaPreventiva(maq: Maquina): string | null {
     if (!maq.preventiva_dias) return null
     const u = C.ultimaPreventiva(maq.id)
@@ -291,6 +325,97 @@ export const C = {
     if (prox && prox < hoje()) return { cod: 'prevvencida', txt: 'Preventiva vencida', cor: 'vermelho' }
     if (prox && U.dias(hoje(), prox) <= 7) return { cod: 'prevlogo', txt: 'Preventiva em ' + U.relativo(prox), cor: 'amarelo' }
     return { cod: 'ok', txt: 'Funcionando', cor: 'verde' }
+  },
+
+  // ---------------- fábrica: matéria-prima (saldo do lote = entrada − o que foi para as OFs − acerto de inventário)
+  consumoPorRI(): Map<number, number> {
+    limparCache()
+    if (!cache.consumo) {
+      const m = new Map<number, number>()
+      for (const o of S.lista('ofs')) if (o.ri && o.status !== 'cancelada' && o.kg) m.set(o.ri, (m.get(o.ri) || 0) + Number(o.kg))
+      cache.consumo = m
+    }
+    return cache.consumo
+  },
+  saldoLote(l: LoteMP): number { return U.r4(Number(l.qtd) - (C.consumoPorRI().get(l.ri) || 0) - Number(l.baixa || 0)) },
+  loteDoRI(ri: number | null | undefined): LoteMP | null {
+    if (!ri) return null
+    limparCache()
+    if (!cache.porRI) cache.porRI = new Map(S.lista('mp_lotes').map(l => [l.ri, l]))
+    return cache.porRI.get(ri) || null
+  },
+  // saldo de cada material (só lotes aprovados com saldo)
+  estoqueMP(): Map<string, number> {
+    limparCache()
+    if (!cache.estoqueMP) {
+      const m = new Map<string, number>()
+      for (const l of S.lista('mp_lotes')) { if (l.status !== 'Aprovado') continue; const s = C.saldoLote(l); if (s > 0) m.set(l.produto_id, (m.get(l.produto_id) || 0) + s) }
+      cache.estoqueMP = m
+    }
+    return cache.estoqueMP
+  },
+  produtoPorCodigo(cod: string | null | undefined): Produto | null {
+    if (!cod) return null
+    limparCache()
+    if (!cache.porCod) cache.porCod = new Map(S.lista('produtos').map(p => [p.codigo.toLowerCase(), p]))
+    return cache.porCod.get(cod.toLowerCase()) || null
+  },
+  componentes(paiId: string): Estrutura[] {
+    limparCache()
+    if (!cache.filhos) cache.filhos = U.agrupar(S.lista('produto_estrutura'), e => e.pai_id)
+    return [...(cache.filhos.get(paiId) || [])].sort((a, b) => a.ordem - b.ordem)
+  },
+  ondeUsado(filhoId: string): Estrutura[] {
+    limparCache()
+    if (!cache.pais) cache.pais = U.agrupar(S.lista('produto_estrutura'), e => e.filho_id)
+    return cache.pais.get(filhoId) || []
+  },
+  // ---------------- OFs
+  situacaoOF(o: OF): Situacao & { atrasada: boolean } {
+    const atrasada = o.status === 'aberta' && !!o.prazo && o.prazo < hoje()
+    if (o.status === 'encerrada') return { cod: 'encerrada', txt: 'Encerrada', cor: 'verde', atrasada }
+    if (o.status === 'cancelada') return { cod: 'cancelada', txt: 'Cancelada', cor: 'cinza', atrasada }
+    return { cod: 'aberta', txt: atrasada ? 'Em aberto (atrasada)' : 'Em aberto', cor: atrasada ? 'vermelho' : 'azul', atrasada }
+  },
+  emOFAberta(produtoId: string): number {
+    limparCache()
+    if (!cache.emOF) {
+      const m = new Map<string, number>()
+      for (const o of S.lista('ofs')) if (o.status === 'aberta') m.set(o.produto_id, (m.get(o.produto_id) || 0) + Math.max(0, o.qtd - (Number(o.produzido) || 0)))
+      cache.emOF = m
+    }
+    return cache.emOF.get(produtoId) || 0
+  },
+  // ---------------- pedidos de clientes (mesma regra da planilha Controle de Pedidos)
+  saldoVenda(v: Venda): number { return U.r4(Number(v.qtd) - Number(v.entregue || 0)) },
+  situacaoVenda(v: Venda): Situacao {
+    if (v.cancelado) return { cod: 'cancelado', txt: 'Cancelado', cor: 'cinza' }
+    if (C.saldoVenda(v) <= 0) return { cod: 'ok', txt: 'Ok', cor: 'verde' }
+    if (!v.prazo || v.prazo > hoje()) return { cod: 'aguardando', txt: 'Aguardando', cor: 'azul' }
+    if (v.prazo === hoje()) return { cod: 'atencao', txt: 'Atenção', cor: 'amarelo' }
+    return { cod: 'atraso', txt: 'Atraso', cor: 'vermelho' }
+  },
+  // necessidade (MRP): o saldo dos pedidos abertos "explodido" pela estrutura do produto
+  necessidade(vendas: Venda[], margem = 0): { pecas: Map<string, number>; mp: Map<string, number> } {
+    const pecas = new Map<string, number>(), mp = new Map<string, number>()
+    const somar = (prodId: string, q: number, nivel: number) => {
+      if (nivel > 12 || q <= 0) return
+      pecas.set(prodId, (pecas.get(prodId) || 0) + q)
+      for (const e of C.componentes(prodId)) somar(e.filho_id, q * Number(e.qtd), nivel + 1)
+    }
+    for (const v of vendas) {
+      const pr = v.produto_id ? S.get('produtos', v.produto_id) : C.produtoPorCodigo(v.codigo)
+      const s = C.saldoVenda(v)
+      if (pr && s > 0 && !v.cancelado) somar(pr.id, s + margem, 0)
+    }
+    // matéria-prima: só do que ainda falta fabricar (desconta o que já está em OF aberta)
+    for (const [id, q] of pecas) {
+      const pr = S.get('produtos', id); if (!pr?.mp_codigo || !pr.mp_qtd) continue
+      const falta = Math.max(0, q - C.emOFAberta(id))
+      const m = C.produtoPorCodigo(pr.mp_codigo); if (!m || !falta) continue
+      mp.set(m.id, (mp.get(m.id) || 0) + falta * Number(pr.mp_qtd))
+    }
+    return { pecas, mp }
   },
 
   // ---------------- produção
@@ -401,7 +526,7 @@ export const C = {
       const semConta = S.lista('pedidos_compra').filter(p => p.recebido_em && p.recebido_em >= U.somaDias(hoje(), -60) && C.semConta(p))
       if (semConta.length) add('baixo', `${U.plural(semConta.length, 'pedido')} recebido${semConta.length > 1 ? 's' : ''} sem conta a pagar lançada`, '#/compras?f=semconta', semConta.length)
     }
-    if (Perm.pode('pcp')) {
+    if (Perm.pode('pcp') && !Perm.pode('of_menu')) {
     const ords = S.lista('ordens').filter(o => o.status === 'fila' || o.status === 'producao')
     const oatr = ords.filter(o => o.prazo && o.prazo < hoje())
     if (oatr.length) add('alto', `${U.plural(oatr.length, 'ordem', 'ordens')} de produção ${oatr.length === 1 ? 'atrasada' : 'atrasadas'}`, '#/producao', oatr.length)
@@ -416,6 +541,23 @@ export const C = {
       const venc = S.lista('fornecedores').filter(f => f.ativo && f.qualif_validade && f.qualif_validade < hoje())
       if (venc.length) add('baixo', `${U.plural(venc.length, 'fornecedor', 'fornecedores')} com qualificação vencida`, '#/fornecedores?f=qualif', venc.length)
     }
+    if (Perm.pode('of_menu')) {
+      const atr = S.lista('ofs').filter(o => o.status === 'aberta' && o.prazo && o.prazo < hoje()).length
+      if (atr) add('alto', `${U.plural(atr, 'OF')} com prazo vencido`, '#/ofs', atr)
+    }
+    if (Perm.pode('vendas')) {
+      const v = S.lista('vendas'), atr = v.filter(x => C.situacaoVenda(x).cod === 'atraso').length, hj = v.filter(x => C.situacaoVenda(x).cod === 'atencao').length
+      if (atr) add('alto', `${U.plural(atr, 'item', 'itens')} de pedido de cliente em atraso`, '#/pedidos', atr)
+      if (hj) add('medio', `${U.plural(hj, 'item', 'itens')} de pedido de cliente para entregar hoje`, '#/pedidos', hj)
+    }
+    if (Perm.pode('mp_editar')) {
+      const ag = S.lista('mp_lotes').filter(l => l.status === 'Aguardando').length
+      if (ag) add('medio', `${U.plural(ag, 'lote')} de matéria-prima aguardando inspeção`, '#/mp', ag)
+    }
+    if (Perm.pode('manut_gestao')) {
+      const cr = S.lista('registros').filter(r => r.tipo === 'peca_critica' && r.status === 'Comprar').length
+      if (cr) add('medio', `${U.plural(cr, 'peça crítica', 'peças críticas')} para comprar`, '#/reg/peca_critica', cr)
+    }
     if (Perm.pode('rh_ver')) a.push(...C.alertasRH())
     if (Perm.pode('importar') && API.modo === 'nuvem') {
       const ult = ultimaCopia()
@@ -425,6 +567,15 @@ export const C = {
     const ordem = { alto: 0, medio: 1, baixo: 2 }
     return a.sort((x, y) => ordem[x.nivel] - ordem[y.nivel])
   },
+}
+
+// contas que dependem de listas grandes ficam guardadas até os dados mudarem
+const cache: { v: number; consumo?: Map<number, number>; porRI?: Map<number, LoteMP>; estoqueMP?: Map<string, number>; porCod?: Map<string, Produto>
+  filhos?: Map<string, Estrutura[]>; pais?: Map<string, Estrutura[]>; emOF?: Map<string, number> } = { v: -1 }
+function limparCache(): void {
+  if (cache.v === S.versao) return
+  for (const k of Object.keys(cache)) if (k !== 'v') delete (cache as Record<string, unknown>)[k]
+  cache.v = S.versao
 }
 
 // data da última cópia de segurança baixada neste aparelho (texto puro 'AAAA-MM-DD')

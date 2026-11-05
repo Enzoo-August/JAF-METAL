@@ -27,7 +27,10 @@ function contadores(): Record<string, number> {
   if (Perm.pode('pcp')) c.producao = S.lista('ordens').filter(o => (o.status === 'fila' || o.status === 'producao') && o.prazo && o.prazo < hoje).length
   if (Perm.pode('almox')) {
     c.maquinas = S.lista('manutencoes').filter(m => m.status !== 'concluida' && m.tipo === 'corretiva').length
+    c.os = c.maquinas
   }
+  if (Perm.pode('of_ver')) c.ofs = S.lista('ofs').filter(o => o.status === 'aberta' && o.prazo && o.prazo < hoje).length
+  if (Perm.pode('vendas')) c.pedidos = S.lista('vendas').filter(v => C.situacaoVenda(v).cod === 'atraso').length
   if (Perm.pode('rh_ver')) for (const a of C.alertasRH()) {
     if (a.nivel !== 'alto') continue
     const k = a.rota.replace(/^#\//, '').split('?')[0]
@@ -83,6 +86,13 @@ export function Casca() {
   const fecharMenu = () => classeCorpo('menu-aberto', false)
   const retirar = () => { fecharMenu(); void Telas.movimentos.retirar() }
   const novaOrdem = () => { fecharMenu(); void Telas.producao.form() }
+  const novaOF = () => { fecharMenu(); void Telas.fabrica.formOF() }
+  const novaOS = () => { fecharMenu(); void Telas.maquinas.formManutencao({ tipo: 'corretiva' }) }
+  // botões de ação da barra de baixo (o resto são telas)
+  const ACOES: Record<string, { pode: boolean; fazer: () => void }> = {
+    retirar: { pode: podeRetirar, fazer: retirar }, novaOrdem: { pode: Perm.pode('producao_editar'), fazer: novaOrdem },
+    novaOF: { pode: Perm.pode('of_emitir'), fazer: novaOF }, novaOS: { pode: Perm.pode('manutencao') || Perm.pode('manut_editar'), fazer: novaOS },
+  }
   const sair = async () => { fecharMenu(); if (await confirmar('Sair do sistema neste aparelho?', { ok: 'Sair' })) await App.sair() }
 
   return (
@@ -93,8 +103,8 @@ export function Casca() {
           <button type="button" className="btn pri" data-acao="retirar" onClick={retirar}><Ic n="retirar" /><span>Retirar peça</span></button>
           {Perm.pode('entrada') && <button type="button" className="btn sec-escuro" data-acao="entrada" onClick={() => { fecharMenu(); void Telas.movimentos.entrada() }}><Ic n="entrada" /><span>Dar entrada</span></button>}
         </div>}
-        {!podeRetirar && Perm.pode('producao_editar') && <div className="lateral-acoes">
-          <button type="button" className="btn pri" data-acao="novaOrdem" onClick={novaOrdem}><Ic n="mais" /><span>Nova ordem</span></button>
+        {!podeRetirar && Perm.pode('of_emitir') && <div className="lateral-acoes">
+          <button type="button" className="btn pri" data-acao="novaOF" onClick={novaOF}><Ic n="mais" /><span>Nova OF</span></button>
         </div>}
         <nav className="lateral-menu" aria-label="Menu do sistema">{grupos.map((g, i) => <div key={i} className="menu-grupo">
           {g.titulo && <div className="grupo">{g.titulo}</div>}
@@ -139,8 +149,8 @@ export function Casca() {
           </div>
         </main>
       </div>
-      <nav className="abas" aria-label="Atalhos">{baixo.filter(([rt]) => (rt !== 'retirar' || podeRetirar) && (rt !== 'novaOrdem' || Perm.pode('producao_editar'))).map(([rt, t, ic]) => rt === 'retirar' || rt === 'novaOrdem'
-        ? <button key={rt} type="button" className="aba aba-central" data-acao={rt} onClick={rt === 'retirar' ? retirar : novaOrdem}><Ic n={ic} /><span>{t}</span></button>
+      <nav className="abas" aria-label="Atalhos">{baixo.filter(([rt]) => !ACOES[rt] || ACOES[rt].pode).map(([rt, t, ic]) => ACOES[rt]
+        ? <button key={rt} type="button" className="aba aba-central" data-acao={rt} onClick={ACOES[rt].fazer}><Ic n={ic} /><span>{t}</span></button>
         : rt === 'menu' ? <button key={rt} type="button" className="aba" data-acao="menu" onClick={() => document.body.classList.toggle('menu-aberto')}><Ic n={ic} /><span>{t}</span></button>
         : <a key={rt} className={`aba ${rt === chave || (!baixo.some(x => x[0] === chave) && areaDaRota(rt) === area?.id) ? 'on' : ''}`} href={'#/' + rt} data-rota={rt} onClick={fecharMenu}><Ic n={ic} /><span>{t}</span></a>)}</nav>
     </div>)

@@ -29,7 +29,7 @@ window.auditar = async function auditar(opt = {}) {
       if (r.width === 0 || r.height === 0) continue;
       const nome = (e.textContent || e.name || e.placeholder || e.getAttribute('aria-label') || e.tagName).trim().replace(/\s+/g, ' ').slice(0, 40);
       // dentro de caixas com rolagem lateral (chips, tabelas) é normal passar da borda
-      const rolavel = e.closest('.chips, .tabela-caixa, .abas-tela, .lateral-menu, .combo-lista, .subabas-lista, .matriz-caixa, .org, .escolher-pessoas');
+      const rolavel = e.closest('.chips, .tabela-caixa, .rolagem-x, .abas-tela, .lateral-menu, .combo-lista, .subabas-lista, .matriz-caixa, .org, .escolher-pessoas');
       if (!rolavel && (r.left < -1 || r.right > W + 1)) A.problemas.push(`${onde}: "${nome}" sai da tela pelo lado (${Math.round(r.left)}–${Math.round(r.right)} de ${W})`);
       if (toque && r.height < 30 && !e.matches('input[type=checkbox], input[type=radio]') && !e.closest('.combo-lista, .busca-res'))
         A.problemas.push(`${onde}: "${nome}" pequeno para o dedo (${Math.round(r.height)} px)`);
@@ -63,19 +63,30 @@ window.auditar = async function auditar(opt = {}) {
     '#/clientes', '#/equipe', '#/relatorios?r=estoque', '#/relatorios?r=consumo', '#/relatorios?r=compras', '#/relatorios?r=financeiro', '#/admin', '#/ajuda', '#/ajuda?q=f%C3%A9rias', '#/conta',
     '#/rh', '#/rh?f=experiencia', '#/rh/ponto', '#/rh/ferias', '#/rh/ferias?aba=ausencias', '#/rh/ferias?aba=fora', '#/rh/treinamentos?aba=matrizes', '#/rh/treinamentos?aba=plano',
     '#/rh/treinamentos?aba=reciclagem', '#/rh/treinamentos?aba=metas', '#/rh/seguranca', '#/rh/seguranca?f=epi', '#/rh/disciplina', '#/rh/processos', '#/rh/organograma', '#/rh/relatorios', '#/rh/indicadores', '#/rh/seguranca?f=ca',
-    '#/rh/ajustes?aba=cargos', '#/rh/ajustes?aba=feriados', '#/rh/ajustes?aba=jornada'];
+    '#/rh/ajustes?aba=cargos', '#/rh/ajustes?aba=feriados', '#/rh/ajustes?aba=jornada',
+    // fábrica (v2.5)
+    '#/ofs', '#/mp', '#/necessidade', '#/pedidos', '#/produtos', '#/tecnico', '#/os', '#/preventiva', '#/manut',
+    ...['desenvolvimento', 'projeto', 'melhoria', 'alteracao', 'desvio', 'desenho', 'copia', 'imds', 'ata', 'setup', 'servico_externo', 'requisicao', 'servico_manut', 'gasto_manut', 'peca_critica', 'pendencia', 'ferramentaria'].map(t => '#/reg/' + t)];
   const f0 = S.lista('funcionarios').find(f => f.ativo)
   if (f0) { rotas.push(`#/rh/ponto?f=${f0.id}&m=${U.hoje().slice(0, 7)}`); for (const a of ['dados', 'cargo', 'ferias', 'ponto', 'treinos', 'seguranca', 'disciplina', 'documentos']) rotas.push(`#/funcionario/${f0.id}?aba=${a}`) }
   const ids = { peca: S.lista('pecas')[0]?.id, fornecedor: S.lista('fornecedores')[0]?.id, maquina: S.lista('maquinas')[0]?.id, pedido: S.lista('pedidos_compra').find(p => p.status === 'aguardando')?.id,
     cliente: S.lista('clientes')[0]?.id, funcionario: S.lista('funcionarios')[0]?.id };
   for (const [k, v] of Object.entries(ids)) if (v) rotas.push(`#/${k}/${v}`);
+  const esperar = async () => { for (let i = 0; i < 40 && document.querySelector('[data-carregando]'); i++) await dorme(100) };
   for (const r of rotas) {
-    location.hash = r; await dorme(160);
+    location.hash = r; await dorme(160); await esperar();
     const v = document.getElementById('view'); if (!v) continue;
     if (v.querySelector('.vazio .ic') && /Sem acesso|não encontrad/i.test(v.textContent)) continue;
     window.scrollTo(0, 0); conferir(r, document.querySelector('.casca'));
     window.scrollTo(0, document.body.scrollHeight); await dorme(60); conferir(r + ' (fim)', document.querySelector('.casca'));
     window.scrollTo(0, 0);
+  }
+  // fichas da fábrica (depois que as tabelas já vieram)
+  const of0 = S.lista('ofs').find(o => o.tipo === 'conjunto'), pr0 = S.lista('produtos').find(p => C.componentes(p.id).length)
+  for (const r of [of0 && '#/of/' + of0.id, pr0 && '#/produto/' + pr0.id].filter(Boolean)) {
+    location.hash = r; await dorme(160); await esperar();
+    const v = document.getElementById('view'); if (!v || /Sem acesso|não encontrad/i.test(v.textContent)) continue;
+    window.scrollTo(0, 0); conferir(r, document.querySelector('.casca')); window.scrollTo(0, document.body.scrollHeight); await dorme(60); conferir(r + ' (fim)', document.querySelector('.casca')); window.scrollTo(0, 0);
   }
   // janelas principais
   const P = Perm, pe = S.lista('pecas')[0];
@@ -97,6 +108,16 @@ window.auditar = async function auditar(opt = {}) {
     Telas.rh.formOcorrencia(f0); await janelaAberta('Advertência')
     if (P.pode('rh_sensivel')) { Telas.rh.programarFerias(f0); await janelaAberta('Programar férias') }
   }
+  const F = Telas.fabrica
+  if (P.pode('of_emitir')) { F.formOF(pr0 ? { produto_id: pr0.id } : {}); await janelaAberta('Nova OF') }
+  const ofa = S.lista('ofs').find(o => o.status === 'aberta' && o.tipo === 'componente'); if (ofa && P.pode('of_apontar')) { F.apontar(ofa); await janelaAberta('Apontar OF') }
+  if (P.pode('mp_editar')) { F.formLote(); await janelaAberta('Entrada de matéria-prima') }
+  if (P.pode('vendas_editar')) { F.formVenda(); await janelaAberta('Pedido de cliente'); const v = S.lista('vendas').find(x => x.qtd > x.entregue); if (v) { F.entregar(v); await janelaAberta('Entrega') } }
+  if (P.pode('produtos_editar') && pr0) { F.formProduto(pr0); await janelaAberta('Produto (estrutura)') }
+  if (P.pode('solicitar')) { F.formReg(F.defReg('alteracao')); await janelaAberta('Pedir alteração') }
+  if (P.pode('tecnico_editar')) { F.formReg(F.defReg('melhoria')); await janelaAberta('Melhoria') }
+  if (P.pode('manut_editar')) { F.formReg(F.defReg('servico_manut')); await janelaAberta('Serviço de manutenção'); const mq = S.lista('maquinas').find(m => (m.checklist || []).length); if (mq) { F.preencher(mq); await janelaAberta('Check-list preventiva') } }
+  if (P.pode('maquinas_editar')) { Telas.maquinas.form(S.lista('maquinas').find(m => (m.checklist || []).length)); await janelaAberta('Máquina (check-list)') }
   Telas.inicio.personalizar(); await janelaAberta('Personalizar início')
   if (P.pode('entrada')) { location.hash = '#/pecas'; await dorme(150); document.querySelector('[data-acao2="contagem"]')?.click(); await janelaAberta('Inventário'); }
   // menu lateral no celular
@@ -118,7 +139,7 @@ window.auditar = async function auditar(opt = {}) {
 // roda a varredura com os 4 perfis no tamanho atual
 window.auditarPerfis = async function (opt = {}) {
   const res = {};
-  for (const login of ['dono', 'escritorio', 'almox', 'pcp', 'operador', 'helena', 'gerente']) {
+  for (const login of ['dono', 'escritorio', 'almox', 'pcp', 'operador', 'helena', 'gerente', 'tecnico', 'manut']) {
     await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await new Promise(ok => setTimeout(ok, 700));
     UI.fecharTodas();
     const a = await window.auditar(opt);
