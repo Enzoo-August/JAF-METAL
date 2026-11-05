@@ -686,6 +686,50 @@ window.roteiro = async function roteiro(filtro) {
     await ir('#/financeiro'); conf(!document.getElementById('view').textContent.includes('Sem acesso'), 'escritório vê financeiro');
   });
 
+  await passo('nota fiscal pelo XML', async () => {
+    await como('escritorio');
+    // nota inventada (CNPJ e chave fictícios, dígito da chave calculado)
+    const base = '35' + '2611' + '11222333000181' + '55' + '001' + '000012345' + '1' + '12345678';
+    let soma = 0, peso = 2; for (let i = base.length - 1; i >= 0; i--) { soma += Number(base[i]) * peso; peso = peso === 9 ? 2 : peso + 1; }
+    const chave = base + ((soma % 11) < 2 ? 0 : 11 - (soma % 11));
+    const peca = S.lista('pecas').find(x => x.codigo === 'A34-EX'), antes = peca.estoque;
+    // (a lista de produtos só carrega quando a nota abre: comparar pelo código, não por um objeto pego antes)
+    const item = (n, cod, desc, un, q, vu, extra = '') => `<det nItem="${n}"><prod><cProd>${cod}</cProd><cEAN>SEM GTIN</cEAN><xProd>${desc}</xProd><NCM>73181500</NCM><CFOP>5102</CFOP><uCom>${un}</uCom><qCom>${q}</qCom><vUnCom>${vu}</vUnCom><vProd>${(q * vu).toFixed(2)}</vProd>${extra}</prod><imposto><IPI><IPITrib><vIPI>${n === 1 ? '5.00' : '0.00'}</vIPI></IPITrib></IPI></imposto></det>`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><NFe><infNFe Id="NFe${chave}" versao="4.00">
+      <ide><natOp>VENDA</natOp><mod>55</mod><serie>1</serie><nNF>12345</nNF><dhEmi>${U.hoje()}T10:00:00-03:00</dhEmi></ide>
+      <emit><CNPJ>11222333000181</CNPJ><xNome>DISTRIBUIDORA TESTE DE ACOS LTDA</xNome><xFant>DISTRIBUIDORA TESTE</xFant><enderEmit><xLgr>RUA DAS FLORES</xLgr><nro>100</nro><xBairro>CENTRO</xBairro><xMun>SAO PAULO</xMun><UF>SP</UF><CEP>01001000</CEP><fone>1133334444</fone></enderEmit><IE>111222333444</IE></emit>
+      ${item(1, 'ROL-9', 'ROLAMENTO TESTE', 'PC', 2, 50)}${item(2, 'BAR-1', 'BARRA TREFILADA TESTE', 'KG', 120, 8.5, '<xPed>PC-9</xPed>')}${item(3, 'SV', 'SERVICO DE CORTE', 'UN', 1, 30)}
+      <total><ICMSTot><vProd>1150.00</vProd><vFrete>0</vFrete><vIPI>5.00</vIPI><vDesc>0</vDesc><vNF>1155.00</vNF></ICMSTot></total>
+      <cobr><dup><nDup>001</nDup><dVenc>${U.somaDias(U.hoje(), 28)}</dVenc><vDup>577.50</vDup></dup><dup><nDup>002</nDup><dVenc>${U.somaDias(U.hoje(), 56)}</dVenc><vDup>577.50</vDup></dup></cobr>
+      </infNFe></NFe><protNFe><infProt><chNFe>${chave}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>`;
+    const escolher = async () => {
+      Telas.nota.lerNota(); const j = await espera(() => janela()?.querySelector('[data-nota=arquivo] input') && janela());
+      const inp = j.querySelector('[data-nota=arquivo] input'), dt = new DataTransfer();
+      dt.items.add(new File([xml], 'nota-teste.xml', { type: 'text/xml' })); inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+      return espera(() => janela()?.querySelector('.form-nota') && janela(), 6000);
+    };
+    const j = await escolher();
+    conf(!!j && j.textContent.includes('Distribuidora Teste de Acos Ltda') && j.querySelectorAll('.nf-item').length === 3, 'nota lida: fornecedor e 3 itens', j && j.textContent.slice(0, 160));
+    const it = (n) => j.querySelector(`.nf-item[data-item="${n}"]`);
+    conf(it(2).querySelector('input[value=mp]').checked, 'item em quilo já sugere matéria-prima');
+    await combo(it(1).querySelector('#nfPc1'), 'A34-EX');
+    conf(U.num(it(1).querySelector('[name=p_1]').value) === 52.5, 'custo da peça já com o IPI da nota', it(1).querySelector('[name=p_1]').value);
+    await combo(it(2).querySelector('#nfMp2'), 'AE01.B01');
+    conf(it(3).querySelector('input[value=ignorar]').checked, 'serviço da nota já vem como "Não lançar"');
+    it(3).querySelector('input[value=ignorar]').click(); await dorme(60);
+    conf(j.querySelector('[name=contas]').checked && j.querySelectorAll('.nf-contas .linha').length === 2, 'parcelas da nota prontas para o contas a pagar', { marcado: j.querySelector('[name=contas]')?.checked, linhas: j.querySelectorAll('.nf-contas .linha').length, ja: S.lista('lancamentos').filter(l => l.documento === 'NF 12345').map(l => l.descricao) });
+    await okJanela('Lançar a nota');
+    conf(!document.body.contains(j), 'nota lançada', erroJanela(j));
+    conf(est('A34-EX') === antes + 2, 'peça entrou no estoque', est('A34-EX') - antes);
+    const lote = await espera(() => S.lista('mp_lotes').find(l => l.nota === '12345' && S.get('produtos', l.produto_id)?.codigo === 'AE01.B01.ac'), 10000);
+    conf(lote && Number(lote.qtd) === 120 && lote.pedido === 'PC-9', 'matéria-prima virou R.I. com pedido', lote ? { ri: lote.ri, q: lote.qtd, p: lote.pedido } : S.lista('mp_lotes').filter(l => l.nota === '12345').map(l => [l.ri, S.get('produtos', l.produto_id)?.codigo, l.qtd]));
+    conf(S.lista('lancamentos').filter(l => l.documento === 'NF 12345' && (l.obs || '').includes('XML')).length === 2, 'duas parcelas no contas a pagar (a conta antiga de outro fornecedor com o mesmo nº não atrapalha)');
+    const f = S.lista('fornecedores').find(x => (x.cnpj || '').replace(/\D/g, '') === '11222333000181');
+    conf(f && f.uf === 'SP' && f.cidade === 'Sao Paulo', 'fornecedor novo cadastrado com os dados da nota', f && { n: f.nome, uf: f.uf, c: f.cidade });
+    const j2 = await escolher();
+    conf(!!j2 && j2.textContent.includes('já foi lançada') && !botao('Lançar a nota', j2), 'a mesma nota não entra de novo');
+  });
+
   // ================================================================ RH (perfil próprio)
   await passo('perfil RH', async () => {
     await como('helena');

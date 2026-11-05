@@ -12,7 +12,8 @@ import { aviso } from '../../ui/avisos.ts'
 import { BuscaLista, Btn, Cab, Campo, Chips, Dl, Paginado, Tag, Texto, Vazio } from '../../ui/base.tsx'
 import { ComboFornecedor } from '../../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
-import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
+import { confirmar, lerForm, modal, useJanela } from '../../ui/janelas.tsx'
+import { lerNota } from '../Nota.tsx'
 import { ComboProduto, ComTabelas } from './comum.tsx'
 import { LinhaOF } from './OFs.tsx'
 
@@ -52,6 +53,7 @@ function Lista() {
   const porMatF = busca.trim() ? U.buscar(porMat, busca, x => [x.p.codigo, x.p.descricao]) : U.ordenar(porMat, x => x.p.codigo)
   return <>
     <Cab titulo="Matéria-prima" sub="Entrada de material (R.I.), saldo de cada lote e para qual OF foi">
+      {Perm.pode('mp_editar') && <Btn txt="Ler nota (XML)" icone="nota" data-mp="nota" onClick={() => void lerNota()} />}
       {Perm.pode('mp_editar') && <Btn txt="Nova entrada" icone="entrada" cls="pri" data-mp="nova" onClick={() => void formLote()} />}
       <Btn txt="Excel" icone="planilha" cls="fantasma" onClick={() => exportar(l)} />
     </Cab>
@@ -104,6 +106,12 @@ export async function detalhe(id: string): Promise<unknown> {
   })
 }
 
+// dentro da entrada manual: quem tem o XML da nota lança tudo de uma vez
+function LerNotaDica() {
+  const j = useJanela()
+  return <p className="nota mb">Tem o arquivo XML da nota? <button type="button" className="link" data-mp="lerNota" onClick={() => { j.limparSujo(); j.fechar(null); void lerNota() }}>Ler a nota</button> e lançar todos os itens de uma vez.</p>
+}
+
 export async function formLote(b: Partial<LoteMP> = {}): Promise<unknown> {
   // abre de qualquer lugar (Início, barra de baixo): garante as tabelas antes de montar a janela
   await S.garantir(['produtos', 'mp_lotes'])
@@ -111,6 +119,7 @@ export async function formLote(b: Partial<LoteMP> = {}): Promise<unknown> {
   return modal({
     titulo: novo ? 'Entrada de matéria-prima' : `Editar R.I. ${b.ri}`,
     corpo: <>
+      {novo && <LerNotaDica />}
       <ComboProduto id="mpProd" nome="produto_id" rotulo="Material" classe="mp" req placeholder="Código ou descrição do material" inicial={S.get('produtos', b.produto_id)} />
       <div className="linha-campos">
         <Campo nome="qtd" rotulo="Quantidade (kg ou pç)" tipo="qtd" req valor={U.campoNum(b.qtd, 3)} />

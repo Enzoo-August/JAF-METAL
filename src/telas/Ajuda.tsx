@@ -68,6 +68,11 @@ export const ARTIGOS: Artigo[] = [
     tour: [{ rota: '#/ofs', alvo: '[data-acao=novaOF]', texto: 'Toque aqui para emitir uma OF nova.' }] },
   { id: 'apontarOF', area: 'pcp', titulo: 'Apontar e encerrar a OF', palavras: 'apontar encerrar of produzido refugo realizado', perm: 'of_apontar', corpo: [
     'Abra a OF e toque em *Apontar / encerrar*. Digite quanto foi produzido (e o refugo, se teve). *Salvar sem encerrar* guarda o andamento; *Encerrar OF* fecha e anota quem fez e quando.'] },
+  { id: 'notaXML', area: 'compras', titulo: 'Ler a nota fiscal pelo arquivo XML', palavras: 'nota fiscal nf nfe xml danfe chave entrada fornecedor parcelas boleto duplicata', perm: 'entrada', corpo: [
+    'O fornecedor manda a nota por e-mail em dois arquivos: o PDF (DANFE) e o *XML*. Em *Movimentações* ou em *Matéria-prima*, toque em *Ler nota (XML)* e escolha o arquivo .xml.',
+    'O sistema mostra o fornecedor, os itens e as parcelas. Para cada item escolha *Peça do estoque*, *Matéria-prima* (vira um R.I.) ou *Não lançar* (frete, serviço…). Se a peça tem pedido de compra aguardando, ele já vem marcado para baixar.',
+    'O custo de cada peça já vem com IPI, frete e descontos da nota. O Dono e o Escritório podem lançar as parcelas no *contas a pagar* com os vencimentos da própria nota.',
+    'A mesma nota não entra duas vezes (o sistema confere a chave de 44 números). Fornecedor novo é cadastrado com os dados da nota, e o sistema lembra qual código do fornecedor é qual peça: na próxima nota já vem tudo escolhido.'] },
   { id: 'mpAjuda', area: 'pcp', titulo: 'Matéria-prima: entrada, R.I. e inventário', palavras: 'matéria prima mp entrada ri lote certificado inventário etiqueta esm', perm: 'mp_ver', rota: '#/mp', corpo: [
     'Cada chegada de material é um *R.I.* (lote), como na E.S.M. Em *Nova entrada* informe material, fornecedor, NF, peso e o certificado. Depois o sistema oferece imprimir a *etiqueta de Identificação de Material*.',
     'O saldo do lote baixa sozinho com as OFs. Se aparecer o aviso amarelo de *R.I. usado em OF sem entrada*, é só tocar no R.I. e lançar a entrada que faltou.',

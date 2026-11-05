@@ -621,6 +621,56 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   conf((await erro(man, 'salvar_maquina', { codigo: 'pe 09', nome: 'Outra' }))?.length > 0, 'código de máquina repetido recusado')
   conf((await ver(man, 'select * from public.lancamentos')).length === 0 && (await ver(man, 'select * from public.rh_ponto')).length === 0, 'manutenção não vê financeiro nem RH')
   conf((await ver(tec, 'select * from public.clientes')).length > 0 && (await ver(tec, 'select * from public.lancamentos')).length === 0, 'técnico vê clientes, não vê financeiro')
+
+  // nota fiscal pelo arquivo XML (dados inventados)
+  const chaveNF = '35' + '2611' + '12345678000199' + '55' + '001' + '000044892' + '1' + '00044892' + '0'
+  conf(chaveNF.length === 44, 'chave de teste com 44 números')
+  const pcNF = (await q(`select id, estoque::float e from public.pecas where ativo order by codigo limit 1`))[0]
+  const mpNF = (await q(`select id from public.produtos where codigo = 'MP-1'`))[0].id
+  const lotesAntes = (await q(`select count(*)::int n from public.mp_lotes`))[0].n
+  const nf0 = await rpc(alm, 'conferir_nota', { chave: chaveNF, cnpj: '12.345.678/0001-99' })
+  conf(nf0.lancada === null && nf0.fornecedor_id === null && nf0.vinculos.length === 0, 'nota nova: não lançada e fornecedor ainda desconhecido', nf0)
+  conf((await erro(prod, 'conferir_nota', { chave: chaveNF }))?.includes('perfil não pode'), 'produção não lê nota')
+  const idNF = '6f1c2a10-0000-4000-8000-000000000001'
+  const nf = await rpc(alm, 'lancar_nota', { id: idNF, chave: chaveNF, numero: '44892', serie: '1', emissao: '2026-11-03', valor: 150,
+    fornecedor: { nome: 'Aços Nota Teste', razao: 'Aços Nota Teste Ltda', cnpj: '12.345.678/0001-99', uf: 'sp', cidade: 'Guarulhos' },
+    itens: [{ n: 1, codigo: 'X-10', descricao: 'Rolamento', destino: 'peca', peca_id: pcNF.id, qtd: 3, preco_unit: 10 },
+      { n: 2, codigo: 'BR-5', descricao: 'Barra redonda', destino: 'mp', produto_id: mpNF, qtd: 40, pedido: 'PC-77' },
+      { n: 3, codigo: 'FR', descricao: 'Frete', destino: 'ignorar' }] })
+  conf(nf.pecas === 1 && nf.ris.length === 1 && nf.documento === 'NF 44892', 'nota lança a peça e o R.I. de uma vez', nf)
+  conf((await q(`select estoque::float e from public.pecas where id = $1`, [pcNF.id]))[0].e === pcNF.e + 3, 'estoque da peça sobe com a nota')
+  const loteNF = (await q(`select nota, pedido, fornecedor_nome from public.mp_lotes where ri = $1`, [nf.ris[0]]))[0]
+  conf(loteNF?.nota === '44892' && loteNF.pedido === 'PC-77' && loteNF.fornecedor_nome === 'Aços Nota Teste', 'R.I. guarda nota, pedido e fornecedor', loteNF)
+  const fNF = (await q(`select uf, cidade, razao from public.fornecedores where id = $1`, [nf.fornecedor_id]))[0]
+  conf(fNF?.uf === 'SP' && fNF.cidade === 'Guarulhos', 'fornecedor novo cadastrado com os dados da nota', fNF)
+  conf((await rpc(alm, 'lancar_nota', { id: idNF, chave: chaveNF }))?.repetido === true, 'toque duplo não lança a nota duas vezes')
+  conf((await erro(alm, 'lancar_nota', { chave: chaveNF, fornecedor_id: nf.fornecedor_id, itens: [{ destino: 'peca', peca_id: pcNF.id, qtd: 1 }] }))?.includes('já foi lançada'), 'a mesma nota não entra duas vezes')
+  const nf1 = await rpc(alm, 'conferir_nota', { chave: chaveNF, cnpj: '12345678000199' })
+  conf(!!nf1.lancada && nf1.lancada.quem === 'José Almox' && nf1.fornecedor_id === nf.fornecedor_id && nf1.vinculos.length === 2, 'conferir: já lançada (por quem), fornecedor pelo CNPJ e códigos lembrados', nf1)
+  const chaveNF2 = chaveNF.slice(0, 43) + '1'
+  conf((await erro(pcp, 'lancar_nota', { chave: chaveNF2, fornecedor_id: nf.fornecedor_id, itens: [{ destino: 'peca', peca_id: pcNF.id, qtd: 1 }] }))?.includes('matéria-prima'), 'PCP não dá entrada de peça pela nota')
+  conf((await erro(alm, 'lancar_nota', { chave: chaveNF2, fornecedor_id: nf.fornecedor_id, itens: [{ destino: 'mp', produto_id: mpNF, qtd: 5 }],
+    contas: [{ valor: 10, vencimento: '2026-12-01' }] }))?.includes('Escritório'), 'almoxarifado não lança a conta a pagar da nota')
+  conf((await q(`select count(*)::int n from public.mp_lotes`))[0].n === lotesAntes + 1, 'nota recusada não deixa nada pela metade')
+  conf((await erro(alm, 'lancar_nota', { chave: chaveNF2, fornecedor_id: nf.fornecedor_id, itens: [{ destino: 'ignorar' }] }))?.includes('pelo menos um'), 'nota sem nenhum item lançado recusada')
+  conf((await erro(alm, 'lancar_nota', { chave: '123', fornecedor_id: nf.fornecedor_id, itens: [] }))?.includes('44'), 'chave inválida recusada')
+  const pdNF = await rpc(alm, 'salvar_pedido', { fornecedor_id: nf.fornecedor_id, itens: [{ peca_id: pcNF.id, qtd: 4, valor: 48 }] })
+  const itNF = (await q(`select id from public.pedido_itens where pedido_id = $1`, [pdNF.id]))[0].id
+  const nf2 = await rpc(dono, 'lancar_nota', { chave: chaveNF2, numero: '50', fornecedor_id: nf.fornecedor_id,
+    itens: [{ n: 1, codigo: 'X-10', destino: 'peca', peca_id: pcNF.id, qtd: 4, pedido_item_id: itNF }],
+    contas: [{ valor: 28.8, vencimento: '2026-12-01' }, { valor: 19.2, vencimento: '2027-01-01' }] })
+  conf((await q(`select status from public.pedidos_compra where id = $1`, [pdNF.id]))[0].status === 'recebido', 'nota que chegou de um pedido de compra baixa o pedido')
+  const ctsNF = await q(`select valor::float v, parcela, categoria from public.lancamentos where documento = 'NF 50' order by vencimento`)
+  conf(nf2.contas === 2 && ctsNF.length === 2 && ctsNF[0].parcela === '1/2' && ctsNF[1].v === 19.2, 'parcelas da nota viram contas a pagar com os vencimentos dela', ctsNF)
+  const usinaNF = (await q(`select id from public.fornecedores where nome = 'Usina Teste'`))[0].id
+  await rpc(alm, 'lancar_nota', { chave: chaveNF.slice(0, 42) + '22', numero: '60', fornecedor_id: usinaNF, fornecedor: { nome: 'USINA X', cnpj: '98.765.432/0001-10', uf: 'mg' },
+    itens: [{ destino: 'mp', produto_id: mpNF, qtd: 2 }] })
+  const uNF = (await q(`select nome, cnpj, uf from public.fornecedores where id = $1`, [usinaNF]))[0]
+  conf(uNF.nome === 'Usina Teste' && uNF.cnpj === '98.765.432/0001-10' && uNF.uf === 'MG', 'fornecedor da planilha sem CNPJ fica completo com a nota (o nome não muda)', uNF)
+  conf((await rpc(alm, 'conferir_nota', { chave: chaveNF, cnpj: '98765432000110' })).fornecedor_id === usinaNF, 'próxima nota já acha esse fornecedor pelo CNPJ')
+  const negado = async (sql) => { try { await ver(dono, sql); return false } catch (e) { return /permission denied/i.test(e.message) } }
+  conf(await negado('select * from public.notas_fiscais') && await negado('select * from public.nota_vinculos'), 'tabelas da nota só pelas funções')
+  conf((await q(`select count(*)::int n from public.historico where tabela = 'notas_fiscais'`))[0].n === 3, 'cada nota lançada fica no histórico')
 }
 
 // ---------------------------------------------------------------- funções liberadas

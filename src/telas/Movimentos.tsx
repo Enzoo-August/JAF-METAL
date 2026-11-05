@@ -14,6 +14,7 @@ import { useLembrar } from '../ui/ganchos.ts'
 import { Ic } from '../ui/icones.tsx'
 import { confirmar, lerForm, modal, useJanela } from '../ui/janelas.tsx'
 import { receber } from './Compras.tsx'
+import { lerNota } from './Nota.tsx'
 
 export const MOTIVO: Record<string, string> = { compra: 'Compra', retirada: 'Retirada', ajuste: 'Ajuste de contagem', devolucao: 'Devolução', importado: 'Planilha', estorno: 'Desfeito' }
 
@@ -190,6 +191,7 @@ function FormEntrada({ peca }: { peca: Peca | null }) {
       <Campo nome="preco_unit" rotulo="Preço unitário" tipo="dinheiro" valor={ult ? U.campoPreco(ult.preco_unit) : ''} ajuda="Vem o último preço pago; confira na nota." inputRef={preco} />
     </div>
     <div className="so-compra" hidden={motivo !== 'compra'}>
+      <p className="nota mb">Tem o arquivo XML da nota? <button type="button" className="link" data-acao="lerNota" onClick={() => { j.limparSujo(); j.fechar(null); void lerNota() }}>Ler a nota</button> e lançar todos os itens de uma vez.</p>
       <ComboFornecedor ref={forn} id="eForn" nome="fornecedor_id" rotulo="Fornecedor" placeholder="Digite para buscar"
         inicial={peca ? S.get('fornecedores', ult?.fornecedor_id || peca.fornecedor_id) : null} />
       <div className="linha-campos l2">
@@ -272,6 +274,7 @@ export function TelaMovimentos() {
   return <>
     <Cab titulo="Movimentações" sub={producao ? 'Suas retiradas' : 'Tudo o que entrou e saiu do almoxarifado'}>
       <Btn txt="Retirar" icone="retirar" cls="pri" data-acao="retirar" onClick={() => void retirar()} />
+      {Perm.pode('entrada') && <Btn txt="Ler nota (XML)" icone="nota" data-acao="nota" onClick={() => void lerNota()} />}
       {Perm.pode('entrada') && <Btn txt="Dar entrada" icone="entrada" data-acao="entrada" onClick={() => void entrada()} />}
       {precos && <Btn txt="Excel" icone="baixar" data-h="excel" onClick={() => exportar(l)} />}
     </Cab>

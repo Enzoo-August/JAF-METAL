@@ -27,6 +27,7 @@ import * as Produtos from './fabrica/Produtos.tsx'
 import * as Registros from './fabrica/Registros.tsx'
 import * as Manut from './fabrica/Manutencao.tsx'
 import { TelaTecnico } from './fabrica/Tecnico.tsx'
+import { lerNota } from './Nota.tsx'
 
 export interface DefTela { Tela: (p: { r: Rota }) => ReactNode; perm?: Acao; titulo: string | ((r: Rota) => string) }
 
@@ -80,6 +81,7 @@ export const Telas = {
   clientes: { form: Clientes.form, novoRapido: Clientes.novoRapido },
   fabrica: { formOF: OFs.formOF, apontar: OFs.apontar, imprimirOF: OFs.imprimirOF, formLote: MP.formLote, etiqueta: MP.etiqueta, formVenda: Pedidos.formVenda, entregar: Pedidos.entregar,
     formProduto: Produtos.formProduto, formReg: Registros.formReg, defReg: Registros.defReg, preencher: Manut.preencher, imprimirOS: Manut.imprimirOS },
+  nota: { lerNota },
   equipe: { form: formPessoa },
   rh: { formPessoa, programarFerias, avisoFerias, formAusencia, formAso, formEpi, fichaEpi, termoEpi, formCatalogo, formOcorrencia, documento },
   admin: { trocarSenha },

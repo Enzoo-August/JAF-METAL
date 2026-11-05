@@ -24,6 +24,7 @@ import { formAso, formEpi } from './rh/Seguranca.tsx'
 import { ComTabelas } from './fabrica/comum.tsx'
 import { formOF, LinhaOF } from './fabrica/OFs.tsx'
 import { formLote } from './fabrica/MP.tsx'
+import { lerNota } from './Nota.tsx'
 import { detalhe as detalheVenda, formVenda } from './fabrica/Pedidos.tsx'
 import { formProduto } from './fabrica/Produtos.tsx'
 import { defReg, formReg } from './fabrica/Registros.tsx'
@@ -33,6 +34,7 @@ interface Atalho { id: string; rot: string; sub: string; ic: NomeIcone; perm: Ac
 export const ATALHOS: Atalho[] = [
   { id: 'retirar', rot: 'Retirar peça', sub: 'do almoxarifado', ic: 'retirar', perm: ['retirar'], fazer: () => retirar() },
   { id: 'entrada', rot: 'Dar entrada', sub: 'chegou peça', ic: 'entrada', perm: ['entrada'], fazer: () => entrada() },
+  { id: 'notaXML', rot: 'Ler nota fiscal', sub: 'arquivo XML', ic: 'nota', perm: ['entrada', 'mp_editar'], fazer: () => lerNota() },
   { id: 'listaCompras', rot: 'O que comprar', sub: 'peças faltando', ic: 'lista', perm: ['compras'], ir: '#/compras/lista' },
   { id: 'novoPedido', rot: 'Novo pedido', sub: 'de compra', ic: 'compras', perm: ['compras'], fazer: () => formPedido() },
   { id: 'fornecedores', rot: 'Fornecedores', sub: 'contatos e pedidos', ic: 'fornecedor', perm: ['compras'], ir: '#/fornecedores' },

@@ -44,6 +44,7 @@ const IC = {
   filtro: '<path d="M3 5h18l-7 8.5V20l-4-2v-4.5z"/>',
   seta: '<path d="m9 6 6 6-6 6"/>',
   voltar: '<path d="m15 6-6 6 6 6"/>',
+  nota: '<path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5M9 12h8M9 16h8M9 8h3"/>',
   planilha: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/>',
   cadeado: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   olho: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12"/><circle cx="12" cy="12" r="3"/>',
