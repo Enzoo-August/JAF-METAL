@@ -5,11 +5,11 @@ import { S } from '../lib/dados.ts'
 import type { Cliente } from '../lib/tipos.ts'
 import * as U from '../lib/util.ts'
 import { aviso } from '../ui/avisos.ts'
-import { BuscaLista, Btn, Cab, Campo, Dl, temDl, Texto, Vazio, Voltar } from '../ui/base.tsx'
+import { BuscaLista, Btn, Cab, Campo, Cols, Dl, temDl, Texto, Vazio, Voltar } from '../ui/base.tsx'
 import { useLembrar, type Rota } from '../ui/ganchos.ts'
 import { lerForm, modal } from '../ui/janelas.tsx'
 import { form as formConta, LinhaConta } from './Financeiro.tsx'
-import { AutoPreencher } from './Fornecedores.tsx'
+import { AutoPreencher, StatusEndereco, opcoesUF } from '../ui/endereco.tsx'
 import { CartaoOrdem, form as formOrdem } from './Producao.tsx'
 
 const emAndamento = (s: string) => s === 'fila' || s === 'producao' || s === 'pronta'
@@ -17,8 +17,9 @@ const emAndamento = (s: string) => s === 'fila' || s === 'producao' || s === 'pr
 function Linha({ c }: { c: Cliente }) {
   const ab = S.lista('ordens').filter(o => o.cliente_id === c.id && emAndamento(o.status)).length
   const rec = U.soma(S.lista('lancamentos').filter(l => l.cliente_id === c.id && l.tipo === 'receber' && !l.pago_em), 'valor')
-  return <a className="linha" href={'#/cliente/' + c.id}><div className="meio"><b>{c.nome}{!c.ativo && <> <span className="tag t-cinza">inativo</span></>}</b>
-    <small>{[c.contato, U.tel(c.telefone), c.cidade].filter(Boolean).join(' · ') || '—'}</small></div>
+  return <a className="linha cols" href={'#/cliente/' + c.id}><div className="meio"><b>{c.nome}{!c.ativo && <> <span className="tag t-cinza">inativo</span></>}</b>
+    <small>{c.razao && c.razao !== c.nome ? c.razao : ''}<span className="so-estreito">{[c.razao && c.razao !== c.nome ? ' ' : '', c.contato, U.tel(c.telefone), c.cidade].filter(Boolean).join(' · ').replace(/^ · /, ' · ') || '—'}</span></small></div>
+    <Cols itens={[['Contato', c.contato], ['Telefone', U.tel(c.telefone)], ['Cidade', [c.cidade, c.uf].filter(Boolean).join('/')]]} />
     <div className="lado"><b>{rec ? U.moeda0(rec) : '—'}</b><small>{ab ? U.plural(ab, 'ordem', 'ordens') + ' abertas' : rec ? 'a receber' : ''}</small></div></a>
 }
 
@@ -66,18 +67,49 @@ export async function form(c?: Cliente | null, nomeInicial?: string): Promise<st
   const novo = !c
   const b: Partial<Cliente> = c || { ativo: true, nome: nomeInicial || '' }
   return modal<string>({
-    titulo: novo ? 'Novo cliente' : 'Editar cliente',
+    titulo: novo ? 'Novo cliente' : 'Editar cliente', largura: 'grande',
     corpo: <>
-      <AutoPreencher />
-      <div className="linha-campos"><Campo nome="nome" rotulo="Nome" valor={b.nome} req /><Campo nome="sigla" rotulo="Sigla (código inteligente)" valor={b.sigla} attrs={{ maxLength: 4 }} placeholder="Ex.: AE" /></div>
-      <div className="linha-campos"><Campo nome="cnpj" rotulo="CNPJ" valor={b.cnpj} /><Campo nome="ie" rotulo="Inscrição estadual" valor={b.ie} /><Campo nome="razao" rotulo="Razão social" valor={b.razao} /></div>
-      <div className="linha-campos"><Campo nome="contato" rotulo="Contato" valor={b.contato} /><Campo nome="telefone" rotulo="Telefone" tipo="tel" valor={b.telefone} /></div>
-      <div className="linha-campos"><Campo nome="contato2" rotulo="Contato 2" valor={b.contato2} /><Campo nome="telefone2" rotulo="Telefone 2" tipo="tel" valor={b.telefone2} /></div>
-      <div className="linha-campos"><Campo nome="email" rotulo="E-mail" tipo="email" valor={b.email} /><Campo nome="site" rotulo="Site" valor={b.site} /></div>
-      <div className="linha-campos"><Campo nome="endereco" rotulo="Endereço" valor={b.endereco} /><Campo nome="bairro" rotulo="Bairro" valor={b.bairro} /><Campo nome="cep" rotulo="CEP" valor={b.cep} /></div>
-      <div className="linha-campos"><Campo nome="cidade" rotulo="Cidade" valor={b.cidade} /><Campo nome="uf" rotulo="UF" valor={b.uf} attrs={{ maxLength: 2 }} /></div>
-      <Campo nome="obs" rotulo="Observações" tipo="area" valor={b.obs} linhas={2} />
-      {!novo && <Campo nome="ativo" rotulo="Cliente ativo" tipo="check" valor={b.ativo} />}
+      <AutoPreencher tabela="clientes" id={b.id} />
+      <fieldset className="secao"><legend>Empresa</legend>
+        {novo && <p className="secao-dica">Comece pelo <b>CNPJ</b>: o sistema busca a razão social e o endereço na Receita.</p>}
+        <div className="linha-campos l3">
+          <Campo nome="cnpj" rotulo="CNPJ" valor={b.cnpj} placeholder="00.000.000/0000-00" foco={novo} attrs={{ inputMode: 'numeric' }} />
+          <Campo nome="ie" rotulo="Inscrição estadual" valor={b.ie} />
+          <Campo nome="sigla" rotulo="Sigla (código inteligente)" valor={b.sigla} attrs={{ maxLength: 4, autoCapitalize: 'characters' }} placeholder="Ex.: AE" ajuda="Vai no código das peças deste cliente." />
+        </div>
+        <div className="linha-campos l2">
+          <Campo nome="nome" rotulo="Nome (como vocês chamam)" valor={b.nome} req placeholder="Ex.: Upgrade" />
+          <Campo nome="razao" rotulo="Razão social" valor={b.razao} placeholder="Como está na nota fiscal" />
+        </div>
+      </fieldset>
+      <fieldset className="secao"><legend>Contato</legend>
+        <div className="linha-campos l3">
+          <Campo nome="contato" rotulo="Contato (pessoa)" valor={b.contato} placeholder="Com quem falar" />
+          <Campo nome="telefone" rotulo="Telefone / WhatsApp" tipo="tel" valor={b.telefone} placeholder="(11) 90000-0000" />
+          <Campo nome="email" rotulo="E-mail" tipo="email" valor={b.email} placeholder="compras@empresa.com.br" />
+        </div>
+        <div className="linha-campos l3">
+          <Campo nome="contato2" rotulo="Outro contato" valor={b.contato2} />
+          <Campo nome="telefone2" rotulo="Outro telefone" tipo="tel" valor={b.telefone2} />
+          <Campo nome="site" rotulo="Site" valor={b.site} placeholder="www.empresa.com.br" />
+        </div>
+      </fieldset>
+      <fieldset className="secao"><legend>Endereço</legend>
+        <div className="linha-campos l3">
+          <Campo nome="cep" rotulo="CEP" valor={b.cep} placeholder="00000-000" ajuda="Digite: rua, bairro e cidade vêm sozinhos." attrs={{ inputMode: 'numeric' }} />
+          <Campo nome="endereco" rotulo="Endereço (rua, número, complemento)" valor={b.endereco} cls="largo" />
+        </div>
+        <StatusEndereco />
+        <div className="linha-campos l3">
+          <Campo nome="bairro" rotulo="Bairro" valor={b.bairro} />
+          <Campo nome="cidade" rotulo="Cidade" valor={b.cidade} />
+          <Campo nome="uf" rotulo="Estado" tipo="select" valor={b.uf || ''} opcoes={opcoesUF(b.uf)} attrs={{ semBusca: true }} />
+        </div>
+      </fieldset>
+      <fieldset className="secao"><legend>Observações</legend>
+        <Campo nome="obs" rotulo="Observações" tipo="area" valor={b.obs} linhas={2} placeholder="Ex.: entrega só pela manhã; exige certificado do material" />
+        {!novo && <Campo nome="ativo" rotulo="Cliente ativo" tipo="check" valor={b.ativo} />}
+      </fieldset>
     </>,
     botoes: [{ txt: novo ? 'Cadastrar' : 'Salvar', acao: async (f) => {
       const d = lerForm(f); if (novo) d.ativo = true

@@ -565,7 +565,7 @@ window.roteiro = async function roteiro(filtro) {
     await ir('#/financeiro'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'almoxarife sem financeiro');
     await ir('#/equipe'); conf(!document.getElementById('view').textContent.includes('Folha'), 'almoxarife não vê folha/salários');
     const menuA = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
-    conf(menuA.includes('Peças') && menuA.includes('O que comprar') && !menuA.includes('Ordens de produção') && !menuA.includes('Fábrica'), 'almoxarife: telas do almoxarifado e compras direto no menu, sem PCP', menuA);
+    conf(menuA.includes('Peças') && menuA.includes('Peças a comprar') && !menuA.includes('Ordens de produção') && !menuA.includes('Fábrica'), 'almoxarife: telas do almoxarifado e compras direto no menu, sem PCP', menuA);
     await ir('#/maquinas'); conf(!document.getElementById('view').textContent.includes('Sem acesso') && !document.querySelector('.subabas') && !!document.querySelector('.lateral-menu a.on[data-rota=maquinas]'), 'máquinas marcada no menu, sem abas em cima');
     const ped = S.lista('pedidos_compra').find(p => p.status === 'aguardando');
     await ir('#/pedido/' + ped.id); await clicar('Receber', document.getElementById('view'));
@@ -637,6 +637,8 @@ window.roteiro = async function roteiro(filtro) {
     await ir('#/pedidos'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'produção não abre pedidos de clientes');
     await ir('#/inicio'); await clicar(document.querySelector('[data-atalho=solicitarAlteracao]'));
     const j = await espera(janela);
+    conf(!j.querySelector('[name=d__analise]') && !j.querySelector('[name=d__aprovador]') && j.querySelector('[name=d__solicitante]')?.value && j.querySelector('[name=d__setor]')?.value === 'Produção',
+      'quem pede alteração vê só os campos do pedido, com nome e setor já preenchidos', j.querySelector('[name=d__setor]')?.value);
     digitar(j.querySelector('[name=titulo]'), 'Chanfrar a borda do pino'); digitar(j.querySelector('[name=d__setor]'), 'Tornos');
     await okJanela('Lançar');
     conf(!document.body.contains(j), 'produção pede alteração pelo Início', erroJanela(j));

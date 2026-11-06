@@ -9,6 +9,7 @@ import * as U from '../lib/util.ts'
 import { erro } from './avisos.ts'
 import { Ic } from './icones.tsx'
 import { modal, useJanela } from './janelas.tsx'
+import { previaPDF, type OptPrevia } from './previa.tsx'
 
 // ------------------------------------------------------------------ Excel
 export const xlsx = () => import('xlsx')
@@ -121,6 +122,15 @@ export async function pdfPedido(ped: PedidoCompra): Promise<Blob> {
   return doc.output('blob')
 }
 
+// prévia do pedido com os botões de mandar ao fornecedor (e-mail / WhatsApp do cadastro)
+export async function verPedido(ped: PedidoCompra, titulo?: string): Promise<void> {
+  const f = S.get('fornecedores', ped.fornecedor_id)
+  const nome = `Pedido de compra ${ped.numero} - ${f?.nome || ''}.pdf`
+  await entregar(await pdfPedido(ped), nome, { titulo: titulo || `Pedido de compra nº ${ped.numero} — ${f?.nome || ''}`, email: f?.email, whats: f?.celular,
+    assunto: `Pedido de compra nº ${ped.numero} — JAF Metal`, texto: `Olá${f?.contato ? ', ' + f.contato : ''}! Segue o pedido de compra nº ${ped.numero} da JAF Metal. Por favor, confirme o recebimento e o prazo de entrega.`,
+    dica: 'Confira e mande ao fornecedor: Baixar PDF, E-mail ou WhatsApp. Imprimir guarda uma via no papel.' })
+}
+
 // ---------------------------------------------------------------- tabela genérica (relatórios, lista de compras)
 export interface ColunaPdf { t: string; w?: number; alinhar?: 'right' | 'center'; mono?: boolean }
 export interface GrupoPdf { titulo: string; linhas: (string | number)[][]; totais?: (string | number)[] }
@@ -158,6 +168,12 @@ export async function pdfDocumento(titulo: string, sub: string, desenhar: (c: Ct
   const { doc, tabela } = await novo(deitado ? 'l' : 'p')
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight()
   const y = cabecalho(doc, titulo, sub)
+  const { texto, assinatura } = ferramentas(doc, W, H)
+  desenhar({ doc, tabela, estilo: estiloTabela, W, H, y, texto, assinatura })
+  rodape(doc)
+  return doc.output('blob')
+}
+function ferramentas(doc: Doc, W: number, H: number): Pick<CtxDoc, 'texto' | 'assinatura'> {
   const texto: CtxDoc['texto'] = (t, y0, o = {}) => {
     const tam = o.tam || 10, x = o.x ?? 14, larg = o.largura ?? W - 28
     doc.setFontSize(tam); doc.setFont('helvetica', o.negrito ? 'bold' : 'normal'); doc.setTextColor(o.cor ?? 25)
@@ -180,13 +196,28 @@ export async function pdfDocumento(titulo: string, sub: string, desenhar: (c: Ct
     doc.setFontSize(9); doc.setTextColor(25); doc.text(nome, x + larg / 2, y0 + 4.5, { align: 'center' })
     if (s2) { doc.setFontSize(8); doc.setTextColor(110); doc.text(s2, x + larg / 2, y0 + 8.5, { align: 'center' }) }
   }
-  desenhar({ doc, tabela, estilo: estiloTabela, W, H, y, texto, assinatura })
+  return { texto, assinatura }
+}
+
+// ---------------------------------------------------------------- várias folhas num PDF só (ex.: OF do conjunto + OFs dos componentes)
+export interface FolhaPdf { titulo: string; sub: string; desenhar: (c: CtxDoc) => void }
+export async function pdfFolhas(folhas: FolhaPdf[], deitado = false): Promise<Blob> {
+  await carregarLogo().catch(() => null)
+  const { doc, tabela } = await novo(deitado ? 'l' : 'p')
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight()
+  const { texto, assinatura } = ferramentas(doc, W, H)
+  folhas.forEach((f, i) => {
+    if (i) doc.addPage()
+    const y = cabecalho(doc, f.titulo, f.sub)
+    f.desenhar({ doc, tabela, estilo: estiloTabela, W, H, y, texto, assinatura })
+  })
   rodape(doc)
   return doc.output('blob')
 }
 
-// ------------------------------------------------------------------ entregar: abre / compartilha / salva
-export async function entregar(blob: Blob, nome: string): Promise<void> {
+// ------------------------------------------------------------------ entregar: PDF abre a prévia de impressão; o resto salva / compartilha
+export async function entregar(blob: Blob, nome: string, opt: OptPrevia & { previa?: boolean } = {}): Promise<void> {
+  if (opt.previa !== false && (blob.type === 'application/pdf' || /\.pdf$/i.test(nome))) return previaPDF(blob, nome, opt)
   try { await U.salvarArquivo(blob, nome) }
   catch (e) {
     if ((e as Error).name !== 'NotAllowedError') { erro(e); return }

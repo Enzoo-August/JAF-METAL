@@ -8,7 +8,7 @@ import { C, S } from '../../lib/dados.ts'
 import type { Fornecedor, Necessidade, PedidoCompra, Produto } from '../../lib/tipos.ts'
 import * as U from '../../lib/util.ts'
 import { aviso } from '../../ui/avisos.ts'
-import { entregar, pdfPedido } from '../../ui/arquivos.tsx'
+import { verPedido } from '../../ui/arquivos.tsx'
 import { Campo } from '../../ui/base.tsx'
 import { ComboFornecedor } from '../../ui/Combo.tsx'
 import { Ic } from '../../ui/icones.tsx'
@@ -94,7 +94,7 @@ export async function formPedidoMP(opt: OptMP = {}): Promise<{ id: string; numer
   })
   if (r) {
     const p = S.get('pedidos_compra', r.id)
-    if (p) await entregar(await pdfPedido(p), `Pedido de compra ${p.numero} - ${S.get('fornecedores', p.fornecedor_id)?.nome || ''}.pdf`)
+    if (p) await verPedido(p, `Pedido de compra nº ${p.numero} gerado — confira e mande ao fornecedor`)
   }
   return r
 }

@@ -129,14 +129,17 @@ function CorpoProduto({ b }: { b: Partial<Produto> }) {
   const [estr, setEstr] = useState<LinhaEstr[]>(() => (b.id ? C.componentes(b.id) : []).map(e => ({ k: e.id, filho_id: e.filho_id, qtd: U.campoNum(e.qtd, 4), unidade: e.unidade })))
   const mudar = (k: string, x: Partial<LinhaEstr>) => setEstr(l => l.map(e => e.k === k ? { ...e, ...x } : e))
   return <>
-    <div className="linha-campos">
+    <fieldset className="secao"><legend>Identificação</legend>
+    <div className="linha-campos l3">
       <Campo nome="codigo" rotulo="Código JAF" req valor={b.codigo} id="prodCod" ajuda={!b.id ? <a href="#" onClick={(e) => { e.preventDefault(); void montarCodigo(classe) }}>Montar pelo código inteligente</a> : ''} />
       <Campo nome="classe" rotulo="Tipo" tipo="select" valor={classe} opcoes={[{ v: 'peca', t: 'Peça / conjunto' }, { v: 'mp', t: 'Matéria-prima' }]} attrs={{ onChange: (e: { target: HTMLSelectElement }) => setClasse(e.target.value) }} />
       <Campo nome="situacao" rotulo="Situação" tipo="select" valor={b.situacao || 'ativo'} opcoes={[{ v: 'ativo', t: 'Ativo' }, { v: 'bloqueado', t: 'Bloqueado (não fabricar)' }, { v: 'inativo', t: 'Inativo' }]} />
     </div>
     <Campo nome="descricao" rotulo="Descrição" req valor={b.descricao} id="prodDesc" />
+    </fieldset>
     {classe === 'peca' && <>
-      <div className="linha-campos">
+      <fieldset className="secao"><legend>Cliente e desenho</legend>
+      <div className="linha-campos l2">
         <ComboCliente id="prodCli" nome="cliente_id" rotulo="Cliente" placeholder="Para quem é a peça" inicial={S.get('clientes', b.cliente_id)} />
         <Campo nome="codigo_cliente" rotulo="Código do cliente" valor={b.codigo_cliente} />
       </div>
@@ -145,7 +148,9 @@ function CorpoProduto({ b }: { b: Partial<Produto> }) {
         <Campo nome="revisao" rotulo="Revisão" valor={b.revisao} />
         <Campo nome="data_revisao" rotulo="Data da revisão" tipo="date" valor={b.data_revisao} />
       </div>
-      <div className="linha-campos">
+      </fieldset>
+      <fieldset className="secao"><legend>Material e processo</legend>
+      <div className="linha-campos l3">
         <ComboProduto id="prodMP" nome="_mp" rotulo="Matéria-prima" classe="mp" todos placeholder="Código do material" inicial={C.produtoPorCodigo(b.mp_codigo)} />
         <Campo nome="mp_qtd" rotulo="Qtd de material por peça" tipo="qtd" valor={U.campoNum(b.mp_qtd, 4)} />
         <Campo nome="mp_unidade" rotulo="Unidade" tipo="select" valor={b.mp_unidade || 'Kg'} opcoes={['Kg', 'Pç', 'm', 'mm'].map(v => ({ v, t: v }))} />
@@ -156,7 +161,9 @@ function CorpoProduto({ b }: { b: Partial<Produto> }) {
         <Campo nome="pecas_mes" rotulo="Peças por mês" tipo="num" valor={b.pecas_mes} />
         <Campo nome="data_entrada" rotulo="Data de entrada" tipo="date" valor={b.data_entrada} />
       </div>
-      <fieldset className="mt"><legend>Estrutura (se for conjunto)</legend>
+      </fieldset>
+      <fieldset className="secao"><legend>Estrutura (se for conjunto)</legend>
+        {!estr.length && <p className="secao-dica">Peça simples: deixe vazio. Conjunto: adicione cada componente e a quantidade.</p>}
         {estr.map(e => <div key={e.k} className="estrutura-linha">
           <ComboProduto nome={'_e_' + e.k} rotulo="Componente" classe="peca" placeholder="Código" inicial={S.get('produtos', e.filho_id)} aoEscolher={(x) => mudar(e.k, { filho_id: x.id })} aoLimpar={() => mudar(e.k, { filho_id: null })} />
           <div className="campo"><label>Qtd</label><input inputMode="decimal" value={e.qtd} onChange={(ev) => mudar(e.k, { qtd: ev.target.value })} /></div>
@@ -166,7 +173,7 @@ function CorpoProduto({ b }: { b: Partial<Produto> }) {
         <button type="button" className="btn fantasma" data-estr="mais" onClick={() => setEstr(l => [...l, { k: U.uuid(), filho_id: null, qtd: '1', unidade: 'Pç' }])}><Ic n="mais" /><span>Adicionar componente</span></button>
         <input type="hidden" name="_estrutura" value={JSON.stringify(estr.filter(e => e.filho_id).map(e => ({ filho_id: e.filho_id, qtd: U.num(e.qtd), unidade: e.unidade })))} />
       </fieldset>
-      <fieldset className="mt"><legend>Documentação (Cad. Técnico)</legend><div className="linha-campos">{CHECKS.map(([k, t]) => <Campo key={k} nome={'_chk_' + k} rotulo={t} tipo="check" valor={!!b.checks?.[k]} />)}</div></fieldset>
+      <fieldset className="secao"><legend>Documentação (Cad. Técnico)</legend><div className="linha-campos">{CHECKS.map(([k, t]) => <Campo key={k} nome={'_chk_' + k} rotulo={t} tipo="check" valor={!!b.checks?.[k]} />)}</div></fieldset>
     </>}
     <Campo nome="obs" rotulo="Observações" tipo="area" linhas={2} valor={b.obs} />
   </>
@@ -177,7 +184,7 @@ export async function formProduto(b: Partial<Produto> = {}): Promise<string | nu
   await S.garantir(['produtos', 'produto_estrutura'])
   const novo = !b.id
   return modal<string>({
-    titulo: novo ? 'Novo produto' : 'Editar ' + b.codigo, largura: 'larga',
+    titulo: novo ? 'Novo produto' : 'Editar ' + b.codigo, largura: 'grande',
     corpo: <CorpoProduto b={b} />,
     botoes: [{ txt: novo ? 'Cadastrar' : 'Salvar', acao: async (f) => {
       const d = lerForm(f)

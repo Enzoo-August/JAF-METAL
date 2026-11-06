@@ -31,7 +31,7 @@ export interface OptJanela {
   titulo: string
   corpo?: ReactNode
   botoes?: BotaoJanela[]
-  largura?: 'larga' | ''
+  largura?: 'larga' | 'grande' | 'doc' | ''
   fecharTxt?: string
   peExtra?: ReactNode
 }
@@ -168,7 +168,7 @@ function JanelaView({ item }: { item: Extract<Item, { tipo: 'janela' }> }) {
       setTimeout(posicionarAvisos, 200) // depois da animação de abrir
       const primeiro = f.querySelector<HTMLElement>('[data-autofocus]') ||
         (matchMedia('(pointer: fine)').matches ? f.querySelector<HTMLElement>('input:not([type=checkbox]):not([type=radio]):not([readonly]),select,textarea') : null)
-      primeiro?.focus({ preventScroll: true })
+      if (primeiro) { primeiro.dataset.focoAuto = '1'; primeiro.focus({ preventScroll: true }) }
     })
     return () => { cancelAnimationFrame(raf); f.removeEventListener('input', sujar); f.removeEventListener('change', sujar); document.removeEventListener('keydown', tecla) }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -16,7 +16,7 @@ if (!existsSync(path.join(pasta, 'index.html'))) { console.log('Falta o build de
 const CSP = readFileSync(path.join(raiz, 'public', '_headers'), 'utf8').match(/Content-Security-Policy: (.+)/)[1].replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")
 
 // servidor simples só para esta pasta
-const TIPOS = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.wasm': 'application/wasm', '.webmanifest': 'application/manifest+json', '.data': 'application/octet-stream', '.tar.gz': 'application/gzip' }
+const TIPOS = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.wasm': 'application/wasm', '.webmanifest': 'application/manifest+json', '.data': 'application/octet-stream', '.tar.gz': 'application/gzip' }
 const servidor = createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname)
   if (p.endsWith('/')) p += 'index.html'

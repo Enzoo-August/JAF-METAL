@@ -7,10 +7,11 @@ import { C, S } from '../lib/dados.ts'
 import type { Fornecedor } from '../lib/tipos.ts'
 import * as U from '../lib/util.ts'
 import { aviso } from '../ui/avisos.ts'
-import { BuscaLista, Btn, Cab, Campo, Chips, Dl, Paginado, Tag, Texto, Vazio, Voltar } from '../ui/base.tsx'
+import { BuscaLista, Btn, Cab, Campo, Chips, Cols, Dl, Paginado, Tag, Texto, Vazio, Voltar } from '../ui/base.tsx'
 import { useLembrar, type Rota } from '../ui/ganchos.ts'
 import { Ic } from '../ui/icones.tsx'
-import { lerForm, modal, useJanela } from '../ui/janelas.tsx'
+import { lerForm, modal } from '../ui/janelas.tsx'
+import { AutoPreencher, StatusEndereco, opcoesUF } from '../ui/endereco.tsx'
 import { form as formPedido, LinhaPedido } from './Compras.tsx'
 import { formPedidoMP } from './fabrica/Compra.tsx'
 import { ComTabelas } from './fabrica/comum.tsx'
@@ -40,8 +41,9 @@ function Linha({ f }: { f: Fornecedor }) {
   const n = S.lista('pecas').filter(p => p.fornecedor_id === f.id && p.ativo).length
   const ano = U.hoje().slice(0, 4)
   const tot = U.soma(compras(f.id).filter(m => m.data.startsWith(ano)), m => m.qtd * m.preco_unit)
-  return <a className="linha" href={'#/fornecedor/' + f.id}><div className="meio"><b>{f.nome}{!f.ativo && <> <span className="tag t-cinza">inativo</span></>}</b>
-    <small>{[f.tipo !== 'Peças' ? f.tipo : '', f.contato, U.tel(f.celular || f.telefone), f.cidade].filter(Boolean).join(' · ') || '—'}</small></div>
+  return <a className="linha cols" href={'#/fornecedor/' + f.id}><div className="meio"><b>{f.nome}{!f.ativo && <> <span className="tag t-cinza">inativo</span></>}</b>
+    <small>{f.tipo}<span className="so-estreito">{[' ', f.contato, U.tel(f.celular || f.telefone), f.cidade].filter(Boolean).join(' · ').replace(/^ · /, ' · ')}</span></small></div>
+    <Cols itens={[['Contato', f.contato], ['Telefone', U.tel(f.celular || f.telefone)], ['Cidade', [f.cidade, f.uf].filter(Boolean).join('/')]]} />
     <div className="lado"><b>{tot ? U.moeda0(tot) : '—'}</b><small>{n ? U.plural(n, 'peça') : ''} {tot ? 'em ' + ano : ''}</small></div></a>
 }
 
@@ -127,42 +129,54 @@ export async function form(f?: Fornecedor | null, nomeInicial?: string): Promise
   const novo = !f
   const b: Partial<Fornecedor> = f || { tipo: 'Peças', ativo: true, nome: nomeInicial || '' }
   return modal<string>({
-    titulo: novo ? 'Novo fornecedor' : 'Editar fornecedor', largura: 'larga',
+    titulo: novo ? 'Novo fornecedor' : 'Editar fornecedor', largura: 'grande',
     corpo: <>
-      <AutoPreencher />
-      <div className="linha-campos">
-        <Campo nome="nome" rotulo="Nome (como vocês chamam)" valor={b.nome} req ajuda="O nome curto do dia a dia. A razão social vai no campo próprio." />
-        <Campo nome="tipo" rotulo="Fornece" tipo="select" valor={b.tipo} opcoes={['Peças', 'Serviço', 'Peças e serviço'].map(v => ({ v, t: v }))} />
-      </div>
-      <div className="linha-campos">
-        <Campo nome="cnpj" rotulo="CNPJ" valor={b.cnpj} ajuda="Digite e saia do campo: o sistema busca razão social e endereço." />
-        <Campo nome="razao" rotulo="Razão social" valor={b.razao} />
-      </div>
-      <div className="linha-campos"><Campo nome="contato" rotulo="Contato" valor={b.contato} /><Campo nome="contato2" rotulo="Outro contato" valor={b.contato2} /></div>
-      <div className="linha-campos">
-        <Campo nome="celular" rotulo="Celular / WhatsApp" valor={U.tel(b.celular)} tipo="tel" />
-        <Campo nome="telefone" rotulo="Telefone" valor={U.tel(b.telefone)} tipo="tel" />
-        <Campo nome="email" rotulo="E-mail" valor={b.email} tipo="email" />
-      </div>
-      <Campo nome="site" rotulo="Site" valor={b.site} />
-      <div className="linha-campos">
-        <Campo nome="cep" rotulo="CEP" valor={b.cep} ajuda="Preenche o endereço sozinho." />
-        <Campo nome="endereco" rotulo="Endereço" valor={b.endereco} />
-        <Campo nome="bairro" rotulo="Bairro" valor={b.bairro} />
-      </div>
-      <div className="linha-campos">
-        <Campo nome="cidade" rotulo="Cidade" valor={b.cidade} />
-        <Campo nome="uf" rotulo="UF" valor={b.uf} attrs={{ maxLength: 2 }} />
-        <Campo nome="ie" rotulo="Inscrição estadual" valor={b.ie} />
-      </div>
-      <h3 className="mt">Qualificação do fornecedor</h3>
-      <div className="linha-campos">
-        <Campo nome="qualificacao" rotulo="Situação" tipo="select" valor={b.qualificacao || ''} opcoes={[{ v: '', t: '—' }, ...['Aprovado', 'Em avaliação', 'Reprovado'].map(v => ({ v, t: v }))]} />
-        <Campo nome="qualif_metodo" rotulo="Método" valor={b.qualif_metodo} placeholder="Ex.: Qualificação interna" />
-        <Campo nome="qualif_validade" rotulo="Válida até" tipo="date" valor={b.qualif_validade} />
-      </div>
-      <Campo nome="obs" rotulo="Observações" tipo="area" valor={b.obs} linhas={2} />
-      {!novo && <Campo nome="ativo" rotulo="Fornecedor ativo (desmarque se não compra mais dele — o histórico continua)" tipo="check" valor={b.ativo} />}
+      <AutoPreencher tabela="fornecedores" id={b.id} />
+      <fieldset className="secao"><legend>Empresa</legend>
+        {novo && <p className="secao-dica">Comece pelo <b>CNPJ</b>: o sistema busca a razão social e o endereço na Receita.</p>}
+        <div className="linha-campos l3">
+          <Campo nome="cnpj" rotulo="CNPJ" valor={b.cnpj} placeholder="00.000.000/0000-00" foco={novo} attrs={{ inputMode: 'numeric' }} />
+          <Campo nome="ie" rotulo="Inscrição estadual" valor={b.ie} />
+          <Campo nome="tipo" rotulo="Fornece" tipo="select" valor={b.tipo} opcoes={['Peças', 'Serviço', 'Peças e serviço'].map(v => ({ v, t: v }))} />
+        </div>
+        <div className="linha-campos l2">
+          <Campo nome="nome" rotulo="Nome (como vocês chamam)" valor={b.nome} req placeholder="O nome curto do dia a dia" />
+          <Campo nome="razao" rotulo="Razão social" valor={b.razao} placeholder="Como está na nota fiscal" />
+        </div>
+      </fieldset>
+      <fieldset className="secao"><legend>Contato</legend>
+        <div className="linha-campos l3">
+          <Campo nome="contato" rotulo="Contato (pessoa)" valor={b.contato} placeholder="Com quem falar" />
+          <Campo nome="celular" rotulo="Celular / WhatsApp" valor={U.tel(b.celular)} tipo="tel" placeholder="(11) 90000-0000" />
+          <Campo nome="email" rotulo="E-mail (para mandar o pedido)" valor={b.email} tipo="email" placeholder="vendas@fornecedor.com.br" />
+        </div>
+        <div className="linha-campos l3">
+          <Campo nome="contato2" rotulo="Outro contato" valor={b.contato2} />
+          <Campo nome="telefone" rotulo="Telefone" valor={U.tel(b.telefone)} tipo="tel" />
+          <Campo nome="site" rotulo="Site" valor={b.site} />
+        </div>
+      </fieldset>
+      <fieldset className="secao"><legend>Endereço</legend>
+        <div className="linha-campos l3">
+          <Campo nome="cep" rotulo="CEP" valor={b.cep} placeholder="00000-000" ajuda="Digite: rua, bairro e cidade vêm sozinhos." attrs={{ inputMode: 'numeric' }} />
+          <Campo nome="endereco" rotulo="Endereço (rua, número, complemento)" valor={b.endereco} cls="largo" />
+        </div>
+        <StatusEndereco />
+        <div className="linha-campos l3">
+          <Campo nome="bairro" rotulo="Bairro" valor={b.bairro} />
+          <Campo nome="cidade" rotulo="Cidade" valor={b.cidade} />
+          <Campo nome="uf" rotulo="Estado" tipo="select" valor={b.uf || ''} opcoes={opcoesUF(b.uf)} attrs={{ semBusca: true }} />
+        </div>
+      </fieldset>
+      <fieldset className="secao"><legend>Qualificação do fornecedor</legend>
+        <div className="linha-campos l3">
+          <Campo nome="qualificacao" rotulo="Situação" tipo="select" valor={b.qualificacao || ''} opcoes={[{ v: '', t: '—' }, ...['Aprovado', 'Em avaliação', 'Reprovado'].map(v => ({ v, t: v }))]} />
+          <Campo nome="qualif_metodo" rotulo="Método" valor={b.qualif_metodo} placeholder="Ex.: Qualificação interna" />
+          <Campo nome="qualif_validade" rotulo="Válida até" tipo="date" valor={b.qualif_validade} />
+        </div>
+        <Campo nome="obs" rotulo="Observações" tipo="area" valor={b.obs} linhas={2} />
+        {!novo && <Campo nome="ativo" rotulo="Fornecedor ativo (desmarque se não compra mais dele — o histórico continua)" tipo="check" valor={b.ativo} />}
+      </fieldset>
     </>,
     botoes: [{ txt: novo ? 'Cadastrar' : 'Salvar', acao: async (frm) => {
       const d = lerForm(frm)
@@ -175,43 +189,8 @@ export async function form(f?: Fornecedor | null, nomeInicial?: string): Promise
   })
 }
 
-// CNPJ → razão social / endereço (BrasilAPI); CEP → endereço (ViaCEP). Só preenche o que está vazio.
-export function AutoPreencher() {
-  const j = useJanela()
-  useEffect(() => {
-    const form = j.form; if (!form) return
-    const v = (n: string) => form.querySelector<HTMLInputElement>(`[name=${n}]`)
-    const por = (n: string, val: string | null | undefined) => { const i = v(n); if (i && !i.value.trim() && val) { i.value = val; i.dispatchEvent(new Event('input', { bubbles: true })) } }
-    const cnpj = async (e: Event) => {
-      const t = e.target as HTMLInputElement
-      if (t.name === 'cnpj') {
-        const d = t.value.replace(/\D/g, '')
-        if (d.length !== 14) return
-        t.value = d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
-        try {
-          const r = await fetch('https://brasilapi.com.br/api/cnpj/v1/' + d); if (!r.ok) return
-          const x = await r.json() as Record<string, string>
-          por('razao', x.razao_social); por('cep', x.cep && String(x.cep).replace(/^(\d{5})(\d{3})$/, '$1-$2'))
-          por('endereco', [x.descricao_tipo_de_logradouro, x.logradouro].filter(Boolean).join(' ') + (x.numero ? ', ' + x.numero : '') + (x.complemento ? ' ' + x.complemento : ''))
-          por('bairro', x.bairro); por('cidade', x.municipio && U.cap(x.municipio.toLowerCase()).replace(/\b(\w)/g, c => c.toUpperCase())); por('uf', x.uf)
-          aviso('Dados do CNPJ preenchidos. Confira.')
-        } catch { /* sem internet: segue manual */ }
-      } else if (t.name === 'cep') {
-        const d = t.value.replace(/\D/g, '')
-        if (d.length !== 8) return
-        t.value = d.replace(/^(\d{5})(\d{3})$/, '$1-$2')
-        try {
-          const r = await fetch(`https://viacep.com.br/ws/${d}/json/`); if (!r.ok) return
-          const x = await r.json() as Record<string, string>; if (x.erro) return
-          por('endereco', x.logradouro); por('bairro', x.bairro); por('cidade', x.localidade); por('uf', x.uf)
-        } catch { /* sem internet */ }
-      }
-    }
-    form.addEventListener('change', cnpj)
-    return () => form.removeEventListener('change', cnpj)
-  }, [j])
-  return null
-}
+// o preenchimento automático (CNPJ, CEP, telefone) mora em ui/endereco.tsx
+export { AutoPreencher } from '../ui/endereco.tsx'
 
 // cadastro rápido de dentro de outro formulário
 export async function novoRapido(nome: string): Promise<Fornecedor | null> { const id = await form(null, nome); return id ? S.get('fornecedores', id) : null }

@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => ({
     target: 'es2022',
     sourcemap: false,
     chunkSizeWarningLimit: 1500,
+    // o "ajudante" do pdf.js vem como .mjs; sai como .js para qualquer servidor mandar com o tipo certo (senão a prévia do PDF não abre)
+    rolldownOptions: { output: { assetFileNames: (a) => /\.mjs$/i.test(a.names?.[0] ?? '') ? 'app/[name]-[hash].js' : 'app/[name]-[hash][extname]' } },
   },
   optimizeDeps: { exclude: ['@electric-sql/pglite'] },
 }))

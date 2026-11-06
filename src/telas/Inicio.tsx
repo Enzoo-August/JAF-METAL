@@ -36,13 +36,13 @@ export const ATALHOS: Atalho[] = [
   { id: 'retirar', rot: 'Retirar peça', sub: 'do almoxarifado', ic: 'retirar', perm: ['retirar'], fazer: () => retirar() },
   { id: 'entrada', rot: 'Dar entrada', sub: 'chegou peça', ic: 'entrada', perm: ['entrada'], fazer: () => entrada() },
   { id: 'notaXML', rot: 'Ler nota fiscal', sub: 'arquivo XML', ic: 'nota', perm: ['entrada', 'mp_editar'], fazer: () => lerNota() },
-  { id: 'listaCompras', rot: 'O que comprar', sub: 'peças faltando', ic: 'lista', perm: ['compras'], ir: '#/compras/lista' },
+  { id: 'listaCompras', rot: 'Peças a comprar', sub: 'faltando no estoque', ic: 'lista', perm: ['compras'], ir: '#/compras/lista' },
   { id: 'novoPedido', rot: 'Novo pedido', sub: 'de compra', ic: 'compras', perm: ['compras'], fazer: () => formPedido() },
   { id: 'comprarMP', rot: 'O que comprar', sub: 'matéria-prima', ic: 'lista', perm: ['compras_mp'], ir: '#/comprar' },
-  { id: 'novoPedidoMP', rot: 'Pedido de material', sub: 'compra de matéria-prima', ic: 'compras', perm: ['compras_mp'], fazer: () => formPedidoMP() },
+  { id: 'novoPedidoMP', rot: 'Novo pedido de material', sub: 'matéria-prima, com PDF', ic: 'mais', perm: ['compras_mp'], fazer: () => formPedidoMP() },
   { id: 'novaNecessidade', rot: 'Pedir compra', sub: 'lançar necessidade', ic: 'enviar', perm: ['necessidade_criar'], fazer: () => formNecessidade() },
   { id: 'pedidosCompra', rot: 'Pedidos de compra', sub: 'o que vai chegar', ic: 'compras', perm: ['compras_ver'], ir: '#/compras' },
-  { id: 'pedidosMP', rot: 'Pedidos de material', sub: 'compra de matéria-prima', ic: 'compras', perm: ['area_comercial', 'compras_mp'], ir: '#/compras/mp' },
+  { id: 'pedidosMP', rot: 'Pedidos de compra', sub: 'material: acompanhar', ic: 'compras', perm: ['area_comercial', 'compras_mp'], ir: '#/compras/mp' },
   { id: 'fornecedores', rot: 'Fornecedores', sub: 'contatos e pedidos', ic: 'fornecedor', perm: ['fornecedores'], ir: '#/fornecedores' },
   { id: 'estoque', rot: 'Estoque', sub: 'todas as peças', ic: 'estoque', perm: ['estoque_ver'], ir: '#/pecas' },
   { id: 'novaOrdem', rot: 'Nova ordem', sub: 'de produção', ic: 'producao', perm: ['producao_editar'], fazer: () => formOrdem() },
@@ -239,7 +239,7 @@ function Chegando() {
   return <section className="card mt"><div className="card-cab"><h2>Para chegar</h2><a href="#/compras">Ver todos</a></div>
     {peds.length ? <div className="lista">{peds.map(p => <a key={p.id} className="linha" href={'#/pedido/' + p.id}><div className="meio"><b>Nº {p.numero} · {S.get('fornecedores', p.fornecedor_id)?.nome || ''}</b>
       <small>{C.itensDoPedido(p.id).map(i => C.itemPedido(i).codigo).filter(Boolean).join(', ')}</small></div>
-      <div className="lado"><Tag s={C.situacaoPedido(p)} /><small>{p.prazo ? U.relativo(p.prazo) : 'sem prazo'}</small></div></a>)}</div>
+      <div className="lado"><Tag s={C.situacaoPedido(p)} />{p.prazo === U.hoje() ? null : <small>{p.prazo ? U.relativo(p.prazo) : 'sem prazo'}</small>}</div></a>)}</div>
       : <p className="sub">Nenhum pedido aguardando.</p>}</section>
 }
 

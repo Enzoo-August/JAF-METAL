@@ -979,6 +979,16 @@ body { background: var(--grad-fundo), var(--fundo); background-attachment: fixed
 /* palavra comprida no atalho (ex.: "Desenvolvimento") quebra em vez de empurrar a tela para o lado */
 .atalho { min-width: 0; }
 .atalho > span { min-width: 0; overflow-wrap: break-word; hyphens: auto; }
+/* v2.9: cartões largos o bastante para nenhuma palavra quebrar ao meio ("Fornecedor-es"); no celular, ícone em cima e texto embaixo */
+.atalhos { grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); }
+.atalho { padding: 14px 15px; gap: 12px; }
+.atalho > span { overflow-wrap: normal; word-break: normal; hyphens: manual; line-height: 1.25; font-weight: 650; }
+.atalho small { margin-top: 3px; line-height: 1.3; font-weight: 500; }
+@media (max-width: 600px) {
+  .atalhos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+  .atalho { flex-direction: column; align-items: flex-start; gap: 6px; padding: 11px 12px; }
+  .atalho .ic { width: 32px; height: 32px; padding: 7px; border-radius: 9px; }
+}
 /* campos soltos (fora do formulário padrão) com a mesma altura de toque dos outros */
 .acoes select, .barra-filtros input[type=date], .check-item input { min-height: 40px; border: 1px solid var(--borda-forte); border-radius: var(--raio-p); background: var(--cartao); color: var(--texto); font: inherit; padding: 0 10px; }
 /* plano de preventiva: nome do equipamento parado ao rolar os meses; mês atual marcado */
@@ -1117,3 +1127,93 @@ ul.passos-of .giro { width: 18px; height: 18px; border-width: 2px; margin: 0; }
 .passos .maq, .passos-of .maq { display: inline-flex; align-items: center; gap: 4px; font-size: .78rem; color: var(--texto-2); margin-top: 2px; }
 .passos .maq svg, .passos-of .maq svg { width: 13px; height: 13px; flex: none; }
 .passos .maq.sug, .passos-of .maq.sug { color: var(--texto-3, #7a8594); font-style: italic; }
+
+/* ===================================================================== v2.9 — janelas grandes, seções, prévia de impressão, listas em colunas */
+/* rótulos em letra normal (mais fácil de ler que TUDO MAIÚSCULO) */
+.campo > label { text-transform: none; letter-spacing: 0; font-size: .86rem; font-weight: 650; color: var(--texto); }
+.campo > label .dica-rot { font-weight: 500; color: var(--texto-3); }
+.campo small { font-size: .79rem; }
+
+/* janelas: grande (formulários de cadastro no computador) e doc (prévia de impressão) */
+.janela.grande { max-width: 1080px; }
+.janela.doc { max-width: 1020px; height: calc(100vh - 40px); }
+.janela.grande .janela-corpo { padding: 20px 24px 8px; }
+.janela.grande .janela-pe, .janela.doc .janela-pe { padding: 12px 24px; }
+.janela.doc .janela-corpo { background: #dfe4ea; padding: 12px 16px 16px; }
+:root[data-tema="escuro"] .janela.doc .janela-corpo { background: #2a3442; }
+
+/* seções dentro do formulário (como "FORNECEDOR" no painel da Upgrade) */
+fieldset.secao { border: 0; padding: 0; margin: 0 0 8px; min-width: 0; }
+fieldset.secao > legend { display: flex; align-items: center; gap: 10px; width: 100%; padding: 0; margin: 2px 0 12px; font-size: .74rem; font-weight: 800;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--acento, var(--marca)); }
+fieldset.secao > legend::after { content: ''; flex: 1; height: 1px; background: var(--borda); }
+fieldset.secao + fieldset.secao { margin-top: 6px; }
+.secao-dica { margin: -6px 0 12px; font-size: .84rem; color: var(--texto-2); }
+.cep-st { display: block; min-height: 1.2em; margin: -6px 0 10px; font-size: .84rem; color: var(--texto-2); }
+.cep-st.ok { color: var(--verde); } .cep-st.warn { color: var(--amarelo); }
+
+/* formulário + resumo ao lado (Nova OF) */
+.form-2col { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.col-resumo { position: sticky; top: 0; background: var(--cartao-2); border: 1px solid var(--borda); border-radius: 14px; padding: 14px 16px; display: grid; gap: 4px; }
+.resumo-vazio b { display: block; font-size: 1rem; margin-bottom: 4px; }
+.resumo-vazio p { margin: 0; color: var(--texto-2); font-size: .9rem; }
+.resumo-cab { display: grid; gap: 2px; padding-bottom: 8px; }
+.resumo-cab .mono { font-family: var(--mono); font-weight: 700; color: var(--acento, var(--marca)); font-size: .95rem; }
+.resumo-cab b { font-size: 1.05rem; }
+.resumo-cab small, .resumo-bloco > small { color: var(--texto-3); font-size: .78rem; }
+.resumo-bloco > small { text-transform: uppercase; letter-spacing: .07em; font-weight: 700; }
+.resumo-bloco { display: grid; gap: 3px; padding: 10px 0; border-top: 1px dashed var(--borda-forte); font-size: .9rem; }
+.resumo-bloco > b { font-family: var(--mono); }
+.resumo-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.resumo-lista li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.resumo-lista li span:nth-child(2) { color: var(--texto-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-resumo .previa-passos { margin: 6px 0 0; background: var(--cartao); }
+.txt-vermelho { color: var(--vermelho); }
+
+/* prévia de impressão */
+.previa-dica { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: #3b4656; font-size: .88rem; }
+:root[data-tema="escuro"] .previa-dica { color: #c9d3df; }
+.previa-dica svg { width: 16px; height: 16px; flex: none; }
+.previa-pdf { min-height: 60vh; }
+.folhas { display: grid; justify-items: center; gap: 16px; }
+.folhas canvas.folha { width: 100%; max-width: 860px; height: auto; background: #fff; border-radius: 3px; box-shadow: 0 2px 4px rgba(0, 0, 0, .12), 0 10px 30px rgba(0, 0, 0, .14); }
+.previa-carregando { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 50vh; color: #3b4656; text-align: center; padding: 20px; }
+.previa-carregando .giro { width: 22px; height: 22px; border-radius: 50%; border: 3px solid rgba(60, 80, 110, .2); border-top-color: var(--marca); animation: girar .8s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+.previa-iframe { width: 100%; height: calc(100vh - 230px); border: 0; background: #fff; border-radius: 4px; }
+.previa-n { text-align: center; margin: 10px 0 0; color: #3b4656; font-size: .84rem; }
+
+/* listas em colunas no computador: as informações se espalham pela linha (no celular fica como antes) */
+.linha .cols-meio { display: none; }
+@media (min-width: 1100px) {
+  .linha.cols .meio { flex: 1 1 0; }
+  .linha.cols .cols-meio { display: grid; grid-auto-flow: column; grid-auto-columns: 128px; gap: 16px; flex: none; }
+  .linha.cols .cols-meio .col { min-width: 0; }
+  .linha.cols .cols-meio .col small { display: block; font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--texto-3); font-weight: 700; }
+  .linha.cols .cols-meio .col b { display: block; font-weight: 600; font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .linha.cols .cols-meio .col b.txt-vermelho { color: var(--vermelho); }
+  .linha.cols .lado { min-width: 120px; }
+  .linha.cols .so-estreito { display: none; }
+}
+.barra-prog { display: block; height: 5px; border-radius: 3px; background: var(--borda); overflow: hidden; margin-top: 4px; }
+.barra-prog i { display: block; height: 100%; background: var(--verde); border-radius: 3px; }
+
+@media (max-width: 900px) {
+  .form-2col { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .col-resumo { position: static; }
+  .resumo-vazio { display: none; }
+  .janela.grande, .janela.doc { max-width: none; height: 100%; }
+  .janela.doc .janela-corpo { padding: 10px 8px 12px; }
+}
+.linha.cols .cols-meio .col .col-sub { display: block; font-size: .74rem; font-weight: 500; color: inherit; opacity: .8; }
+/* um acesso de cada setor */
+.setores-ac { display: grid; gap: 6px; }
+.setor-ac { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.3fr); gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--borda); border-radius: 10px; background: var(--cartao-2); }
+.setor-ac input:not([type=checkbox]) { height: 40px; border: 1px solid var(--borda-forte); border-radius: 8px; padding: 0 10px; font: inherit; background: var(--cartao); color: var(--texto); min-width: 0; width: 100%; }
+.setor-ac.ja { opacity: .55; }
+.setor-ac .check { padding: 0; }
+.setor-ac .check small { display: block; color: var(--texto-3); font-size: .78rem; font-weight: 400; }
+@media (max-width: 640px) { .setor-ac { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .setor-ac .check { grid-column: 1 / -1; } }
+.linha.cols .cols-meio .col b small.col-sub { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: .76rem; }
+/* v2.9: na coluna da direita das listas, o texto depois da etiqueta vai para a linha de baixo (antes saía "Atrasadohá 4 dias") */
+.linha .lado > .tag + small { display: block; margin-top: 4px; }

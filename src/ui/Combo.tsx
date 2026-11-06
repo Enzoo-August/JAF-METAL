@@ -67,7 +67,11 @@ export function Combo<T extends { id: string }>(p: PropsCombo<T>) {
       <input ref={input} id={id} name={p.nome} required={p.req} placeholder={p.placeholder} readOnly={p.readOnly}
         value={texto} data-combo-id={sel} autoComplete="off" spellCheck={false} autoCapitalize="none" role="combobox" aria-expanded={aberta}
         {...(p.foco ? { 'data-autofocus': '1' } : {})}
-        onFocus={() => { if (!p.readOnly) { desenhar(texto, selRef.current); if (selRef.current) input.current?.select() } }}
+        onFocus={(e) => {
+          if (e.currentTarget.dataset.focoAuto) { delete e.currentTarget.dataset.focoAuto; return } // foco que a janela pôs ao abrir: lista fechada até a pessoa tocar ou digitar
+          if (!p.readOnly) { desenhar(texto, selRef.current); if (selRef.current) input.current?.select() }
+        }}
+        onClick={() => { if (!aberta && !p.readOnly) desenhar(texto, selRef.current) }}
         onChange={(e) => { setTexto(e.target.value); mudarSel(''); desenhar(e.target.value, ''); p.aoLimpar?.() }}
         onKeyDown={(e) => {
           if (!aberta && e.key === 'ArrowDown') { desenhar(texto, selRef.current); return }

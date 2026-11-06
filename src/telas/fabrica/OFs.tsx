@@ -7,9 +7,9 @@ import { C, S } from '../../lib/dados.ts'
 import { Perm } from '../../lib/perm.ts'
 import type { OF, Produto } from '../../lib/tipos.ts'
 import * as U from '../../lib/util.ts'
-import { entregar, excel, pdfDocumento } from '../../ui/arquivos.tsx'
+import { entregar, excel, pdfFolhas, type CtxDoc } from '../../ui/arquivos.tsx'
 import { aviso } from '../../ui/avisos.ts'
-import { BuscaLista, Btn, Cab, Campo, Chips, Dl, Paginado, Tag, Texto, Vazio, Voltar } from '../../ui/base.tsx'
+import { BarraProg, BuscaLista, Btn, Cab, Campo, Chips, Cols, Dl, Paginado, Tag, Texto, Vazio, Voltar } from '../../ui/base.tsx'
 import { ComboMaquina } from '../../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
@@ -25,8 +25,11 @@ export const ofPorNumero = (n: number | string | null | undefined): OF | null =>
 
 export function LinhaOF({ o }: { o: OF }) {
   const p = S.get('produtos', o.produto_id), st = C.situacaoOF(o)
-  return <a className="linha" href={'#/of/' + o.id} data-of={o.numero}><div className="meio"><b>OF {nr(o.numero)} · {p?.codigo || '?'}</b>
-    <small>{[p?.descricao, U.qtd(o.qtd) + ' pç', o.ri ? 'R.I. ' + o.ri : '', o.tipo === 'conjunto' ? 'conjunto' : '', 'emitida ' + U.dataCurta(o.emitida_em)].filter(Boolean).join(' · ')}</small></div>
+  const feitos = (o.passos || []).filter(x => x.feito).length, nP = (o.passos || []).length
+  return <a className="linha cols" href={'#/of/' + o.id} data-of={o.numero}><div className="meio"><b>OF {nr(o.numero)} · {p?.codigo || '?'}</b>
+    <small>{p?.descricao}<span className="so-estreito">{[' ', U.qtd(o.qtd) + ' pç', o.ri ? 'R.I. ' + o.ri : '', o.tipo === 'conjunto' ? 'conjunto' : '', 'emitida ' + U.dataCurta(o.emitida_em)].filter(Boolean).join(' · ').replace(/^ · /, ' · ')}</span></small></div>
+    <Cols itens={[['Quantidade', U.qtd(o.qtd) + ' pç'], ['R.I.', o.tipo === 'conjunto' ? 'conjunto' : o.ri], ['Emitida', U.dataCurta(o.emitida_em)], ['Prazo', o.prazo ? U.dataCurta(o.prazo) : '', st.atrasada ? 'txt-vermelho' : ''],
+      ['Passos', nP ? <>{feitos} de {nP}<BarraProg v={feitos} de={nP} /></> : '']]} />
     <div className="lado"><Tag s={st} />{o.produzido !== null && o.produzido !== undefined ? <small>{U.qtd(o.produzido)} produzidas</small> : null}</div></a>
 }
 
@@ -83,7 +86,8 @@ function Ficha({ id }: { id: string }) {
     <header className="cab"><div><h1>OF {nr(o.numero)} <Tag s={st} /></h1><p className="sub">{o.tipo === 'conjunto' ? 'OF de conjunto (FORM.042)' : 'OF de componente (FORM.034)'} · {p ? <a href={'#/produto/' + p.id}>{p.codigo} — {p.descricao}</a> : '?'}</p></div>
       <div className="acoes">
         {o.status === 'aberta' && ap && <Btn txt="Apontar / encerrar" icone="ok" cls="pri" data-of-acao="apontar" onClick={() => void apontar(o)} />}
-        <Btn txt="Imprimir" icone="imprimir" data-of-acao="imprimir" onClick={() => imprimirOF(o)} />
+        <Btn txt="Imprimir OF" icone="imprimir" cls={o.status === 'aberta' && ap ? 'sec' : 'pri'} data-of-acao="imprimir" onClick={() => imprimirOF(o)} />
+        {filhas.length > 0 && <Btn txt={`Imprimir com os componentes (${filhas.length + 1})`} icone="imprimir" cls="fantasma" data-of-acao="imprimirTodas" onClick={() => imprimirOFs([o, ...filhas])} />}
         {o.status === 'aberta' && pcp && <Btn txt="Editar" icone="lapis" cls="fantasma" data-of-acao="editar" onClick={() => void formOF(o)} />}
         {o.status === 'aberta' && pcp && <Btn txt="Cancelar OF" icone="x" cls="fantasma" data-of-acao="cancelar" onClick={() => cancelar(o)} />}
         {o.status !== 'aberta' && pcp && <Btn txt="Reabrir" icone="desfazer" cls="fantasma" data-of-acao="reabrir" onClick={() => reabrir(o)} />}
@@ -118,41 +122,60 @@ function CorpoOF({ b }: { b: Partial<OF> }) {
   const mp = prod?.mp_codigo ? C.produtoPorCodigo(prod.mp_codigo) : null
   const lotes = mp ? U.ordenar(S.lista('mp_lotes').filter(l => l.produto_id === mp.id && l.status === 'Aprovado' && C.saldoLote(l) > 0), l => l.ri) : []
   const precisa = prod?.mp_qtd && q ? U.r4(q * Number(prod.mp_qtd)) : 0
-  return <>
-    <ComboProduto id="ofProd" nome="produto_id" rotulo="Código do produto" classe="peca" req placeholder="Código JAF ou descrição" inicial={prod} readOnly={!!b.id}
-      aoEscolher={setProd} aoLimpar={() => setProd(null)} />
-    <div className="linha-campos">
-      <Campo nome="qtd" rotulo="Quantidade (peças)" tipo="qtd" req valor={U.campoNum(b.qtd, 3)} attrs={{ onInput: (e: { target: HTMLInputElement }) => setQ(U.num(e.target.value) || 0) }} />
-      <Campo nome="emitida_em" rotulo="Data" tipo="date" valor={b.emitida_em || U.hoje()} />
-      <Campo nome="prazo" rotulo="Prazo" tipo="date" valor={b.prazo} />
+  const saldoMP = U.soma(lotes, l => C.saldoLote(l))
+  const cli = prod ? S.get('clientes', prod.cliente_id) : null
+  return <div className="form-2col">
+    <div className="col-form">
+      <fieldset className="secao"><legend>Produto e quantidade</legend>
+        <ComboProduto id="ofProd" nome="produto_id" rotulo="Código do produto" classe="peca" req placeholder="Digite o código JAF ou a descrição" inicial={prod} readOnly={!!b.id}
+          aoEscolher={setProd} aoLimpar={() => setProd(null)} />
+        <div className="linha-campos l3">
+          <Campo nome="qtd" rotulo="Quantidade (peças)" tipo="qtd" req valor={U.campoNum(b.qtd, 3)} attrs={{ onInput: (e: { target: HTMLInputElement }) => setQ(U.num(e.target.value) || 0) }} />
+          <Campo nome="emitida_em" rotulo="Data de emissão" tipo="date" valor={b.emitida_em || U.hoje()} />
+          <Campo nome="prazo" rotulo="Prazo" tipo="date" valor={b.prazo} />
+        </div>
+      </fieldset>
+      {prod && !temEstr && <fieldset className="secao"><legend>Matéria-prima</legend>
+        <div className="linha-campos l2">
+          <Campo nome="ri" rotulo="R.I. do material (lote)" tipo="num" valor={b.ri} attrs={{ list: 'lRI' }} ajuda={mp ? `Material: ${mp.codigo}` : 'Produto sem matéria-prima cadastrada'} />
+          <Campo nome="kg" rotulo={`Material (${prod.mp_unidade || 'kg'})`} tipo="qtd" valor={U.campoNum(b.kg, 3)} placeholder={precisa ? U.qtd(precisa) : ''} ajuda={precisa ? `Em branco = ${U.qtd(precisa)} pelo cadastro (${U.qtd(prod.mp_qtd)} por peça).` : ''} />
+        </div>
+        <datalist id="lRI">{lotes.map(l => <option key={l.id} value={l.ri}>{`saldo ${U.qtd(C.saldoLote(l))} · ${U.dataCurta(l.data)}`}</option>)}</datalist>
+        {mp && !lotes.length && <p className="nota amarela"><b>Atenção:</b> não há lote de {mp.codigo} com saldo. Lance a entrada em Matéria-prima.</p>}
+      </fieldset>}
+      {prod && temEstr && !b.id && <fieldset className="secao"><legend>Componentes</legend>
+        <Campo nome="gerar_componentes" rotulo="Emitir também as OFs dos componentes que são fabricados aqui" tipo="check" valor={true} /></fieldset>}
+      <fieldset className="secao"><legend>Onde e quem</legend>
+        <ComboMaquina id="ofMaq" nome="maquina_id" rotulo="Máquina (opcional)" placeholder="Onde vai ser feita" inicial={S.get('maquinas', b.maquina_id)} />
+        <Campo nome="emitido_por" rotulo="Emitido por" valor={b.emitido_por || API.sessao?.nome} />
+        <Campo nome="obs" rotulo="Observações (saem na folha)" tipo="area" linhas={2} valor={b.obs} />
+      </fieldset>
     </div>
-    {prod && !temEstr && <>
-      <div className="linha-campos">
-        <Campo nome="ri" rotulo="R.I. do material" tipo="num" valor={b.ri} attrs={{ list: 'lRI' }} ajuda={mp ? `Material: ${mp.codigo}` : 'Produto sem matéria-prima cadastrada'} />
-        <Campo nome="kg" rotulo={`Material (${prod.mp_unidade || 'kg'})`} tipo="qtd" valor={U.campoNum(b.kg, 3)} placeholder={precisa ? U.qtd(precisa) : ''} ajuda={precisa ? `Pelo cadastro: ${U.qtd(precisa)} (${U.qtd(prod.mp_qtd)} por peça). Em branco = calcula sozinho.` : ''} />
-      </div>
-      <datalist id="lRI">{lotes.map(l => <option key={l.id} value={l.ri}>{`saldo ${U.qtd(C.saldoLote(l))} · ${U.dataCurta(l.data)}`}</option>)}</datalist>
-      {mp && !lotes.length && <p className="sub"><b>Atenção:</b> não há lote de {mp.codigo} com saldo. Lance a entrada em Matéria-prima.</p>}
-      {lotes.length > 0 && <p className="sub">Lotes com saldo: {lotes.slice(0, 6).map(l => `R.I. ${l.ri} (${U.qtd(C.saldoLote(l))})`).join(' · ')}</p>}
-    </>}
-    {prod && temEstr && <div className="card mt" style={{ boxShadow: 'none' }}><b>Conjunto — componentes por {q ? U.qtd(q) : '1'} pç</b>
-      <ul className="sub" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{C.componentes(prod.id).map(e => { const f = S.get('produtos', e.filho_id); return <li key={e.id}>{f?.codigo} — {U.qtd(Number(e.qtd) * (q || 1))} {e.unidade}</li> })}</ul>
-      {!b.id && <Campo nome="gerar_componentes" rotulo="Emitir também as OFs dos componentes que são fabricados aqui" tipo="check" valor={true} />}</div>}
-    {prod && !b.id && <PreviaPassos p={prod} />}
-    <ComboMaquina id="ofMaq" nome="maquina_id" rotulo="Máquina (opcional)" placeholder="Onde vai ser feita" inicial={S.get('maquinas', b.maquina_id)} />
-    <Campo nome="emitido_por" rotulo="Emitido por" valor={b.emitido_por || API.sessao?.nome} />
-    <Campo nome="obs" rotulo="Observações" tipo="area" linhas={2} valor={b.obs} />
-  </>
+    <aside className="col-resumo" aria-label="Resumo da OF">
+      {!prod ? <div className="resumo-vazio"><b>Escolha o produto</b><p>Aqui aparecem o material, os lotes com saldo e o processo — por onde a peça passa e em qual máquina. É o que vai impresso na OF.</p></div>
+        : <>
+          <div className="resumo-cab"><span className="mono">{prod.codigo}</span><b>{prod.descricao}</b>
+            <small>{[temEstr ? 'Conjunto (FORM.042)' : 'Componente (FORM.034)', cli?.nome, prod.codigo_cliente].filter(Boolean).join(' · ')}</small></div>
+          {!temEstr && mp && <div className="resumo-bloco"><small>Material</small><b>{mp.codigo}</b><span>{mp.descricao}</span>
+            {precisa ? <span>Precisa <b>{U.qtd(precisa)} {prod.mp_unidade || 'kg'}</b> para {U.qtd(q)} pç</span> : <span>{U.qtd(prod.mp_qtd)} {prod.mp_unidade || 'kg'} por peça</span>}
+            <span className={saldoMP < precisa ? 'txt-vermelho' : ''}>Saldo em estoque: <b>{U.qtd(saldoMP)}</b>{lotes.length ? ` em ${U.plural(lotes.length, 'lote')}` : ''}</span>
+            {lotes.length > 0 && <span className="peq">{lotes.slice(0, 5).map(l => `R.I. ${l.ri} (${U.qtd(C.saldoLote(l))})`).join(' · ')}</span>}</div>}
+          {temEstr && <div className="resumo-bloco"><small>Componentes por {q ? U.qtd(q) : '1'} pç</small>
+            <ul className="resumo-lista">{C.componentes(prod.id).map(e => { const f = S.get('produtos', e.filho_id); return <li key={e.id}><span className="mono">{f?.codigo}</span> <span>{f?.descricao}</span> <b>{U.qtd(Number(e.qtd) * (q || 1))} {e.unidade}</b></li> })}</ul></div>}
+          {!b.id && <PreviaPassos p={prod} />}
+        </>}
+    </aside>
+  </div>
 }
 
 export async function formOF(b: Partial<OF> = {}): Promise<string | null> {
   // abre de qualquer lugar (Início, barra de baixo): garante as tabelas antes de montar a janela
   await S.garantir(['produtos', 'produto_estrutura', 'mp_lotes', 'ofs'])
   const novo = !b.id
-  return modal<string>({
-    titulo: novo ? 'Nova ordem de fabricação' : `Editar OF ${b.numero}`,
+  const id = await modal<string>({
+    titulo: novo ? 'Nova ordem de fabricação' : `Editar OF ${b.numero}`, largura: 'grande',
     corpo: <CorpoOF b={b} />,
-    botoes: [{ txt: novo ? 'Emitir OF' : 'Salvar', acao: async (f) => {
+    botoes: [{ txt: novo ? 'Emitir OF e ver para imprimir' : 'Salvar', icone: novo ? 'imprimir' : undefined, acao: async (f) => {
       const d = lerForm(f)
       if (!f.dataset.envio) f.dataset.envio = b.id || U.uuid()
       const r = await API.rpc<{ id: string; numero: number; componentes: number }>('emitir_of', { p: { ...d, id: f.dataset.envio, venda_id: b.venda_id || null, pai_id: b.pai_id || null } })
@@ -162,6 +185,9 @@ export async function formOF(b: Partial<OF> = {}): Promise<string | null> {
       return r.id
     } }],
   })
+  // emitiu: já mostra a folha para imprimir (o PCP imprime e leva para a produção); conjunto vai junto com as OFs dos componentes
+  if (id && novo) { const o = S.get('ofs', id); if (o) await imprimirOFs([o, ...S.lista('ofs').filter(x => x.pai_id === o.id)], `OF ${o.numero} emitida — confira e imprima`) }
+  return id
 }
 
 // ---------------------------------------------------------------- apontar (o que a planilha chama de "Qde Prod.", "Realizado" e "Status")
@@ -204,10 +230,16 @@ async function reabrir(o: OF) {
 }
 
 // ---------------------------------------------------------------- impressão (mesmos campos do FORM.034 / FORM.042)
-export async function imprimirOF(o: OF): Promise<void> {
+export const imprimirOF = (o: OF): Promise<void> => imprimirOFs([o])
+export async function imprimirOFs(lista: OF[], titulo?: string): Promise<void> {
+  const blob = await pdfFolhas(lista.map(o => ({ titulo: `Ordem de Fabricação nº ${o.numero}`, sub: o.tipo === 'conjunto' ? 'FORM.042 — OF de conjunto' : 'FORM.034 — OF de componente', desenhar: (c: CtxDoc) => folhaOF(c, o) })))
+  const nome = lista.length > 1 ? `OF ${lista[0].numero} e componentes.pdf` : `OF ${lista[0].numero}.pdf`
+  await entregar(blob, nome, { titulo: titulo || nome.replace(/\.pdf$/, ''), dica: lista.length > 1 ? `${U.plural(lista.length, 'OF')} — uma folha para cada (conjunto e componentes).` : undefined })
+}
+function folhaOF(c: CtxDoc, o: OF): void {
   const p = S.get('produtos', o.produto_id), lote = C.loteDoRI(o.ri), venda = S.get('vendas', o.venda_id)
   const conj = o.tipo === 'conjunto'
-  const blob = await pdfDocumento(`Ordem de Fabricação nº ${o.numero}`, conj ? 'FORM.042 — OF de conjunto' : 'FORM.034 — OF de componente', (c) => {
+  {
     const linhas: [string, string][] = [['Código do produto', p?.codigo || ''], ['Descrição', p?.descricao || ''], ['Operação', p?.operacao || ''],
       ['Quantidade', U.qtd(o.qtd) + ' pç'], ['Data de emissão', U.data(o.emitida_em)], ['Emitido por', o.emitido_por || ''], ['Prazo', o.prazo ? U.data(o.prazo) : '']]
     if (!conj) linhas.push(['Matéria-prima', p?.mp_codigo ? `${p.mp_codigo} (${U.qtd(p.mp_qtd)} ${p.mp_unidade || 'kg'} por peça)` : ''],
@@ -244,6 +276,5 @@ export async function imprimirOF(o: OF): Promise<void> {
     if (y + 32 > c.H - 12) { c.doc.addPage(); y = 20 }
     c.assinatura('Emitido por', o.emitido_por || '', 14, Math.min(Math.max(y + 22, 250), c.H - 20), 80)
     c.assinatura('Realizado por', o.realizado_por || '', c.W - 94, Math.min(Math.max(y + 22, 250), c.H - 20), 80)
-  })
-  await entregar(blob, `OF ${o.numero}.pdf`)
+  }
 }

@@ -49,6 +49,14 @@ export function Dl({ pares }: { pares: ([string, ReactNode] | null | false | und
 export const temDl = (pares: ([string, ReactNode] | null | false | undefined)[]): boolean =>
   pares.some(p => !!p && p[1] !== null && p[1] !== undefined && p[1] !== '' && p[1] !== false)
 
+// colunas do meio da linha (só aparecem no computador; no celular a linha fica como antes)
+export function Cols({ itens }: { itens: ([string, ReactNode, string?] | null | false | undefined)[] }) {
+  return <div className="cols-meio">{itens.filter((x): x is [string, ReactNode, string?] => !!x).map(([r, v, cls]) =>
+    <div key={r} className="col"><small>{r}</small><b className={cls || undefined}>{v === null || v === undefined || v === '' ? '—' : v}</b></div>)}</div>
+}
+// barrinha de quanto já foi (entregue / produzido)
+export const BarraProg = ({ v, de }: { v: number; de: number }) => <span className="barra-prog" aria-hidden="true"><i style={{ width: `${Math.max(0, Math.min(100, de ? (v / de) * 100 : 0))}%` }} /></span>
+
 // texto com quebras de linha preservadas
 export const Texto = ({ t }: { t: string | null | undefined }) => <>{String(t || '').split('\n').map((l, n, a) => <span key={n}>{l}{n < a.length - 1 && <br />}</span>)}</>
 

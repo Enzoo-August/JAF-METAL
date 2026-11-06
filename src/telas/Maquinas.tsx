@@ -16,7 +16,7 @@ import { imprimirOS } from './fabrica/Manutencao.tsx'
 import { retirar } from './Movimentos.tsx'
 import { LinhaPeca } from './Pecas.tsx'
 
-export const TIPO_MANUT: Record<string, string> = { corretiva: 'Corretiva (problema)', preventiva: 'Preventiva', preditiva: 'Preditiva', melhoria: 'Melhoria' }
+export const TIPO_MANUT: Record<string, string> = { corretiva: 'Corretiva', preventiva: 'Preventiva', preditiva: 'Preditiva', melhoria: 'Melhoria' }
 const TIPO = TIPO_MANUT
 const GRUPOS = ['Máquina', 'Dispositivo', 'Ferramenta', 'Predial', 'Outro']
 const ST: Record<string, [string, 'vermelho' | 'amarelo' | 'verde']> = { aberta: ['Aberta', 'vermelho'], andamento: ['Em andamento', 'amarelo'], concluida: ['Concluída', 'verde'] }

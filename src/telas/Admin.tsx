@@ -8,7 +8,7 @@ import { Perm } from '../lib/perm.ts'
 import type { Historico, PerfilAcesso } from '../lib/tipos.ts'
 import * as U from '../lib/util.ts'
 import { aviso, erro } from '../ui/avisos.ts'
-import { excel, xlsx } from '../ui/arquivos.tsx'
+import { entregar, excel, pdfDocumento, xlsx } from '../ui/arquivos.tsx'
 import { Btn, Cab, Campo, Dl } from '../ui/base.tsx'
 import { ComboFuncionario } from '../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../ui/ganchos.ts'
@@ -26,7 +26,23 @@ const DESC_PERFIL: Record<string, string> = {
   gerente: 'Almoxarifado (estoque, retirar, máquinas), acompanha OFs, pedidos de clientes e a manutenção, e consulta o RH da equipe — sem salários, documentos pessoais nem CID.',
   tecnico: 'Departamento técnico e qualidade: produtos (cadastro técnico, estrutura, código inteligente), desenvolvimento, alterações, melhorias, projetos, desvios, desenhos, cópias controladas, IMDS, atas e setup. Consulta OFs e matéria-prima.',
   manutencao: 'Manutenção: ordens de serviço, preventiva (check-lists e plano anual), máquinas, peças críticas, serviços, gastos e ferramentaria. Retira peças do almoxarifado.',
+  comercial: 'Comercial (compras de matéria-prima): o que comprar, pedidos de compra por fornecedor com PDF, fornecedores, pedidos de clientes e estoque de material. Não vê salários nem financeiro.',
 }
+
+// um acesso de teste para cada setor (o Dono cria todos de uma vez e imprime a folha para entregar).
+// ".teste" no fim: deixa claro que é de teste e não ocupa o nome que a pessoa de verdade vai usar (e o usuário precisa de 3 letras ou mais)
+const SETORES: { perfil: string; login: string; nome: string }[] = [
+  { perfil: 'escritorio', login: 'escritorio.teste', nome: 'Teste Escritório' },
+  { perfil: 'comercial', login: 'comercial.teste', nome: 'Teste Comercial' },
+  { perfil: 'pcp', login: 'pcp.teste', nome: 'Teste PCP' },
+  { perfil: 'producao', login: 'producao.teste', nome: 'Teste Produção' },
+  { perfil: 'almoxarife', login: 'almoxarifado.teste', nome: 'Teste Almoxarifado' },
+  { perfil: 'tecnico', login: 'tecnico.teste', nome: 'Teste Técnico / Qualidade' },
+  { perfil: 'manutencao', login: 'manutencao.teste', nome: 'Teste Manutenção' },
+  { perfil: 'gerente', login: 'gerente.teste', nome: 'Teste Gerente de fábrica' },
+  { perfil: 'rh', login: 'rh.teste', nome: 'Teste RH' },
+  { perfil: 'dono', login: 'dono.teste', nome: 'Teste Dono' },
+]
 
 export function TelaAdmin({ r }: { r: Rota }) {
   const [aba, setAba] = useLembrar('admin.aba', 'acessos')
@@ -50,7 +66,8 @@ function Acessos() {
   const ps = U.ordenar(S.lista('perfis'), p => (p.ativo ? '0' : '1') + U.sem(p.nome))
   return <>
     <div className="card-cab"><p className="sub" style={{ margin: 0 }}>Cada pessoa entra com o próprio usuário e senha. O que cada perfil vê é controlado pelo banco de dados (não dá para burlar pelo navegador).</p>
-      <Btn txt="Novo acesso" icone="mais" cls="pri" data-ac="novo" onClick={() => void formAcesso()} /></div>
+      <div className="grupo-btn"><Btn txt="Um acesso de cada setor" icone="equipe" cls="sec" data-ac="setores" onClick={() => void acessosDeTeste()} />
+        <Btn txt="Novo acesso" icone="mais" cls="pri" data-ac="novo" onClick={() => void formAcesso()} /></div></div>
     <div className="lista">{ps.map(p => <div key={p.user_id} className="linha clicavel" data-acesso={p.user_id} onClick={() => void formAcesso(p)}><span className="avatar">{p.nome.charAt(0).toUpperCase()}</span>
       <div className="meio"><b>{p.nome} {!p.ativo && <span className="tag t-cinza">desativado</span>}{p.trocar_senha && <> <span className="tag t-amarelo">senha provisória</span></>}</b>
         <small>usuário <b>{p.login}</b> · {Perm.nome(p.perfil)}{p.funcionario_id ? ' · ' + (S.get('funcionarios', p.funcionario_id)?.nome || '') : ''}</small></div>
@@ -94,6 +111,87 @@ function CorpoAcesso({ p }: { p: PerfilAcesso | null }) {
       : <Campo nome="ativo" rotulo="Acesso ativo (desmarque para bloquear a entrada)" tipo="check" valor={p.ativo} />}
     {p && <button type="button" className="btn fantasma mini" data-x="senha" onClick={() => { j.limparSujo(); j.fechar(); void trocarSenha(p.user_id, p.nome) }}><Ic n="cadeado" /><span>Trocar a senha</span></button>}
   </>
+}
+
+// ---------------------------------------------------------------- um acesso de cada setor + folha para entregar
+interface Criado { setor: string; nome: string; login: string }
+async function acessosDeTeste() {
+  const existentes = new Set(S.lista('perfis').map(p => p.login))
+  const r = await modal<{ criados: Criado[]; senha: string; erros: string[] }>({
+    titulo: 'Um acesso de cada setor', largura: 'grande',
+    corpo: <>
+      <p className="nota">Para as pessoas da JAF testarem: cria um acesso para cada setor de uma vez. Todos começam com a <b>mesma senha provisória</b>;
+        na primeira entrada o sistema pede para cada um criar a <b>própria senha</b>. Depois você pode trocar o nome, ligar o acesso à pessoa certa ou desativar.</p>
+      <fieldset className="secao mt"><legend>Setores</legend>
+        <div className="setores-ac">{SETORES.map(s => { const ja = existentes.has(s.login)
+          return <div key={s.perfil} className={'setor-ac' + (ja ? ' ja' : '')}>
+            <label className="check"><input type="checkbox" name={'s_' + s.perfil} defaultChecked={!ja && s.perfil !== 'dono'} disabled={ja} /> <span><b>{Perm.nome(s.perfil)}</b>{ja ? <small>já existe o usuário “{s.login}”</small> : s.perfil === 'dono' ? <small>vê tudo, inclusive salários — marque só se precisar</small> : null}</span></label>
+            <input name={'l_' + s.perfil} defaultValue={s.login} aria-label={'Usuário ' + Perm.nome(s.perfil)} autoCapitalize="none" spellCheck={false} disabled={ja} />
+            <input name={'n_' + s.perfil} defaultValue={s.nome} aria-label={'Nome ' + Perm.nome(s.perfil)} disabled={ja} />
+          </div> })}</div>
+      </fieldset>
+      <fieldset className="secao"><legend>Senha provisória (a mesma para todos)</legend>
+        <div className="linha-campos l2">
+          <Campo nome="senha" rotulo="Senha provisória" tipo="password" req auto="new-password" ajuda="8 letras ou números ou mais. O sistema recusa senhas fáceis (12345678, senha123, jafmetal…)." />
+          <Campo nome="senha2" rotulo="Repita a senha" tipo="password" req auto="new-password" />
+        </div>
+      </fieldset>
+    </>,
+    botoes: [{ txt: 'Criar os acessos e imprimir a folha', icone: 'imprimir', acao: async (f) => {
+      const d = lerForm(f)
+      if (d.senha !== d.senha2) throw new ErroApp('As duas senhas não são iguais.')
+      const marcados = SETORES.filter(s => d['s_' + s.perfil])
+      if (!marcados.length) throw new ErroApp('Marque pelo menos um setor.')
+      const criados: Criado[] = [], erros: string[] = []
+      for (const s of marcados) {
+        const login = String(d['l_' + s.perfil] || '').trim().toLowerCase(), nome = String(d['n_' + s.perfil] || '').trim() || s.nome
+        try { await API.rpc('criar_acesso', { p_login: login, p_senha: d.senha, p_nome: nome, p_perfil: s.perfil, p_func: null }); criados.push({ setor: Perm.nome(s.perfil), nome, login }) }
+        catch (e) {
+          const m = traduzir(e).message
+          if (/senha/i.test(m) && !criados.length) throw new ErroApp(m) // senha recusada: nada foi criado, corrige e tenta de novo
+          erros.push(`${Perm.nome(s.perfil)} (${login}): ${m}`)
+        }
+      }
+      await App.gravou(['perfis'])
+      return { criados, senha: String(d.senha), erros }
+    } }],
+  })
+  if (!r) return
+  if (r.erros.length) aviso('Não foram criados: ' + r.erros.join('; '), 'erro')
+  if (r.criados.length) { aviso(`${U.plural(r.criados.length, 'acesso criado', 'acessos criados')}.`); await folhaAcessos(r.criados, r.senha) }
+}
+
+async function folhaAcessos(l: Criado[], senha: string) {
+  const site = location.origin.replace(/^https?:\/\//, '')
+  const blob = await pdfDocumento('Acessos para teste — JAF Metal', `Endereço: ${site}   ·   senha provisória (a mesma para todos): ${senha}`, (c) => {
+    c.tabela({ ...c.estilo, startY: c.y + 2, head: [['Setor', 'Nome', 'Usuário', 'Senha provisória']], body: l.map(x => [x.setor, x.nome, x.login, senha]),
+      columnStyles: { 2: { font: 'courier', fontStyle: 'bold' }, 3: { font: 'courier' } } })
+    let y = c.doc.lastAutoTable.finalY + 8
+    y = c.texto('Como entrar pela primeira vez', y, { tam: 11, negrito: true })
+    for (const t of [`1. Abra ${site} no computador ou no celular (Chrome, Edge ou Safari).`, '2. Digite o usuário e a senha provisória do seu setor.',
+      '3. O sistema pede uma senha nova, só sua: 8 letras ou números ou mais. Não use datas nem o nome da empresa.',
+      '4. No celular dá para instalar como aplicativo: menu do navegador > "Instalar" ou "Adicionar à tela inicial".',
+      '5. Dúvidas: o botão "?" no alto de cada tela explica a tela, e o guia em PDF do seu setor mostra o passo a passo.'])
+      y = c.texto(t, y + 1, { tam: 9.5 })
+    // um cartão para recortar e entregar a cada pessoa
+    c.doc.addPage()
+    const lw = (c.W - 28 - 8) / 2, lh = 82
+    l.forEach((x, i) => {
+      const k = i % 6; if (i && k === 0) c.doc.addPage()
+      const cx = 14 + (k % 2) * (lw + 8), cy = 16 + Math.floor(k / 2) * (lh + 6)
+      c.doc.setDrawColor(150); c.doc.setLineWidth(0.3); c.doc.setLineDashPattern([2, 1.5], 0); c.doc.rect(cx, cy, lw, lh); c.doc.setLineDashPattern([], 0)
+      c.doc.setFillColor(28, 42, 61); c.doc.rect(cx, cy, lw, 11, 'F')
+      c.doc.setTextColor(255); c.doc.setFont('helvetica', 'bold'); c.doc.setFontSize(10.5); c.doc.text('JAF Metal — seu acesso ao sistema', cx + 4, cy + 7.3)
+      c.doc.setTextColor(25); c.doc.setFontSize(9); c.doc.setFont('helvetica', 'normal')
+      const lin: [string, string][] = [['Setor', x.setor], ['Nome', x.nome], ['Endereço', site], ['Usuário', x.login], ['Senha provisória', senha]]
+      lin.forEach(([k2, v], n) => { const yy = cy + 19 + n * 7; c.doc.setTextColor(110); c.doc.text(k2, cx + 4, yy); c.doc.setTextColor(20)
+        c.doc.setFont(n >= 3 ? 'courier' : 'helvetica', n >= 3 ? 'bold' : 'normal'); c.doc.setFontSize(n >= 3 ? 11 : 9.5); c.doc.text(v, cx + 36, yy); c.doc.setFont('helvetica', 'normal'); c.doc.setFontSize(9) })
+      c.doc.setTextColor(90); c.doc.setFontSize(8)
+      c.doc.text(c.doc.splitTextToSize('Na primeira entrada o sistema pede uma senha nova, só sua. Guarde-a: ninguém da empresa precisa saber.', lw - 8), cx + 4, cy + 58)
+      c.doc.text(c.doc.splitTextToSize('Dúvida? Botão "?" no alto de cada tela.', lw - 8), cx + 4, cy + 72)
+    })
+  })
+  await entregar(blob, 'Acessos para teste - JAF Metal.pdf', { titulo: 'Folha de acessos — imprima e entregue a cada setor', dica: 'Página 1: a lista para o Dono. Depois: um cartão para recortar e entregar a cada pessoa.' })
 }
 
 export async function trocarSenha(uid: string, nome: string) {

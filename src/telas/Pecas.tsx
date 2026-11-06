@@ -125,7 +125,7 @@ function Ficha({ id }: { id: string }) {
         <tbody>{lotes.map(l => <tr key={l.mov.id}><td data-r="Entrada" className="titulo">{U.data(l.mov.data)}</td><td data-r="Documento">{l.mov.documento || '—'}</td><td data-r="Restam" className="num">{U.qtd(l.resta)}</td><td data-r="Preço" className="num">{U.moeda(l.mov.preco_unit)}</td><td data-r="Valor" className="num">{U.moeda(l.valor)}</td></tr>)}</tbody></table></div></section>}
     {abertos.length > 0 && <section className="card mt"><div className="card-cab"><h2>Pedidos a caminho</h2></div><div className="lista">{abertos.map(({ ped, item }) =>
       <a key={item.id} className="linha" href={'#/pedido/' + ped.id}><div className="meio"><b>Pedido nº {ped.numero} · {S.get('fornecedores', ped.fornecedor_id)?.nome || ''}</b><small>{U.qtd(item.qtd - item.recebido)} de {U.qtd(item.qtd)} faltando chegar</small></div>
-        <div className="lado"><Tag s={C.situacaoPedido(ped)} /><small>{ped.prazo ? U.relativo(ped.prazo) : ''}</small></div></a>)}</div></section>}
+        <div className="lado"><Tag s={C.situacaoPedido(ped)} />{ped.prazo && ped.prazo !== U.hoje() ? <small>{U.relativo(ped.prazo)}</small> : null}</div></a>)}</div></section>}
     {p.obs && <section className="card mt"><h2>Observações</h2><p className="mt"><Texto t={p.obs} /></p></section>}
     <section className="card mt"><div className="card-cab"><h2>Movimentações</h2><span className="sub">{U.plural(movs.length, 'lançamento')}</span></div>
       {movs.length ? <Paginado itens={movs} passo={30} render={(m) => <LinhaMov key={m.id} m={m} />} /> : <p className="sub">Nenhuma movimentação.</p>}</section>
@@ -149,21 +149,30 @@ export async function form(p?: Peca | null): Promise<string | null> {
   const base: Partial<Peca> = p || { unidade: 'un', est_min: 0, est_max: 0, ativo: true }
   const utils = U.unicos([...S.lista('pecas').map(x => x.utilizacao), ...S.lista('maquinas').map(m => m.nome)].filter((x): x is string => !!x)).sort((a, b) => a.localeCompare(b, 'pt-BR'))
   const id = await modal<string>({
-    titulo: novo ? 'Nova peça' : 'Editar peça',
+    titulo: novo ? 'Nova peça' : 'Editar peça', largura: 'larga',
     corpo: <>
-      <div className="linha-campos l2">
-        <Campo nome="codigo" rotulo="Código" valor={base.codigo} req ajuda="O código do fabricante ou o seu." />
-        <Campo nome="unidade" rotulo="Unidade" valor={base.unidade} tipo="select" opcoes={UNIDADES.map(v => ({ v, t: v }))} />
-      </div>
-      <Campo nome="descricao" rotulo="Descrição" valor={base.descricao} req />
-      <Campo nome="utilizacao" rotulo="Onde é usada (máquina / dispositivo)" valor={base.utilizacao} attrs={{ list: 'listaUtil' }} />
-      <datalist id="listaUtil">{utils.map(u => <option key={u} value={u} />)}</datalist>
-      {Perm.pode('compras') && <ComboFornecedor id="cForn" nome="fornecedor_id" rotulo="Fornecedor de costume" placeholder="Digite para buscar" inicial={S.get('fornecedores', base.fornecedor_id)} />}
-      <div className="linha-campos l3">
-        <Campo nome="est_min" rotulo="Estoque mínimo" tipo="qtd" valor={U.campoNum(base.est_min, 3)} ajuda="Abaixo disso: comprar" />
-        <Campo nome="est_max" rotulo="Estoque máximo" tipo="qtd" valor={U.campoNum(base.est_max, 3)} ajuda="Compra completa até aqui" />
-        <Campo nome="local" rotulo="Prateleira / local" valor={base.local} placeholder="Ex.: A3" />
-      </div>
+      <fieldset className="secao"><legend>A peça</legend>
+        <div className="linha-campos l3">
+          <Campo nome="codigo" rotulo="Código" valor={base.codigo} req ajuda="O código do fabricante ou o seu." />
+          <Campo nome="unidade" rotulo="Unidade" valor={base.unidade} tipo="select" opcoes={UNIDADES.map(v => ({ v, t: v }))} />
+          <Campo nome="local" rotulo="Prateleira / local" valor={base.local} placeholder="Ex.: A3" />
+        </div>
+        <Campo nome="descricao" rotulo="Descrição" valor={base.descricao} req placeholder="Ex.: Rolamento 6204 ZZ" />
+      </fieldset>
+      <fieldset className="secao"><legend>Onde é usada{Perm.pode('compras') ? ' e quem fornece' : ''}</legend>
+        <div className={'linha-campos' + (Perm.pode('compras') ? ' l2' : '')}>
+          <Campo nome="utilizacao" rotulo="Máquina ou dispositivo" valor={base.utilizacao} attrs={{ list: 'listaUtil' }} placeholder="Ex.: Torno CNC 02" />
+          {Perm.pode('compras') && <ComboFornecedor id="cForn" nome="fornecedor_id" rotulo="Fornecedor de costume" placeholder="Digite para buscar" inicial={S.get('fornecedores', base.fornecedor_id)} />}
+        </div>
+        <datalist id="listaUtil">{utils.map(u => <option key={u} value={u} />)}</datalist>
+      </fieldset>
+      <fieldset className="secao"><legend>Estoque</legend>
+        <p className="secao-dica">Quando o saldo fica abaixo do <b>mínimo</b>, a peça entra sozinha na lista de compras; a compra completa até o <b>máximo</b>.</p>
+        <div className="linha-campos l3">
+          <Campo nome="est_min" rotulo="Estoque mínimo" tipo="qtd" valor={U.campoNum(base.est_min, 3)} ajuda="Abaixo disso: comprar" />
+          <Campo nome="est_max" rotulo="Estoque máximo" tipo="qtd" valor={U.campoNum(base.est_max, 3)} ajuda="Compra completa até aqui" />
+        </div>
+      </fieldset>
       <Campo nome="obs" rotulo="Observações" tipo="area" valor={base.obs} linhas={2} />
       {!novo && <Campo nome="ativo" rotulo="Peça ativa (desmarque para esconder sem apagar o histórico)" tipo="check" valor={base.ativo} />}
     </>,

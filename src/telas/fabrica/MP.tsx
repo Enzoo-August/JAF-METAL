@@ -9,10 +9,10 @@ import type { LoteMP } from '../../lib/tipos.ts'
 import * as U from '../../lib/util.ts'
 import { entregar, excel, pdfDocumento } from '../../ui/arquivos.tsx'
 import { aviso } from '../../ui/avisos.ts'
-import { BuscaLista, Btn, Cab, Campo, Chips, Dl, Paginado, Tag, Texto, Vazio } from '../../ui/base.tsx'
+import { BarraProg, Btn, BuscaLista, Cab, Campo, Chips, Cols, Dl, Paginado, Tag, Texto, Vazio } from '../../ui/base.tsx'
 import { ComboFornecedor } from '../../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
-import { confirmar, lerForm, modal, useJanela } from '../../ui/janelas.tsx'
+import { lerForm, modal, useJanela } from '../../ui/janelas.tsx'
 import { lerNota } from '../Nota.tsx'
 import { ComboProduto, ComTabelas } from './comum.tsx'
 import { LinhaOF } from './OFs.tsx'
@@ -28,8 +28,9 @@ export function riSemEntrada(): Map<number, number> {
 
 function LinhaLote({ l }: { l: LoteMP }) {
   const p = S.get('produtos', l.produto_id), s = C.saldoLote(l)
-  return <div className="linha clicavel" data-ri={l.ri} onClick={() => void detalhe(l.id)}><div className="meio"><b>R.I. {l.ri} · {p?.codigo || '?'}</b>
-    <small>{[p?.descricao, U.dataCurta(l.data), l.fornecedor_nome, l.nota ? 'NF ' + l.nota : ''].filter(Boolean).join(' · ')}</small></div>
+  return <div className="linha clicavel cols" data-ri={l.ri} onClick={() => void detalhe(l.id)}><div className="meio"><b>R.I. {l.ri} · {p?.codigo || '?'}</b>
+    <small>{p?.descricao}<span className="so-estreito">{[' ', U.dataCurta(l.data), l.fornecedor_nome, l.nota ? 'NF ' + l.nota : ''].filter(Boolean).join(' · ').replace(/^ · /, ' · ')}</span></small></div>
+    <Cols itens={[['Entrada', U.dataCurta(l.data)], ['Fornecedor', l.fornecedor_nome], ['Nota fiscal', l.nota], ['Usado', <>{U.qtd(Number(l.qtd) - s)} de {U.qtd(l.qtd)}<BarraProg v={Number(l.qtd) - s} de={Number(l.qtd) || 0} /></>]]} />
     <div className="lado"><b>{U.qtd(s)}</b><small>de {U.qtd(l.qtd)}</small>{l.status !== 'Aprovado' && <Tag s={{ txt: l.status, cor: COR_ST[l.status] }} />}</div></div>
 }
 
@@ -117,22 +118,26 @@ export async function formLote(b: Partial<LoteMP> = {}): Promise<unknown> {
   await S.garantir(['produtos', 'mp_lotes'])
   const novo = !b.id
   return modal({
-    titulo: novo ? 'Entrada de matéria-prima' : `Editar R.I. ${b.ri}`,
+    titulo: novo ? 'Entrada de matéria-prima' : `Editar R.I. ${b.ri}`, largura: 'larga',
     corpo: <>
       {novo && <LerNotaDica />}
-      <ComboProduto id="mpProd" nome="produto_id" rotulo="Material" classe="mp" req placeholder="Código ou descrição do material" inicial={S.get('produtos', b.produto_id)} />
-      <div className="linha-campos">
-        <Campo nome="qtd" rotulo="Quantidade (kg ou pç)" tipo="qtd" req valor={U.campoNum(b.qtd, 3)} />
-        <Campo nome="data" rotulo="Data" tipo="date" valor={b.data || U.hoje()} />
-        <Campo nome="ri" rotulo="R.I." tipo="num" valor={b.ri} ajuda={novo ? 'Em branco = próximo número' : ''} />
-      </div>
-      <div className="linha-campos">
-        <Campo nome="nota" rotulo="Nota fiscal" valor={b.nota} />
-        <Campo nome="pedido" rotulo="Pedido" valor={b.pedido} />
-        <Campo nome="status" rotulo="Inspeção" tipo="select" valor={b.status || 'Aprovado'} opcoes={['Aprovado', 'Aguardando', 'Reprovado'].map(v => ({ v, t: v }))} />
-      </div>
-      <ComboFornecedor id="mpForn" nome="fornecedor_id" rotulo="Fornecedor" placeholder="Usina, distribuidor…" inicial={S.get('fornecedores', b.fornecedor_id)} />
-      {!b.fornecedor_id && b.fornecedor_nome && <p className="sub">Na planilha: {b.fornecedor_nome}</p>}
+      <fieldset className="secao"><legend>Material que chegou</legend>
+        <ComboProduto id="mpProd" nome="produto_id" rotulo="Material" classe="mp" req placeholder="Código ou descrição do material" inicial={S.get('produtos', b.produto_id)} />
+        <div className="linha-campos l3">
+          <Campo nome="qtd" rotulo="Quantidade (kg ou pç)" tipo="qtd" req valor={U.campoNum(b.qtd, 3)} />
+          <Campo nome="data" rotulo="Data da entrada" tipo="date" valor={b.data || U.hoje()} />
+          <Campo nome="ri" rotulo="R.I. (número do lote)" tipo="num" valor={b.ri} ajuda={novo ? 'Em branco = próximo número' : ''} />
+        </div>
+      </fieldset>
+      <fieldset className="secao"><legend>Nota e fornecedor</legend>
+        <ComboFornecedor id="mpForn" nome="fornecedor_id" rotulo="Fornecedor" placeholder="Usina, distribuidor…" inicial={S.get('fornecedores', b.fornecedor_id)} />
+        {!b.fornecedor_id && b.fornecedor_nome && <p className="sub">Na planilha: {b.fornecedor_nome}</p>}
+        <div className="linha-campos l3">
+          <Campo nome="nota" rotulo="Nota fiscal" valor={b.nota} />
+          <Campo nome="pedido" rotulo="Nº do pedido de compra" valor={b.pedido} />
+          <Campo nome="status" rotulo="Inspeção" tipo="select" valor={b.status || 'Aprovado'} opcoes={['Aprovado', 'Aguardando', 'Reprovado'].map(v => ({ v, t: v }))} />
+        </div>
+      </fieldset>
       <Campo nome="obs" rotulo="Observações" tipo="area" linhas={2} valor={novo ? '' : b.obs} />
     </>,
     botoes: [{ txt: novo ? 'Lançar entrada' : 'Salvar', acao: async (f) => {
@@ -141,12 +146,11 @@ export async function formLote(b: Partial<LoteMP> = {}): Promise<unknown> {
       if (!f.dataset.envio) f.dataset.envio = b.id || U.uuid()
       const r = await API.rpc<{ id: string; ri: number }>('salvar_lote', { p: { ...d, id: f.dataset.envio } })
       await App.gravou(['mp_lotes']); aviso(novo ? `Entrada lançada: R.I. ${r.ri}.` : 'Lote salvo.')
-      if (novo) { const l = S.get('mp_lotes', r.id); if (l && await perguntarEtiqueta()) await etiqueta(l) }
+      if (novo) { const l = S.get('mp_lotes', r.id); if (l) setTimeout(() => void etiqueta(l, `R.I. ${l.ri} lançado — imprima a etiqueta e cole no material`), 250) }
       return r.id
     } }],
   })
 }
-const perguntarEtiqueta = () => confirmar('Imprimir a etiqueta de identificação do material?', { ok: 'Imprimir', nao: 'Agora não' })
 
 async function inventario(l: LoteMP) {
   return modal({
@@ -159,7 +163,7 @@ async function inventario(l: LoteMP) {
 }
 
 // etiqueta "Identificação de Material" (Form 001)
-export async function etiqueta(l: LoteMP): Promise<void> {
+export async function etiqueta(l: LoteMP, titulo?: string): Promise<void> {
   const p = S.get('produtos', l.produto_id)
   const blob = await pdfDocumento('Identificação de Material', 'Form 001', (c) => {
     c.doc.setFont('helvetica', 'bold'); c.doc.setFontSize(40); c.doc.text(`R.I. ${l.ri}`, c.W / 2, c.y + 18, { align: 'center' }); c.doc.setFont('helvetica', 'normal')
@@ -169,5 +173,5 @@ export async function etiqueta(l: LoteMP): Promise<void> {
       columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold', fillColor: [240, 243, 247] } } })
     c.assinatura('Inspecionado por', '', c.W / 2 - 40, c.doc.lastAutoTable.finalY + 28, 80)
   })
-  await entregar(blob, `RI ${l.ri}.pdf`)
+  await entregar(blob, `RI ${l.ri}.pdf`, { titulo: titulo || `Etiqueta do R.I. ${l.ri}`, dica: 'Imprima e cole no material. Se não for imprimir agora, feche: a etiqueta fica no R.I. (botão Etiqueta).' })
 }

@@ -24,9 +24,12 @@ interface CampoReg { k: string; rot: string; t?: TipoCampo; lista?: boolean; sug
 interface DefReg {
   tipo: TipoRegistro; nome: string; sing: string; aba: string; area: 'tecnico' | 'pcp' | 'manut'
   status: string[]; fechados: string[]; campos: CampoReg[]; maquina?: boolean; dinheiro?: boolean; form?: string
+  /** quem só PEDE (ex.: a Produção pedindo alteração) vê só estes campos; o resto (análise, aprovação, prazo…) é da Engenharia */
+  pede?: string[]
 }
 
 const C_ = (k: string, rot: string, x: Partial<CampoReg> = {}): CampoReg => ({ k, rot, ...x })
+const SETOR_PERFIL: Record<string, string> = { producao: 'Produção', pcp: 'PCP', almoxarife: 'Almoxarifado', manutencao: 'Manutenção', gerente: 'Gerência', comercial: 'Comercial', escritorio: 'Escritório', tecnico: 'Engenharia', rh: 'RH', dono: 'Diretoria' }
 export const DEFS: DefReg[] = [
   { tipo: 'desenvolvimento', nome: 'Desenvolvimento', sing: 'desenvolvimento', aba: 'Desenvolvimento', area: 'tecnico', form: 'Desenvolvimento (check list e Form.021)', status: ['Em andamento', 'Aguardando cliente', 'Aprovado', 'Concluído', 'Cancelado'], fechados: ['Concluído', 'Aprovado', 'Cancelado', 'Ok'],
     campos: [C_('numero', 'Nº', { t: 'num' }), C_('codigo', 'Código JAF', { lista: true }), C_('titulo', 'Descrição', { lista: true, req: true }), C_('d.cliente', 'Cliente', { lista: true, sug: true }), C_('d.codigo_cliente', 'Código cliente'),
@@ -36,11 +39,13 @@ export const DEFS: DefReg[] = [
       C_('titulo', 'Descrição', { t: 'area', lista: true, req: true, largo: true }), C_('d.aplicacao', 'Aplicação'), C_('responsavel', 'Responsável', { sug: true }), C_('prazo', 'Prazo final', { t: 'date' }),
       C_('d.aprovacao', 'Aprovação', { t: 'date' }), C_('d.resultado', 'Análise dos resultados', { t: 'area', largo: true }), C_('d.responsavel2', 'Responsável (análise)'), C_('concluido_em', 'Data conclusão', { t: 'date' }), C_('status', 'Status')] },
   { tipo: 'melhoria', nome: 'Melhorias', sing: 'melhoria', aba: 'Melhorias', area: 'tecnico', form: 'Form. Melhorias', status: ['Em andamento', 'Concluído', 'Cancelado'], fechados: ['Concluído', 'Cancelado'],
+    pede: ['numero', 'data', 'titulo', 'd.situacao_atual', 'd.equipe'],
     campos: [C_('numero', 'Sequência', { t: 'num' }), C_('data', 'Data início', { t: 'date' }), C_('titulo', 'Objetivo da melhoria', { t: 'area', lista: true, req: true, largo: true }), C_('d.equipe', 'Equipe'),
       C_('d.situacao_atual', 'Descrição da situação atual', { t: 'area', largo: true }), C_('d.acoes_planejadas', 'Ações planejadas', { t: 'area', largo: true }),
       C_('d.acoes_implementadas', 'Ações implementadas', { t: 'area', largo: true }), C_('d.analise', 'Análise dos resultados', { t: 'area', largo: true }),
       C_('responsavel', 'Responsável', { sug: true }), C_('prazo', 'Prazo final', { t: 'date' }), C_('concluido_em', 'Data conclusão', { t: 'date' }), C_('status', 'Status')] },
   { tipo: 'alteracao', nome: 'Solicitações de alteração', sing: 'solicitação de alteração', aba: 'Sol. Alt.', area: 'tecnico', form: 'F. Sol. Alt.', status: ['Em andamento', 'Aprovada', 'Reprovada', 'Concluído'], fechados: ['Concluído', 'Reprovada'],
+    pede: ['numero', 'data', 'd.solicitante', 'd.setor', 'codigo', 'titulo', 'd.justificativa'],
     campos: [C_('numero', 'Nº', { t: 'num' }), C_('data', 'Data', { t: 'date' }), C_('d.solicitante', 'Solicitante', { lista: true, sug: true }), C_('d.setor', 'Setor', { sug: true }),
       C_('codigo', 'Código (se for de uma peça)'), C_('titulo', 'Descrição da solicitação', { t: 'area', lista: true, req: true, largo: true }), C_('d.justificativa', 'Justificativa', { t: 'area', largo: true }),
       C_('d.analise', 'Análise do setor responsável', { t: 'area', largo: true }), C_('d.situacao', 'Situação (aprovada / reprovada)', { sug: true }), C_('d.aprovador', 'Aprovado por'),
@@ -240,8 +245,12 @@ export async function formReg(d: DefReg, x: Partial<RegistroFab> = {}): Promise<
   const novo = !x.id
   const todos = S.lista('registros').filter(r => r.tipo === d.tipo)
   const sugest = (c: CampoReg) => c.k === 'status' ? usados([...d.status, ...todos.map(r => r.status)]) : usados(todos.map(r => ler(r, c.k) as string))
+  const podeEd = podeEditarReg(d)
+  // quem só pede (não é da Engenharia) vê só os campos do pedido, com o nome e o setor já preenchidos
+  const soPedido = novo && !podeEd && !!d.pede
+  const inicial: Record<string, string> = soPedido ? { 'd.solicitante': API.sessao?.nome || '', 'd.setor': SETOR_PERFIL[API.sessao?.perfil || ''] || '' } : {}
   const campo = (c: CampoReg) => {
-    const v = ler(x, c.k)
+    const v = ler(x, c.k) ?? inicial[c.k]
     const nome = c.k.startsWith('d.') ? 'd__' + c.k.slice(2) : c.k
     if (c.k === 'maquina_id') return <ComboMaquina key={c.k} id={'reg_' + d.tipo + '_maq'} nome="maquina_id" rotulo={c.rot} placeholder="Código ou nome" inicial={S.get('maquinas', v as string)} />
     if (c.k === 'numero' && novo && ['desenvolvimento', 'projeto', 'melhoria', 'alteracao', 'desvio', 'copia', 'ata', 'servico_externo'].includes(d.tipo))
@@ -253,14 +262,15 @@ export async function formReg(d: DefReg, x: Partial<RegistroFab> = {}): Promise<
       <Campo nome={nome} rotulo={c.rot} tipo={tipo} req={c.req} valor={val} linhas={3} attrs={lista} />
       {(c.sug || c.k === 'status') && <datalist id={`sug_${d.tipo}_${nome}`}>{sugest(c).map(s => <option key={s} value={s} />)}</datalist>}</div>
   }
-  const curtos = d.campos.filter(c => !(c.largo || c.t === 'area')), longos = d.campos.filter(c => c.largo || c.t === 'area')
+  const visiveis = soPedido ? d.campos.filter(c => d.pede!.includes(c.k)) : d.campos
+  const curtos = visiveis.filter(c => !(c.largo || c.t === 'area')), longos = visiveis.filter(c => c.largo || c.t === 'area')
   const pares: CampoReg[][] = []
   for (let i = 0; i < curtos.length; i += 3) pares.push(curtos.slice(i, i + 3))
-  const podeEd = podeEditarReg(d)
   return modal({
     titulo: novo ? `${d.tipo === 'alteracao' ? 'Solicitar alteração' : d.tipo === 'melhoria' ? 'Sugerir melhoria' : 'Novo: ' + d.sing}` : `${d.sing[0].toUpperCase() + d.sing.slice(1)}${x.numero ? ' nº ' + x.numero : ''}`,
     largura: 'larga',
-    corpo: <>{pares.map((p, i) => <div key={i} className="linha-campos">{p.map(campo)}</div>)}{longos.map(campo)}</>,
+    corpo: <>{soPedido && <p className="nota">{d.tipo === 'alteracao' ? 'Conte o que precisa mudar e por quê. A Engenharia recebe, analisa e responde aqui mesmo.' : 'Conte a ideia. A Engenharia recebe e acompanha até concluir.'}</p>}
+      {pares.map((p, i) => <div key={i} className="linha-campos">{p.map(campo)}</div>)}{longos.map(campo)}</>,
     botoes: [
       ...(!novo ? [{ txt: 'Imprimir', cls: 'sec', validar: false, acao: async () => { await pdfFicha(d, S.get('registros', x.id!) || (x as RegistroFab)); return false } }] : []),
       ...(!novo && podeEd ? [{ txt: 'Excluir', cls: 'fantasma', validar: false, acao: async () => {

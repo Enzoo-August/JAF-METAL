@@ -21,7 +21,10 @@ window.auditar = async function auditar(opt = {}) {
     const emJanela = raiz.classList?.contains('janela-fundo') ? raiz : null;
     const topo = emJanela ? emJanela.querySelector('.janela-cab').getBoundingClientRect().bottom : Math.max(document.querySelector('.topo')?.getBoundingClientRect().bottom || 0, document.querySelector('.subabas')?.getBoundingClientRect().bottom || 0);
     const abas = document.querySelector('.abas');
-    const baixo = emJanela ? emJanela.querySelector('.janela-pe').getBoundingClientRect().top : (!abas || getComputedStyle(abas).display === 'none' ? H : abas.getBoundingClientRect().top);
+    let baixo = emJanela ? emJanela.querySelector('.janela-pe').getBoundingClientRect().top : (!abas || getComputedStyle(abas).display === 'none' ? H : abas.getBoundingClientRect().top);
+    // barra de ação grudada embaixo (ex.: "Fazer pedido de compra"): o conteúdo passa por baixo dela ao rolar e, no fim da lista, ela fica depois do último item
+    const barra = emJanela ? null : [...document.querySelectorAll('.barra-acao')].find(x => x.offsetParent && x.getBoundingClientRect().top < baixo);
+    if (barra) baixo = Math.min(baixo, barra.getBoundingClientRect().top);
     document.activeElement?.blur?.(); raiz.querySelectorAll('.combo-lista').forEach(c => c.hidden = true);
     for (const e of els) {
       A.vistos++;
@@ -34,7 +37,7 @@ window.auditar = async function auditar(opt = {}) {
       if (toque && r.height < 30 && !e.matches('input[type=checkbox], input[type=radio]') && !e.closest('.combo-lista, .busca-res'))
         A.problemas.push(`${onde}: "${nome}" pequeno para o dedo (${Math.round(r.height)} px)`);
       // coberto? só o que está visível na tela agora
-      const fixo = e.closest('.topo, .abas, .janela-cab, .janela-pe, .subabas');
+      const fixo = e.closest('.topo, .abas, .janela-cab, .janela-pe, .subabas, .barra-acao');
       const naFaixa = fixo ? (r.top >= 0 && r.bottom <= H) : (r.top >= topo && r.bottom <= baixo);
       if (naFaixa && r.left >= 0 && r.right <= W && !rolavel) {
         const cx = r.left + r.width / 2, cy = r.top + r.height / 2;

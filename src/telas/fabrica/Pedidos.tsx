@@ -10,7 +10,7 @@ import type { Venda } from '../../lib/tipos.ts'
 import * as U from '../../lib/util.ts'
 import { excel } from '../../ui/arquivos.tsx'
 import { aviso } from '../../ui/avisos.ts'
-import { BuscaLista, Btn, Cab, Campo, Chips, Dl, Paginado, Tag, Vazio } from '../../ui/base.tsx'
+import { BarraProg, BuscaLista, Btn, Cab, Campo, Chips, Cols, Dl, Paginado, Tag, Vazio } from '../../ui/base.tsx'
 import { ComboCliente } from '../../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
@@ -23,9 +23,13 @@ const TABS = ['produtos', 'produto_estrutura', 'vendas', 'vendas_entregas', 'ofs
 
 function LinhaVenda({ v }: { v: Venda }) {
   const st = C.situacaoVenda(v), s = C.saldoVenda(v)
-  return <div className="linha clicavel" data-venda={v.id} onClick={() => void detalhe(v.id)}><div className="meio"><b>{v.cliente_nome || '—'} · {v.codigo || v.descricao}</b>
-    <small>{[v.codigo ? v.descricao : '', v.codigo_cliente, v.pedido ? 'pedido ' + v.pedido : '', 'prazo ' + U.dataCurta(v.prazo)].filter(Boolean).join(' · ')}</small></div>
-    <div className="lado"><b>{U.qtd(Math.max(0, s))}</b><small>de {U.qtd(v.qtd)}</small><Tag s={st} /></div></div>
+  const dias = v.prazo ? Math.round((Date.parse(v.prazo) - Date.parse(U.hoje())) / 864e5) : null
+  const aberto = ['aguardando', 'atencao', 'atraso'].includes(st.cod)
+  return <div className="linha clicavel cols" data-venda={v.id} onClick={() => void detalhe(v.id)}><div className="meio"><b>{v.cliente_nome || '—'} · {v.codigo || v.descricao}</b>
+    <small>{[v.codigo ? v.descricao : '', v.codigo_cliente].filter(Boolean).join(' · ')}<span className="so-estreito">{[v.pedido ? ' · pedido ' + v.pedido : '', ' · prazo ' + U.dataCurta(v.prazo)].join('')}</span></small></div>
+    <Cols itens={[['Pedido', v.pedido], ['Prazo', <>{U.dataCurta(v.prazo)}{aberto && dias !== null ? <small className="col-sub">{dias < 0 ? `${-dias} d atrasado` : dias === 0 ? 'hoje' : `em ${dias} d`}</small> : null}</>, aberto && dias !== null && dias < 0 ? 'txt-vermelho' : ''],
+      ['Entregue', <>{U.qtd(v.entregue || 0)} de {U.qtd(v.qtd)}<BarraProg v={Number(v.entregue) || 0} de={Number(v.qtd) || 0} /></>], ['Preço unit.', v.valor ? U.moeda(v.valor) : '']]} />
+    <div className="lado"><b>{U.qtd(Math.max(0, s))}</b><small>saldo</small><Tag s={st} /></div></div>
 }
 
 export function TelaPedidos({ r }: { r: Rota }) {
@@ -122,16 +126,22 @@ export async function formVenda(b: Partial<Venda> = {}): Promise<unknown> {
     return true
   }
   return modal({
-    titulo: novo ? 'Novo pedido de cliente' : 'Editar pedido',
+    titulo: novo ? 'Novo pedido de cliente' : 'Editar pedido', largura: 'larga',
     corpo: <>
-      <ComboCliente id="venCli" nome="cliente_id" rotulo="Cliente" req={!b.cliente_nome} placeholder="Nome do cliente" inicial={S.get('clientes', b.cliente_id)} />
-      {!b.cliente_id && b.cliente_nome && <p className="sub">Na planilha: {b.cliente_nome}</p>}
-      <div className="linha-campos"><Campo nome="pedido" rotulo="Nº do pedido do cliente" valor={b.pedido} /><Campo nome="prazo" rotulo="Prazo de entrega" tipo="date" req valor={b.prazo} /></div>
-      <ComboProduto id="venProd" nome="produto_id" rotulo="Código JAF" placeholder="Código ou descrição" classe="peca" inicial={S.get('produtos', b.produto_id)} />
-      <div className="linha-campos"><Campo nome="codigo_cliente" rotulo="Código do cliente" valor={b.codigo_cliente} ajuda="Em branco = o do cadastro do produto" />
-        <Campo nome="descricao" rotulo="Descrição (se não tem código)" valor={b.produto_id ? '' : b.descricao} /></div>
-      <div className="linha-campos"><Campo nome="qtd" rotulo="Quantidade" tipo="qtd" req valor={U.campoNum(b.qtd, 3)} />
-        <Campo nome="valor" rotulo="Preço unitário" tipo="dinheiro" valor={U.campoNum(b.valor, 4)} /></div>
+      <fieldset className="secao"><legend>Cliente e prazo</legend>
+        <ComboCliente id="venCli" nome="cliente_id" rotulo="Cliente" req={!b.cliente_nome} placeholder="Nome do cliente" inicial={S.get('clientes', b.cliente_id)} />
+        {!b.cliente_id && b.cliente_nome && <p className="sub">Na planilha: {b.cliente_nome}</p>}
+        <div className="linha-campos l2"><Campo nome="pedido" rotulo="Nº do pedido do cliente" valor={b.pedido} placeholder="Como está no pedido dele" /><Campo nome="prazo" rotulo="Prazo de entrega" tipo="date" req valor={b.prazo} /></div>
+      </fieldset>
+      <fieldset className="secao"><legend>Peça</legend>
+        <ComboProduto id="venProd" nome="produto_id" rotulo="Código JAF" placeholder="Código ou descrição" classe="peca" inicial={S.get('produtos', b.produto_id)} />
+        <div className="linha-campos l2"><Campo nome="codigo_cliente" rotulo="Código do cliente" valor={b.codigo_cliente} ajuda="Em branco = o do cadastro do produto" />
+          <Campo nome="descricao" rotulo="Descrição (se não tem código)" valor={b.produto_id ? '' : b.descricao} /></div>
+      </fieldset>
+      <fieldset className="secao"><legend>Quantidade e preço</legend>
+        <div className="linha-campos l2"><Campo nome="qtd" rotulo="Quantidade" tipo="qtd" req valor={U.campoNum(b.qtd, 3)} />
+          <Campo nome="valor" rotulo="Preço unitário" tipo="dinheiro" valor={U.campoNum(b.valor, 4)} /></div>
+      </fieldset>
       <Campo nome="obs" rotulo="Observações" tipo="area" linhas={2} valor={b.obs} />
       {!novo && <Campo nome="cancelado" rotulo="Item cancelado pelo cliente" tipo="check" valor={b.cancelado} />}
     </>,

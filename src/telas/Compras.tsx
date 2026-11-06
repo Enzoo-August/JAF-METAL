@@ -7,8 +7,8 @@ import { Perm } from '../lib/perm.ts'
 import type { Fornecedor, Peca, PedidoCompra } from '../lib/tipos.ts'
 import * as U from '../lib/util.ts'
 import { aviso } from '../ui/avisos.ts'
-import { entregar, excel, pdfPedido, pdfTabela, prepararPdf, type ColunaPdf } from '../ui/arquivos.tsx'
-import { BuscaLista, Btn, Cab, Campo, Chips, Dl, Paginado, Tag, Texto, Vazio, Voltar, type OpcaoChip } from '../ui/base.tsx'
+import { entregar, excel, pdfTabela, prepararPdf, type ColunaPdf, verPedido } from '../ui/arquivos.tsx'
+import { Btn, BuscaLista, Cab, Campo, Chips, Cols, Dl, Paginado, Tag, Texto, Vazio, Voltar, type OpcaoChip } from '../ui/base.tsx'
 import { ComboFornecedor, ComboPeca, type ComboApi } from '../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../ui/ganchos.ts'
 import { Ic } from '../ui/icones.tsx'
@@ -48,9 +48,10 @@ function filtrar(f: string, busca: string, so?: 'mp'): PedidoCompra[] {
 export function LinhaPedido({ p }: { p: PedidoCompra }) {
   const f = S.get('fornecedores', p.fornecedor_id)
   const nomes = C.itensDoPedido(p.id).map(i => C.itemPedido(i).codigo).filter(Boolean)
-  return <a className="linha" href={'#/pedido/' + p.id}>
+  return <a className="linha cols" href={'#/pedido/' + p.id}>
     <div className="meio"><b>Nº {p.numero} · {f?.nome || '—'}{p.tipo === 'mp' ? <span className="etiqueta-mp">Matéria-prima</span> : null}</b>
-      <small>{nomes.slice(0, 4).join(', ')}{nomes.length > 4 ? ` +${nomes.length - 4}` : ''} · pedido em {U.dataCurta(p.data)}{p.prazo ? ' · entrega ' + U.dataCurta(p.prazo) : ''}</small></div>
+      <small>{nomes.slice(0, 4).join(', ')}{nomes.length > 4 ? ` +${nomes.length - 4}` : ''}<span className="so-estreito"> · pedido em {U.dataCurta(p.data)}{p.prazo ? ' · entrega ' + U.dataCurta(p.prazo) : ''}</span></small></div>
+    <Cols itens={[['Pedido em', U.dataCurta(p.data)], ['Entrega', p.prazo ? U.dataCurta(p.prazo) : ''], ['Itens', U.plural(nomes.length, 'item', 'itens')]]} />
     <div className="lado"><b>{U.moeda(C.totalPedido(p))}</b><Tag s={C.situacaoPedido(p)} /></div></a>
 }
 
@@ -105,7 +106,7 @@ function Ficha({ id }: { id: string }) {
       <p className="sub"><a href={'#/fornecedor/' + p.fornecedor_id}>{f?.nome || ''}</a> · pedido em {U.data(p.data)}{p.prazo ? ` · entrega combinada ${U.data(p.prazo)}` : ''}{p.recebido_em ? ` · recebido em ${U.data(p.recebido_em)}` : ''}</p></div>
       <div className="acoes">
         {aberto && mexe && <Btn txt="Receber" icone="entrada" cls="pri" data-p="receber" onClick={() => void receber(p)} />}
-        <Btn txt="PDF" icone="imprimir" data-p="pdf" onClick={async () => entregar(await pdfPedido(p), `Pedido de compra ${p.numero} - ${f?.nome || ''}.pdf`)} />
+        <Btn txt="PDF" icone="imprimir" data-p="pdf" onClick={() => verPedido(p)} />
         <Btn txt="Enviar" icone="whatsapp" data-p="enviar" onClick={() => void enviar(p)} />
         {aberto && mexe && <Btn txt="Editar" icone="lapis" data-p="editar" onClick={() => void (mp ? formPedidoMP({ pedido: p }) : form({ pedido: p }))} />}
         {mexe && <Btn txt="Duplicar" icone="copiar" cls="fantasma" data-p="duplicar" onClick={() => void (mp
@@ -167,7 +168,7 @@ export async function enviar(p: PedidoCompra | null): Promise<void> {
     corpo: <>
       <p className="sub">O PDF é o jeito mais completo. Se preferir, mande o texto abaixo.</p>
       <div className="grupo-btn">
-        <Btn txt="PDF do pedido" icone="imprimir" cls="pri" data-e="pdf" onClick={async () => entregar(await pdfPedido(p), `Pedido de compra ${p.numero} - ${f?.nome || ''}.pdf`)} />
+        <Btn txt="PDF do pedido" icone="imprimir" cls="pri" data-e="pdf" onClick={() => verPedido(p)} />
         {zap && <a className="btn sec" target="_blank" rel="noopener" href={`https://wa.me/${zap}?text=${encodeURIComponent(txt)}`}><Ic n="whatsapp" /><span>WhatsApp</span></a>}
         {f?.email && <a className="btn sec" href={`mailto:${f.email}?subject=${encodeURIComponent('Pedido de compra nº ' + p.numero)}&body=${encodeURIComponent(txt)}`}><Ic n="email" /><span>E-mail</span></a>}
         <Btn txt="Copiar texto" icone="copiar" data-e="copiar" onClick={async () => aviso((await U.copiar(txt)) ? 'Texto copiado.' : 'Não deu para copiar.')} />
