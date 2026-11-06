@@ -45,7 +45,7 @@ export const ARTIGOS: Artigo[] = [
     'Em *Compras → O que comprar* aparecem as peças abaixo do mínimo (a mesma regra da planilha). A quantidade sugerida completa até o máximo e já desconta o que está a caminho. Marque e toque em *Gerar pedido*.'] },
   { id: 'enviarPedido', area: 'compras', titulo: 'Como mandar o pedido para o fornecedor', palavras: 'enviar pedido whatsapp email pdf fornecedor', perm: 'compras', corpo: [
     'Abra o pedido → *Enviar*. Dá para mandar o PDF, abrir o WhatsApp do fornecedor com o texto pronto ou o e-mail.'] },
-  { id: 'comprarMP', area: 'comercial', titulo: 'Comprar matéria-prima (pedido com prévia e PDF)', palavras: 'comprar matéria-prima material pedido de compra fornecedor pdf prévia necessidade comercial', perm: 'compras_mp', rota: '#/necessidade?aba=mp', corpo: [
+  { id: 'comprarMP', area: 'comercial', titulo: 'Comprar matéria-prima (pedido com prévia e PDF)', palavras: 'comprar matéria-prima material pedido de compra fornecedor pdf prévia necessidade comercial', perm: 'compras_mp', rota: '#/comprar', corpo: [
     'Em *O que comprar* aparece o material que falta: o que o PCP pediu e o que os pedidos de clientes vão consumir (já descontando o estoque e o que está em pedido de compra).',
     { passos: ['Marque os materiais e toque em *Fazer pedido de compra*.', 'Se forem de fornecedores diferentes, sai um pedido (e um PDF) para cada fornecedor, um depois do outro.', 'Confira quantidade e preço e toque em *Ver prévia*: aparece a folha como vai para o fornecedor.', '*Voltar e corrigir* ou *Gerar pedido e PDF*.'] },
     'Quando o material chegar, abra o pedido e toque em *Receber* (ou leia o XML da nota): o R.I. nasce sozinho no estoque de matéria-prima e o pedido é baixado.'] },

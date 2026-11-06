@@ -19,15 +19,16 @@ import { ComTabelas } from './fabrica/comum.tsx'
 import { formPedidoMP } from './fabrica/Compra.tsx'
 
 export function TelaCompras({ r }: { r: Rota }) {
-  if (r.sub === 'lista') return Perm.pode('compras') ? <ListaCompras /> : <Vazio icone="cadeado" titulo="Sem acesso" texto="A lista de peças do almoxarifado é com o almoxarifado."><a className="btn pri" href="#/necessidade?aba=mp">O que comprar de material</a></Vazio>
+  if (r.sub === 'lista') return Perm.pode('compras') ? <ListaCompras /> : <Vazio icone="cadeado" titulo="Sem acesso" texto="A lista de peças do almoxarifado é com o almoxarifado."><a className="btn pri" href="#/comprar">O que comprar de material</a></Vazio>
   // pedidos de matéria-prima mostram o material (cadastro de produtos, lido sob demanda)
   return <ComTabelas tabs={['produtos', 'mp_lotes']}>{() => r.nome === 'pedido' ? <Ficha id={r.id!} /> : <Lista r={r} />}</ComTabelas>
 }
-export const tituloCompras = (r: Rota) => r.nome === 'pedido' ? 'Pedido nº ' + (S.get('pedidos_compra', r.id)?.numero || '') : r.sub === 'lista' ? 'Lista de compras' : 'Pedidos de compra'
+export const tituloCompras = (r: Rota) => r.nome === 'pedido' ? 'Pedido nº ' + (S.get('pedidos_compra', r.id)?.numero || '') : r.sub === 'lista' ? 'Lista de compras' : r.sub === 'mp' ? 'Pedidos de compra de material' : 'Pedidos de compra'
 
 // ---------------------------------------------------------------- lista de pedidos
-function filtrar(f: string, busca: string): PedidoCompra[] {
+function filtrar(f: string, busca: string, so?: 'mp'): PedidoCompra[] {
   let l = S.lista('pedidos_compra')
+  if (so) l = l.filter(p => p.tipo === so)
   const sit = (p: PedidoCompra) => C.situacaoPedido(p).cod
   if (f === 'aberto') l = l.filter(p => p.status === 'aguardando')
   else if (f === 'atrasado') l = l.filter(p => sit(p) === 'atrasado')
@@ -57,23 +58,27 @@ function Lista({ r }: { r: Rota }) {
   const [f, setF] = useLembrar('compras.f', 'aberto')
   const [busca, setBusca] = useLembrar('compras.busca', '')
   useEffect(() => { const q = r.q.get('f'); if (q) setF(q) }, [r.hash, r.q, setF])
-  const n = (x: string) => filtrar(x, busca).length
+  const so = r.sub === 'mp' ? 'mp' as const : undefined
+  const n = (x: string) => filtrar(x, busca, so).length
   const lc = C.listaCompras().filter(x => !x.jaPedido).length
   const chips: OpcaoChip[] = [{ v: 'aberto', t: 'Em aberto', n: n('aberto') }, { v: 'atrasado', t: 'Atrasados', n: n('atrasado') }, { v: 'hoje', t: 'Chegam hoje', n: n('hoje') },
     { v: 'recebido', t: 'Recebidos' }, { v: 'cancelado', t: 'Cancelados' }, { v: 'todos', t: 'Todos' }]
   if (Perm.pode('financeiro')) chips.push({ v: 'semconta', t: 'Sem conta lançada', n: n('semconta') || null })
-  const l = filtrar(f, busca)
+  const l = filtrar(f, busca, so)
   return <>
-    <Cab titulo="Pedidos de compra" sub="O que foi pedido aos fornecedores e o que já chegou">
+    {so ? <Cab titulo="Pedidos de compra de material" sub="Matéria-prima pedida aos fornecedores e o que já chegou (vira R.I. ao receber)">
+      {Perm.pode('compras_mp') && <Btn txt="Novo pedido de material" icone="mais" cls="pri" data-c="novoMP" onClick={() => void formPedidoMP({})} />}
+      <a className="btn sec" href="#/comprar"><Ic n="lista" /><span>O que comprar</span></a>
+    </Cab> : <Cab titulo="Pedidos de compra" sub="O que foi pedido aos fornecedores e o que já chegou">
       {Perm.pode('compras') && <Btn txt={Perm.pode('compras_mp') ? 'Pedido de peças' : 'Novo pedido'} icone="mais" cls="pri" data-c="novo" onClick={() => void form({})} />}
       {Perm.pode('compras_mp') && <Btn txt="Pedido de matéria-prima" icone="mais" cls={Perm.pode('compras') ? 'sec' : 'pri'} data-c="novoMP" onClick={() => void formPedidoMP({})} />}
       {Perm.pode('compras') && <a className="btn sec" href="#/compras/lista"><Ic n="lista" /><span>Lista de compras{lc ? ` (${lc})` : ''}</span></a>}
-      {!Perm.pode('compras') && <a className="btn sec" href="#/necessidade?aba=mp"><Ic n="lista" /><span>O que comprar</span></a>}
-    </Cab>
+      {!Perm.pode('compras') && <a className="btn sec" href="#/comprar"><Ic n="lista" /><span>O que comprar</span></a>}
+    </Cab>}
     <div className="barra-filtros"><BuscaLista id="bPed" valor={busca} placeholder="Número, fornecedor, peça ou documento" aoMudar={setBusca} /></div>
     <Chips atual={f} aoEscolher={setF} opcoes={chips} />
     <p className="sub mt" id="resPed">{U.plural(l.length, 'pedido')} · {U.moeda(U.soma(l, p => C.totalPedido(p)))}</p>
-    <Paginado key={f + '|' + busca} itens={l} passo={50} render={(p) => <LinhaPedido key={p.id} p={p} />}
+    <Paginado key={f + '|' + busca + '|' + (so || '')} itens={l} passo={50} render={(p) => <LinhaPedido key={p.id} p={p} />}
       vazio={<Vazio icone="compras" titulo={f === 'aberto' ? 'Nenhum pedido aguardando' : 'Nenhum pedido aqui'} texto="Use a Lista de compras para ver o que está faltando." />} />
   </>
 }
@@ -95,7 +100,7 @@ function Ficha({ id }: { id: string }) {
   const contas = Perm.pode('financeiro') ? S.lista('lancamentos').filter(l => l.pedido_id === p.id) : []
   const atraso = aberto && p.prazo && p.prazo < U.hoje() ? U.dias(p.prazo, U.hoje()) : 0
   return <>
-    <Voltar para="#/compras" txt="Pedidos de compra" />
+    <Voltar para={mp && Perm.pode('area_comercial') ? '#/compras/mp' : '#/compras'} txt="Pedidos de compra" />
     <header className="cab"><div><h1>Pedido nº {p.numero} <Tag s={sit} /></h1>
       <p className="sub"><a href={'#/fornecedor/' + p.fornecedor_id}>{f?.nome || ''}</a> · pedido em {U.data(p.data)}{p.prazo ? ` · entrega combinada ${U.data(p.prazo)}` : ''}{p.recebido_em ? ` · recebido em ${U.data(p.recebido_em)}` : ''}</p></div>
       <div className="acoes">

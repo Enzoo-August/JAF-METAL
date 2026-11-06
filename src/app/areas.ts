@@ -4,6 +4,7 @@
  * Área nova: basta entrar em AREAS (com o grupo) e cada login já a recebe do jeito certo, só se tiver permissão. */
 import { Perm, type Acao } from '../lib/perm.ts'
 import type { Perfil } from '../lib/tipos.ts'
+import { S } from '../lib/dados.ts'
 import type { Rota } from '../ui/ganchos.ts'
 import type { NomeIcone } from '../ui/icones.tsx'
 
@@ -24,8 +25,8 @@ export const AREAS: Area[] = [
   ] },
   { id: 'comercial', rot: 'Comercial', ic: 'cliente', desc: 'Pedidos de clientes, entregas e compra de matéria-prima', grupo: 'Operação', subs: [
     { rota: 'pedidos', rot: 'Pedidos de clientes', ic: 'cliente', perm: 'vendas', nao: 'menu_pcp', chaves: 'controle de pedidos entrega atraso prazo carteira faturamento' },
-    { rota: 'necessidade', rot: 'O que comprar', ic: 'lista', perm: 'menu_comercial', chaves: 'necessidade matéria-prima comprar falta material pcp' },
-    { rota: 'compras', rot: 'Pedidos de compra', ic: 'compras', perm: 'menu_comercial', chaves: 'pedido de compra material fornecedor receber chegou pdf' },
+    { rota: 'comprar', rot: 'O que comprar', ic: 'lista', perm: 'area_comercial', chaves: 'necessidade matéria-prima comprar falta material pcp pedir compra' },
+    { rota: 'compras/mp', rot: 'Pedidos de compra', ic: 'compras', perm: 'area_comercial', chaves: 'pedido de compra material matéria-prima fornecedor receber chegou pdf' },
     { rota: 'fornecedores', rot: 'Fornecedores', ic: 'fornecedor', perm: 'menu_comercial', chaves: 'fornecedor contato telefone' },
     { rota: 'mp', rot: 'Estoque de material', ic: 'entrada', perm: 'menu_comercial', chaves: 'matéria-prima saldo r.i. lote kg' },
     { rota: 'clientes', rot: 'Clientes', ic: 'cliente', perm: 'clientes', chaves: 'cliente cnpj sigla' },
@@ -60,7 +61,7 @@ export const AREAS: Area[] = [
     { rota: 'manut', rot: 'Indicadores', ic: 'relatorio', perm: 'manut_gestao', chaves: 'indicadores horas paradas mttr' },
   ] },
   { id: 'compras', rot: 'Compras', ic: 'compras', desc: 'O que falta, pedidos e fornecedores', grupo: 'Operação', subs: [
-    { rota: 'compras/lista', rot: 'O que comprar', ic: 'lista', perm: 'compras', chaves: 'lista de compras faltando mínimo' },
+    { rota: 'compras/lista', rot: 'Peças a comprar', ic: 'lista', perm: 'compras', chaves: 'lista de compras faltando mínimo o que comprar' },
     { rota: 'compras', rot: 'Pedidos', ic: 'compras', perm: 'compras', chaves: 'pedido de compra receber chegou' },
     { rota: 'fornecedores', rot: 'Fornecedores', ic: 'fornecedor', perm: 'compras', chaves: 'fornecedor contato telefone' },
   ] },
@@ -97,7 +98,9 @@ export function chaveDaRota(r: Rota): string {
   if (!r.nome) return 'inicio'
   if (r.nome === 'funcionario') return Perm.pode('rh_ver') ? 'rh' : 'equipe'
   if (r.nome === 'equipe') return Perm.pode('rh_ver') ? 'rh' : 'equipe'
-  if ((r.nome === 'compras' && r.sub === 'lista') || (r.nome === 'financeiro' && r.sub === 'fluxo')) return r.nome + '/' + r.sub
+  if ((r.nome === 'compras' && (r.sub === 'lista' || r.sub === 'mp')) || (r.nome === 'financeiro' && r.sub === 'fluxo')) return r.nome + '/' + r.sub
+  // pedido de material abre na área Comercial (para quem a vê); o de peças, em Compras
+  if (r.nome === 'pedido' && Perm.pode('area_comercial') && (S.get('pedidos_compra', r.id || '')?.tipo === 'mp' || !Perm.pode('compras'))) return 'compras/mp'
   if (r.nome === 'rh' && r.sub) return 'rh/' + r.sub
   if (r.nome === 'reg' && r.sub) return 'reg/' + r.sub
   return DETALHE[r.nome] || r.nome
@@ -156,6 +159,6 @@ const BAIXO: Partial<Record<Perfil, AbaBaixo[]>> = {
   manutencao: [['inicio', 'Início', 'inicio'], ['os', 'OS', 'chave'], ['novaOS', 'Abrir OS', 'mais'], ['preventiva', 'Preventiva', 'ok'], ['menu', 'Menu', 'menu']],
   gerente: [['inicio', 'Início', 'inicio'], ['pecas', 'Almox.', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['rh', 'Equipe', 'equipe'], ['menu', 'Menu', 'menu']],
   rh: [['inicio', 'Início', 'inicio'], ['rh', 'Pessoas', 'equipe'], ['rh/ponto', 'Ponto', 'relogio'], ['rh/ferias', 'Férias', 'calendario'], ['menu', 'Menu', 'menu']],
-  comercial: [['inicio', 'Início', 'inicio'], ['pedidos', 'Pedidos', 'cliente'], ['necessidade', 'Comprar', 'lista'], ['compras', 'Compras', 'compras'], ['menu', 'Menu', 'menu']],
+  comercial: [['inicio', 'Início', 'inicio'], ['pedidos', 'Pedidos', 'cliente'], ['comprar', 'Comprar', 'lista'], ['compras/mp', 'Compras', 'compras'], ['menu', 'Menu', 'menu']],
 }
 export const abasDeBaixo = (p: Perfil): AbaBaixo[] => BAIXO[p] || BAIXO.producao!

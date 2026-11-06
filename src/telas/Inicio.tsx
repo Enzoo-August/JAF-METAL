@@ -38,10 +38,11 @@ export const ATALHOS: Atalho[] = [
   { id: 'notaXML', rot: 'Ler nota fiscal', sub: 'arquivo XML', ic: 'nota', perm: ['entrada', 'mp_editar'], fazer: () => lerNota() },
   { id: 'listaCompras', rot: 'O que comprar', sub: 'peças faltando', ic: 'lista', perm: ['compras'], ir: '#/compras/lista' },
   { id: 'novoPedido', rot: 'Novo pedido', sub: 'de compra', ic: 'compras', perm: ['compras'], fazer: () => formPedido() },
-  { id: 'comprarMP', rot: 'O que comprar', sub: 'matéria-prima', ic: 'lista', perm: ['compras_mp'], ir: '#/necessidade?aba=mp' },
+  { id: 'comprarMP', rot: 'O que comprar', sub: 'matéria-prima', ic: 'lista', perm: ['compras_mp'], ir: '#/comprar' },
   { id: 'novoPedidoMP', rot: 'Pedido de material', sub: 'compra de matéria-prima', ic: 'compras', perm: ['compras_mp'], fazer: () => formPedidoMP() },
   { id: 'novaNecessidade', rot: 'Pedir compra', sub: 'lançar necessidade', ic: 'enviar', perm: ['necessidade_criar'], fazer: () => formNecessidade() },
   { id: 'pedidosCompra', rot: 'Pedidos de compra', sub: 'o que vai chegar', ic: 'compras', perm: ['compras_ver'], ir: '#/compras' },
+  { id: 'pedidosMP', rot: 'Pedidos de material', sub: 'compra de matéria-prima', ic: 'compras', perm: ['area_comercial', 'compras_mp'], ir: '#/compras/mp' },
   { id: 'fornecedores', rot: 'Fornecedores', sub: 'contatos e pedidos', ic: 'fornecedor', perm: ['fornecedores'], ir: '#/fornecedores' },
   { id: 'estoque', rot: 'Estoque', sub: 'todas as peças', ic: 'estoque', perm: ['estoque_ver'], ir: '#/pecas' },
   { id: 'novaOrdem', rot: 'Nova ordem', sub: 'de produção', ic: 'producao', perm: ['producao_editar'], fazer: () => formOrdem() },
@@ -101,7 +102,7 @@ const PADRAO: Record<Perfil, { atalhos: string[]; blocos: string[] }> = {
   escritorio: { atalhos: ['retirar', 'entrada', 'pedidosClientes', 'listaCompras', 'novaConta', 'fornecedores'], blocos: ['atencao', 'numeros', 'pedidosAtraso', 'chegando', 'ultimas'] },
   almoxarife: { atalhos: ['retirar', 'entrada', 'entradaMP', 'listaCompras', 'novoPedido', 'chamado'], blocos: ['atencao', 'numeros', 'chegando', 'ultimas'] },
   pcp: { atalhos: ['novaOF', 'ofs', 'entradaMP', 'pedidosClientes', 'necessidade', 'novaNecessidade', 'produtos'], blocos: ['atencao', 'pedidosAtraso', 'ofsAbertas'] },
-  comercial: { atalhos: ['comprarMP', 'novoPedidoMP', 'pedidosClientes', 'pedidosCompra', 'fornecedores', 'clientes'], blocos: ['atencao', 'necessidadesAbertas', 'chegando', 'pedidosAtraso'] },
+  comercial: { atalhos: ['comprarMP', 'novoPedidoMP', 'pedidosClientes', 'pedidosMP', 'fornecedores', 'clientes'], blocos: ['atencao', 'necessidadesAbertas', 'chegando', 'pedidosAtraso'] },
   producao: { atalhos: ['ofs', 'retirar', 'chamado', 'estoque', 'solicitarAlteracao'], blocos: ['atencao', 'ofsAbertas', 'minhasRetiradas'] },
   gerente: { atalhos: ['ofs', 'pedidosClientes', 'chamado', 'pessoas', 'ponto'], blocos: ['atencao', 'ofsAbertas', 'pedidosAtraso', 'foraHoje'] },
   tecnico: { atalhos: ['produtos', 'novoProduto', 'solicitarAlteracao', 'desenvolvimento', 'desvio', 'ata'], blocos: ['atencao', 'tecnicoPendentes'] },
@@ -244,9 +245,9 @@ function Chegando() {
 
 function NecAbertas() {
   const l = S.lista('necessidades').filter(n => n.status === 'aberta').sort((a, b) => (a.prazo || '9') < (b.prazo || '9') ? -1 : 1)
-  return <section className="card mt"><div className="card-cab"><h2>Pedidos do PCP para comprar</h2><a href="#/necessidade?aba=mp">Ver tudo</a></div>
+  return <section className="card mt"><div className="card-cab"><h2>Pedidos do PCP para comprar</h2><a href="#/comprar">Ver tudo</a></div>
     {l.length ? <div className="lista">{l.slice(0, 6).map(n => { const p = S.get('produtos', n.produto_id)
-      return <a key={n.id} className="linha" href="#/necessidade?aba=mp"><div className="meio"><b>{p?.codigo || ''} · {U.qtd(n.qtd)} {C.unidadeMP(n.produto_id)}</b>
+      return <a key={n.id} className="linha" href="#/comprar"><div className="meio"><b>{p?.codigo || ''} · {U.qtd(n.qtd)} {C.unidadeMP(n.produto_id)}</b>
         <small>{[p?.descricao, n.criado_nome ? 'pedido por ' + n.criado_nome : '', n.motivo].filter(Boolean).join(' · ')}</small></div>
         <div className="lado"><small>{n.prazo ? 'até ' + U.data(n.prazo) : 'sem prazo'}</small></div></a> })}</div>
       : <p className="sub">Nada pedido pelo PCP agora.</p>}</section>

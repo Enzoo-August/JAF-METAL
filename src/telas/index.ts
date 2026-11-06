@@ -58,6 +58,7 @@ export const ROTAS: Record<string, DefTela> = {
   mp: { Tela: MP.TelaMP, perm: 'of_ver', titulo: 'Matéria-prima' },
   pedidos: { Tela: Pedidos.TelaPedidos, perm: 'vendas', titulo: 'Pedidos de clientes' },
   necessidade: { Tela: Pedidos.TelaPedidos, perm: 'necessidade', titulo: () => API.sessao?.perfil === 'comercial' ? 'O que comprar' : 'Necessidade' },
+  comprar: { Tela: Pedidos.TelaPedidos, perm: 'necessidade', titulo: 'O que comprar' },
   produtos, produto: produtos,
   reg: { Tela: Registros.TelaRegistros, titulo: Registros.tituloRegistros },
   tecnico: { Tela: TelaTecnico, perm: 'tecnico_ver', titulo: 'Engenharia' },

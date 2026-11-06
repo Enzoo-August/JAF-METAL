@@ -16,7 +16,7 @@ import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
 import { ComboProduto, ComTabelas } from './comum.tsx'
 import { formOF } from './OFs.tsx'
-import { cancelarNecessidade, formNecessidade, pedidosPorFornecedor } from './Compra.tsx'
+import { cancelarNecessidade, formNecessidade, formPedidoMP, pedidosPorFornecedor } from './Compra.tsx'
 import { Ic } from '../../ui/icones.tsx'
 
 const TABS = ['produtos', 'produto_estrutura', 'vendas', 'vendas_entregas', 'ofs', 'mp_lotes'] as const
@@ -29,7 +29,7 @@ function LinhaVenda({ v }: { v: Venda }) {
 }
 
 export function TelaPedidos({ r }: { r: Rota }) {
-  return <ComTabelas tabs={[...TABS]}>{() => r.nome === 'necessidade' ? <ComTabelas tabs={['necessidades']}>{() => <Necessidade r={r} />}</ComTabelas> : <Lista />}</ComTabelas>
+  return <ComTabelas tabs={[...TABS]}>{() => r.nome === 'necessidade' || r.nome === 'comprar' ? <ComTabelas tabs={['necessidades']}>{() => <Necessidade r={r} />}</ComTabelas> : <Lista />}</ComTabelas>
 }
 
 function Lista() {
@@ -158,7 +158,7 @@ export async function entregar(v: Venda): Promise<unknown> {
 // ---------------------------------------------------------------- necessidade (MRP)
 function Necessidade({ r }: { r: Rota }) {
   const [ate, setAte] = useLembrar('nec.ate', '')
-  const [aba, setAba] = useState(() => r.q.get('aba') || (API.sessao?.perfil === 'comercial' ? 'mp' : 'pecas'))
+  const [aba, setAba] = useState(() => r.q.get('aba') || (r.nome === 'comprar' || API.sessao?.perfil === 'comercial' ? 'mp' : 'pecas'))
   const [sel, setSel] = useState<Set<string>>(new Set())
   const comprar = Perm.pode('compras_mp'), verPed = Perm.pode('compras_ver'), lancar = Perm.pode('necessidade_criar')
   const vendas = S.lista('vendas').filter(v => !v.cancelado && C.saldoVenda(v) > 0 && (!ate || (v.prazo || '') <= ate))
@@ -185,8 +185,9 @@ function Necessidade({ r }: { r: Rota }) {
   const Ck = ({ k, rot }: { k: string; rot: string }) => comprar ? <input type="checkbox" className="nec-ck" checked={sel.has(k)} onChange={(e) => marcar(k, e.target.checked)} aria-label={'Comprar ' + rot} data-sel={k} /> : null
   const nMp = mps.filter(x => x.falta > 0).length + manuais.length
   return <>
-    <Cab titulo={API.sessao?.perfil === 'comercial' ? 'O que comprar' : 'Necessidade'} sub={aba === 'mp' ? 'Matéria-prima que falta para os pedidos de clientes e o que o PCP pediu' : 'O que falta fabricar e comprar para atender os pedidos em aberto'}>
-      {lancar && !comprar && <Btn txt="Pedir compra" icone="mais" cls="pri" data-n="lancar" onClick={() => formNecessidade()} />}
+    <Cab titulo={r.nome === 'comprar' || API.sessao?.perfil === 'comercial' ? 'O que comprar' : 'Necessidade'} sub={aba === 'mp' ? 'Matéria-prima que falta para os pedidos de clientes e o que o PCP pediu' : 'O que falta fabricar e comprar para atender os pedidos em aberto'}>
+      {lancar && (!comprar || r.nome !== 'comprar') && <Btn txt="Pedir compra" icone="mais" cls={comprar ? 'sec' : 'pri'} data-n="lancar" onClick={() => formNecessidade()} />}
+      {comprar && r.nome === 'comprar' && <Btn txt="Novo pedido de material" icone="mais" cls="sec" data-n="novoMP" onClick={() => void formPedidoMP({})} />}
       <Btn txt="Excel" icone="planilha" cls="fantasma" onClick={() => excel('Necessidade.xlsx', [
         ['Peças', pecas.map(x => ({ Código: x.p.codigo, Descrição: x.p.descricao, Necessário: x.q, 'Em OF aberta': x.em, 'Falta emitir OF': x.falta }))],
         ['Matéria-prima', mps.map(x => ({ Material: x.p.codigo, Descrição: x.p.descricao, Necessário: x.q, 'Saldo em estoque': x.e, ...(verPed ? { 'Em pedido de compra': x.ped } : {}), 'Falta comprar': x.falta }))],

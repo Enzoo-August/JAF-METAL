@@ -782,7 +782,7 @@ window.roteiro = async function roteiro(filtro) {
     for (const r of ['#/financeiro', '#/rh', '#/movimentos']) { await ir(r); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'Comercial sem ' + r); }
     await ir('#/compras/lista'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'lista de peças do almoxarifado fica com o almoxarifado');
     conf(S.lista('lancamentos').length === 0 && S.lista('funcionarios_privado').length === 0, 'banco não manda financeiro nem dados pessoais para o Comercial');
-    await ir('#/necessidade'); await espera(() => document.querySelector(`[data-sel="n:${nec.id}"]`));
+    await ir('#/comprar'); await espera(() => document.querySelector(`[data-sel="n:${nec.id}"]`));
     conf(document.querySelector('.chips .on, [aria-pressed=true]')?.textContent.includes('Matéria-prima') !== false, 'Comercial abre direto na matéria-prima');
     document.querySelector(`[data-sel="n:${nec.id}"]`).click(); await dorme(80);
     const salvaAntes = window.showSaveFilePicker; window.showSaveFilePicker = undefined;

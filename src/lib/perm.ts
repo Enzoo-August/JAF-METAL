@@ -50,7 +50,8 @@ const R = {
   // o que aparece no menu (para cada perfil ver só o que usa no dia a dia)
   of_menu: ['dono', 'escritorio', 'pcp', 'producao', 'gerente', 'tecnico'],
   mp_ver: ['dono', 'escritorio', 'pcp', 'almoxarife', 'gerente', 'tecnico', 'comercial'],
-  menu_comercial: ['comercial'],                             // telas do Comercial no menu dele
+  menu_comercial: ['comercial'],
+  area_comercial: ['dono', 'escritorio', 'comercial'],          // área Comercial com a compra de material (Dono e Escritório também)                             // telas do Comercial no menu dele
   menu_pcp: ['pcp'],
   produtos_menu: ['dono', 'escritorio', 'tecnico', 'pcp', 'gerente'],
   tecnico_menu: ['dono', 'escritorio', 'tecnico', 'gerente'],

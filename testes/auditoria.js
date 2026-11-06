@@ -65,7 +65,7 @@ window.auditar = async function auditar(opt = {}) {
     '#/rh/treinamentos?aba=reciclagem', '#/rh/treinamentos?aba=metas', '#/rh/seguranca', '#/rh/seguranca?f=epi', '#/rh/disciplina', '#/rh/processos', '#/rh/organograma', '#/rh/relatorios', '#/rh/indicadores', '#/rh/seguranca?f=ca',
     '#/rh/ajustes?aba=cargos', '#/rh/ajustes?aba=feriados', '#/rh/ajustes?aba=jornada',
     // fábrica (v2.5)
-    '#/ofs', '#/mp', '#/necessidade', '#/necessidade?aba=mp', '#/pedidos', '#/produtos', '#/tecnico', '#/os', '#/preventiva', '#/manut',
+    '#/ofs', '#/mp', '#/necessidade', '#/necessidade?aba=mp', '#/comprar', '#/compras/mp', '#/pedidos', '#/produtos', '#/tecnico', '#/os', '#/preventiva', '#/manut',
     ...['desenvolvimento', 'projeto', 'melhoria', 'alteracao', 'desvio', 'desenho', 'copia', 'imds', 'ata', 'setup', 'servico_externo', 'requisicao', 'servico_manut', 'gasto_manut', 'peca_critica', 'pendencia', 'ferramentaria'].map(t => '#/reg/' + t)];
   const f0 = S.lista('funcionarios').find(f => f.ativo)
   if (f0) { rotas.push(`#/rh/ponto?f=${f0.id}&m=${U.hoje().slice(0, 7)}`); for (const a of ['dados', 'cargo', 'ferias', 'ponto', 'treinos', 'seguranca', 'disciplina', 'documentos']) rotas.push(`#/funcionario/${f0.id}?aba=${a}`) }
