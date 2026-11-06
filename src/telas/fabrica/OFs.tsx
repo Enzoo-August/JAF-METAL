@@ -14,7 +14,7 @@ import { ComboMaquina } from '../../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
 import { ComboProduto, ComTabelas, nr } from './comum.tsx'
-import { PassosOF, PreviaPassos } from './Processo.tsx'
+import { PassosOF, PreviaPassos, maqDoPasso } from './Processo.tsx'
 
 const TABS = ['produtos', 'produto_estrutura', 'mp_lotes', 'ofs', 'vendas'] as const
 
@@ -224,7 +224,7 @@ export async function imprimirOF(o: OF): Promise<void> {
     // passo a passo com quadradinhos para marcar no papel
     if (o.passos?.length) {
       c.tabela({ ...c.estilo, startY: y, theme: 'grid', head: [['', '#', 'Passo', 'Máquina', 'Feito por', 'Data']],
-        body: o.passos.map(x => ['', x.n, x.operacao + (x.peca ? '\n' + x.peca : ''), x.maquina || '', x.feito ? x.feito_por || '' : '', x.feito && x.feito_em ? U.dataCurta(x.feito_em) : '']),
+        body: o.passos.map(x => { const m = maqDoPasso(x); return ['', x.n, x.operacao + (x.peca ? '\n' + x.peca : ''), m.txt.replace(/ → /g, ' > ') + (m.sug ? ' (sug.)' : ''), x.feito ? x.feito_por || '' : '', x.feito && x.feito_em ? U.dataCurta(x.feito_em) : ''] }),
         styles: { ...c.estilo.styles, minCellHeight: 9, valign: 'middle' },
         columnStyles: { 0: { cellWidth: 9 }, 1: { cellWidth: 8, halign: 'center' }, 3: { cellWidth: 34 }, 4: { cellWidth: 34 }, 5: { cellWidth: 20 } },
         didDrawCell: (d: { section: string; column: { index: number }; row: { index: number }; cell: { x: number; y: number; width: number; height: number } }) => {

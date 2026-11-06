@@ -28,7 +28,7 @@ interface DefReg {
 
 const C_ = (k: string, rot: string, x: Partial<CampoReg> = {}): CampoReg => ({ k, rot, ...x })
 export const DEFS: DefReg[] = [
-  { tipo: 'desenvolvimento', nome: 'Desenvolvimento', sing: 'desenvolvimento', aba: 'Desenvolvimento', area: 'tecnico', status: ['Em andamento', 'Aguardando cliente', 'Aprovado', 'Concluído', 'Cancelado'], fechados: ['Concluído', 'Aprovado', 'Cancelado', 'Ok'],
+  { tipo: 'desenvolvimento', nome: 'Desenvolvimento', sing: 'desenvolvimento', aba: 'Desenvolvimento', area: 'tecnico', form: 'Desenvolvimento (check list e Form.021)', status: ['Em andamento', 'Aguardando cliente', 'Aprovado', 'Concluído', 'Cancelado'], fechados: ['Concluído', 'Aprovado', 'Cancelado', 'Ok'],
     campos: [C_('numero', 'Nº', { t: 'num' }), C_('codigo', 'Código JAF', { lista: true }), C_('titulo', 'Descrição', { lista: true, req: true }), C_('d.cliente', 'Cliente', { lista: true, sug: true }), C_('d.codigo_cliente', 'Código cliente'),
       C_('status', 'Posição', { sug: true }), C_('prazo', 'Prazo', { t: 'date' }), C_('concluido_em', 'Conclusão', { t: 'date' }), C_('responsavel', 'Responsável', { sug: true })] },
   { tipo: 'projeto', nome: 'Projetos', sing: 'projeto', aba: 'Projetos', area: 'tecnico', status: ['Em andamento', 'Concluído', 'Cancelado'], fechados: ['Concluído', 'Cancelado'],
@@ -181,6 +181,11 @@ async function pdfLista(d: DefReg, l: RegistroFab[]) {
   await entregar(blob, d.nome + '.pdf')
 }
 
+const CHECK_DESENV: [string, string][] = [
+  ['Solicitação de Desenvolvimento (Form.032)', 'Vendas'], ['Recursos para Fabricação (Disp. e Ferram.)', 'Dpto. Téc.'], ['Comprar Matéria Prima', 'Compras'],
+  ['Cadastrar Produto (Cad. Téc. e PCP)', 'Dpto. Téc.'], ['Cadastrar Preço na Planilha de Vendas', 'Vendas'], ['Elaborar Documentos técnicos', 'Dpto. Téc.'],
+  ['Fabricar as Amostras', 'PCP / Prod.'], ['Elaborar PPAP', 'Qualidade']]
+
 // ficha impressa de um registro (os formulários da planilha: F. Sol. Alt., Form. Desvios, Form. Ata, Sol. S. Ext.…)
 async function pdfFicha(d: DefReg, x: RegistroFab) {
   const blob = await pdfDocumento(`${d.form || d.nome}${x.numero ? ' nº ' + x.numero : ''}`, d.nome, (c) => {
@@ -190,6 +195,25 @@ async function pdfFicha(d: DefReg, x: RegistroFab) {
     for (const k of d.campos.filter(k => k.largo)) {
       y = c.texto(k.rot, y, { tam: 9.5, negrito: true })
       y = c.texto(mostrar(k, ler(x, k.k)) || '—', y, { tam: 10 }) + 3
+    }
+    if (d.tipo === 'desenvolvimento') {
+      // aba "Check List" da planilha do Depto. Técnico: as etapas de todo desenvolvimento, com quem faz
+      y = c.texto('Check list do desenvolvimento', y + 2, { tam: 11, negrito: true })
+      c.tabela({ ...c.estilo, startY: y, theme: 'grid', head: [['Etapa', 'Responsável', 'Prazo', 'Status', 'Data realizada']],
+        body: CHECK_DESENV.map(([e, r]) => [e, r, '', '', '']), styles: { ...c.estilo.styles, minCellHeight: 8 }, columnStyles: { 0: { cellWidth: 72 } } })
+      // aba "Aprov. Desenv." = Form.021, em folha própria para ir à produção
+      c.doc.addPage()
+      let y2 = c.texto('APROVAÇÃO DE PROCESSO PARA DESENVOLVIMENTO', 20, { tam: 13, negrito: true, alinhar: 'center' })
+      y2 = c.texto('Form.021/0', y2, { tam: 8.5, cor: 110, alinhar: 'center' })
+      const prod = x.codigo ? S.lista('produtos').find(p => p.codigo === x.codigo) : null
+      c.tabela({ ...c.estilo, startY: y2 + 3, theme: 'grid', body: [['Cód. produto', x.codigo || '', 'Descrição', x.titulo || ''], ['Cliente', String(ler(x, 'd.cliente') || ''), 'Operação', prod?.operacao || '']],
+        columnStyles: { 0: { cellWidth: 28, fontStyle: 'bold', fillColor: [240, 243, 247] }, 2: { cellWidth: 24, fontStyle: 'bold', fillColor: [240, 243, 247] } } })
+      c.tabela({ ...c.estilo, startY: c.doc.lastAutoTable.finalY + 5, theme: 'grid', head: [['Especificado', 'Encontrado', 'Laudo']],
+        body: Array.from({ length: 12 }, () => ['', '', '']), styles: { ...c.estilo.styles, minCellHeight: 9 } })
+      const ya = Math.min(c.doc.lastAutoTable.finalY + 26, c.H - 22), w = (c.W - 28 - 16) / 3
+      c.assinatura('Produção', 'Data: ____/____/______', 14, ya, w)
+      c.assinatura('Depto. Técnico', 'Data: ____/____/______', 14 + w + 8, ya, w)
+      c.assinatura('Qualidade', 'Data: ____/____/______', 14 + 2 * (w + 8), ya, w)
     }
     if (['alteracao', 'desvio', 'melhoria', 'ata', 'servico_externo'].includes(d.tipo)) {
       const yy = Math.max(y + 22, 255)

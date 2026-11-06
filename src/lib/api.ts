@@ -190,15 +190,30 @@ const ORDEM: Partial<Record<string, string>> = { movimentos: 'seq', historico: '
 async function lerBruto(tabela: string, filtrar: (q: Consulta) => Consulta, where?: { sql: string; vals: unknown[] }, uidForcado?: string): Promise<Record<string, unknown>[]> {
   const ord = ORDEM[tabela] || 'id'
   if (API.modo === 'nuvem') {
-    const todos: Record<string, unknown>[] = []
+    // o banco entrega 1000 linhas por vez: a 1ª página traz o total e as outras vêm juntas (antes vinham uma atrás da outra)
     const passo = 1000
-    for (let de = 0; ; de += passo) {
-      const q = filtrar(sb!.from(tabela).select('*')).order(ord, { ascending: true }).range(de, de + passo - 1)
-      const { data, error } = await q
+    const pagina = async (de: number, contar = false) => {
+      const { data, error, count } = await filtrar(sb!.from(tabela).select('*', contar ? { count: 'exact' } : undefined)).order(ord, { ascending: true }).range(de, de + passo - 1)
       if (error) throw error
-      todos.push(...(data as Record<string, unknown>[]))
-      if (data.length < passo) break
+      return { linhas: data as Record<string, unknown>[], total: count ?? 0 }
     }
+    const p1 = await pagina(0, true)
+    const todos = [...p1.linhas]
+    let prox = passo
+    if (p1.linhas.length === passo) {
+      const inicios: number[] = []
+      for (let de = passo; de < p1.total; de += passo) inicios.push(de)
+      for (let k = 0; k < inicios.length; k += 6) {        // até 6 pedidos ao mesmo tempo
+        const lote = await Promise.all(inicios.slice(k, k + 6).map(de => pagina(de)))
+        for (const p of lote) todos.push(...p.linhas)
+      }
+      prox = passo * (inicios.length + 1)
+      // a tabela cresceu enquanto lia: busca o resto
+      while (todos.length >= prox) { const p = await pagina(prox); todos.push(...p.linhas); prox += passo; if (p.linhas.length < passo) break }
+    }
+    // linha nova no meio da leitura pode empurrar outra para a página seguinte: não deixa repetir
+    const k = ord === 'id' || ord === 'seq' ? ord : 'id'
+    if (todos.length > passo && todos[0] && k in todos[0]) { const vistos = new Set<unknown>(); return normalizar(todos.filter(x => !vistos.has(x[k]) && !!vistos.add(x[k]))) }
     return normalizar(todos)
   }
   return comoUsuario(async (tx) => normalizar((await tx.query(`select * from public.${tabela} ${where?.sql || ''} order by ${ord}`, where?.vals || [])).rows as Record<string, unknown>[]), uidForcado)

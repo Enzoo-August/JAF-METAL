@@ -1113,3 +1113,7 @@ ul.passos-of .giro { width: 18px; height: 18px; border-width: 2px; margin: 0; }
 .fp-desc small, .fp-val small { color: #4f5d70; font-size: .82rem; }
 .fp-val { text-align: right; display: grid; flex: none; font-variant-numeric: tabular-nums; }
 @media (max-width: 520px) { .fp-item { flex-wrap: wrap; } .fp-val { flex: 1 1 100%; padding-left: 30px; display: flex; justify-content: space-between; align-items: baseline; } }
+/* v2.8 — máquina do passo (escolhida ou sugerida pela operação) */
+.passos .maq, .passos-of .maq { display: inline-flex; align-items: center; gap: 4px; font-size: .78rem; color: var(--texto-2); margin-top: 2px; }
+.passos .maq svg, .passos-of .maq svg { width: 13px; height: 13px; flex: none; }
+.passos .maq.sug, .passos-of .maq.sug { color: var(--texto-3, #7a8594); font-style: italic; }
