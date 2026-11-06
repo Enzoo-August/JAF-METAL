@@ -16,6 +16,8 @@ import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
 import { ComboProduto, ComTabelas } from './comum.tsx'
 import { formOF } from './OFs.tsx'
+import { cancelarNecessidade, formNecessidade, pedidosPorFornecedor } from './Compra.tsx'
+import { Ic } from '../../ui/icones.tsx'
 
 const TABS = ['produtos', 'produto_estrutura', 'vendas', 'vendas_entregas', 'ofs', 'mp_lotes'] as const
 
@@ -27,7 +29,7 @@ function LinhaVenda({ v }: { v: Venda }) {
 }
 
 export function TelaPedidos({ r }: { r: Rota }) {
-  return <ComTabelas tabs={[...TABS]}>{() => r.nome === 'necessidade' ? <Necessidade /> : <Lista />}</ComTabelas>
+  return <ComTabelas tabs={[...TABS]}>{() => r.nome === 'necessidade' ? <ComTabelas tabs={['necessidades']}>{() => <Necessidade r={r} />}</ComTabelas> : <Lista />}</ComTabelas>
 }
 
 function Lista() {
@@ -154,35 +156,77 @@ export async function entregar(v: Venda): Promise<unknown> {
 }
 
 // ---------------------------------------------------------------- necessidade (MRP)
-function Necessidade() {
+function Necessidade({ r }: { r: Rota }) {
   const [ate, setAte] = useLembrar('nec.ate', '')
-  const [aba, setAba] = useState('pecas')
+  const [aba, setAba] = useState(() => r.q.get('aba') || (API.sessao?.perfil === 'comercial' ? 'mp' : 'pecas'))
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const comprar = Perm.pode('compras_mp'), verPed = Perm.pode('compras_ver'), lancar = Perm.pode('necessidade_criar')
   const vendas = S.lista('vendas').filter(v => !v.cancelado && C.saldoVenda(v) > 0 && (!ate || (v.prazo || '') <= ate))
   const n = C.necessidade(vendas)
   const est = C.estoqueMP()
   const pecas = U.ordenar([...n.pecas].map(([id, q]) => { const p = S.get('produtos', id)!; const em = C.emOFAberta(id); return { p, q, em, falta: Math.max(0, U.r4(q - em)) } }).filter(x => x.p), x => -x.falta)
-  const mps = U.ordenar([...n.mp].map(([id, q]) => { const p = S.get('produtos', id)!; const e = est.get(id) || 0; return { p, q, e, falta: Math.max(0, U.r4(q - e)) } }).filter(x => x.p), x => -x.falta)
+  // matéria-prima: o que falta comprar = necessário − estoque − o que já está em pedido de compra
+  const mps = U.ordenar([...n.mp].map(([id, q]) => { const p = S.get('produtos', id)!; const e = est.get(id) || 0; const ped = verPed ? C.pendenteMP(id) : 0
+    return { p, q, e, ped, falta: Math.max(0, U.r4(q - e - ped)) } }).filter(x => x.p), x => -x.falta)
+  const manuais = S.lista('necessidades').filter(x => x.status === 'aberta').sort((a, b) => (a.prazo || '9') < (b.prazo || '9') ? -1 : 1)
+  const viraram = S.lista('necessidades').filter(x => x.status === 'pedido').sort((a, b) => a.atualizado_em < b.atualizado_em ? 1 : -1).slice(0, 5)
   const semCad = vendas.filter(v => !(v.produto_id ? S.get('produtos', v.produto_id) : C.produtoPorCodigo(v.codigo)))
+  const un = (id: string) => C.unidadeMP(id)
+  const marcar = (k: string, on: boolean) => setSel(x => { const y = new Set(x); if (on) y.add(k); else y.delete(k); return y })
+  const fazerPedido = async () => {
+    const itens = [...sel].map(k => {
+      if (k.startsWith('n:')) { const ne = S.get('necessidades', k.slice(2)); return ne && ne.status === 'aberta' ? { produto_id: ne.produto_id, qtd: ne.qtd, necessidades: [ne.id] } : null }
+      const x = mps.find(m => m.p.id === k.slice(2)); return x && x.falta > 0 ? { produto_id: x.p.id, qtd: Math.ceil(x.falta) } : null
+    }).filter((x): x is NonNullable<typeof x> => !!x)
+    if (!itens.length) { aviso('Marque pelo menos um material.', 'erro'); return }
+    const feitos = await pedidosPorFornecedor(itens)
+    if (feitos) setSel(new Set())
+  }
+  const Ck = ({ k, rot }: { k: string; rot: string }) => comprar ? <input type="checkbox" className="nec-ck" checked={sel.has(k)} onChange={(e) => marcar(k, e.target.checked)} aria-label={'Comprar ' + rot} data-sel={k} /> : null
+  const nMp = mps.filter(x => x.falta > 0).length + manuais.length
   return <>
-    <Cab titulo="Necessidade" sub="O que falta fabricar e comprar para atender os pedidos em aberto">
+    <Cab titulo={API.sessao?.perfil === 'comercial' ? 'O que comprar' : 'Necessidade'} sub={aba === 'mp' ? 'Matéria-prima que falta para os pedidos de clientes e o que o PCP pediu' : 'O que falta fabricar e comprar para atender os pedidos em aberto'}>
+      {lancar && !comprar && <Btn txt="Pedir compra" icone="mais" cls="pri" data-n="lancar" onClick={() => formNecessidade()} />}
       <Btn txt="Excel" icone="planilha" cls="fantasma" onClick={() => excel('Necessidade.xlsx', [
         ['Peças', pecas.map(x => ({ Código: x.p.codigo, Descrição: x.p.descricao, Necessário: x.q, 'Em OF aberta': x.em, 'Falta emitir OF': x.falta }))],
-        ['Matéria-prima', mps.map(x => ({ Material: x.p.codigo, Descrição: x.p.descricao, Necessário: x.q, 'Saldo em estoque': x.e, Falta: x.falta }))]])} />
+        ['Matéria-prima', mps.map(x => ({ Material: x.p.codigo, Descrição: x.p.descricao, Necessário: x.q, 'Saldo em estoque': x.e, ...(verPed ? { 'Em pedido de compra': x.ped } : {}), 'Falta comprar': x.falta }))],
+        ['Pedidos do PCP', manuais.map(x => ({ Material: S.get('produtos', x.produto_id)?.codigo || '', Quantidade: x.qtd, Unidade: un(x.produto_id), 'Precisa até': x.prazo ? U.data(x.prazo) : '', 'Pedido por': x.criado_nome || '', Motivo: x.motivo || '' }))]])} />
     </Cab>
     <div className="barra-filtros"><label className="sub" htmlFor="necAte">Pedidos com prazo até</label>
       <input id="necAte" type="date" value={ate} onChange={(e) => setAte(e.target.value)} />{ate && <button type="button" className="btn fantasma" onClick={() => setAte('')}>Todos</button>}</div>
-    <p className="sub">{U.plural(vendas.length, 'item', 'itens')} de pedido em aberto. A conta usa a estrutura de cada conjunto e o consumo de material de cada peça (cadastro em Produtos).</p>
-    <Chips atual={aba} aoEscolher={setAba} opcoes={[{ v: 'pecas', t: 'Peças e conjuntos', n: pecas.filter(x => x.falta > 0).length }, { v: 'mp', t: 'Matéria-prima', n: mps.filter(x => x.falta > 0).length }]} />
+    <Chips atual={aba} aoEscolher={(v) => { setAba(v); setSel(new Set()) }} opcoes={[{ v: 'pecas', t: 'Peças e conjuntos', n: pecas.filter(x => x.falta > 0).length }, { v: 'mp', t: 'Matéria-prima', n: nMp }]} />
     {aba === 'pecas'
-      ? <section className="card mt"><div className="rolagem-x"><table className="tabela-fab" id="tNecP"><thead><tr><th>Código</th><th className="so-largo">Descrição</th><th className="n">Necessário</th><th className="n">Em OF</th><th className="n">Falta</th><th /></tr></thead>
+      ? <>
+        <p className="sub">{U.plural(vendas.length, 'item', 'itens')} de pedido em aberto. A conta usa a estrutura de cada conjunto e o consumo de material de cada peça (cadastro em Produtos).</p>
+        <section className="card mt"><div className="rolagem-x"><table className="tabela-fab" id="tNecP"><thead><tr><th>Código</th><th className="so-largo">Descrição</th><th className="n">Necessário</th><th className="n">Em OF</th><th className="n">Falta</th><th /></tr></thead>
         <tbody>{pecas.map(x => <tr key={x.p.id}><td><a href={'#/produto/' + x.p.id}>{x.p.codigo}</a></td><td className="so-largo">{x.p.descricao}</td><td className="n">{U.qtd(x.q)}</td><td className="n">{U.qtd(x.em)}</td>
           <td className="n"><b style={{ color: x.falta ? 'var(--vermelho)' : undefined }}>{U.qtd(x.falta)}</b></td>
           <td>{x.falta > 0 && Perm.pode('of_emitir') && (x.p.mp_codigo || C.componentes(x.p.id).length > 0) ? <button type="button" className="btn fantasma mini" onClick={() => void formOF({ produto_id: x.p.id, qtd: x.falta })}>Emitir OF</button> : null}</td></tr>)}</tbody></table></div>
-        {!pecas.length && <p className="sub">Nada a fabricar para os pedidos em aberto.</p>}</section>
-      : <section className="card mt"><div className="rolagem-x"><table className="tabela-fab" id="tNecM"><thead><tr><th>Material</th><th className="so-largo">Descrição</th><th className="n">Necessário</th><th className="n">Estoque</th><th className="n">Falta</th></tr></thead>
-        <tbody>{mps.map(x => <tr key={x.p.id}><td className="mono">{x.p.codigo}</td><td className="so-largo">{x.p.descricao}</td><td className="n">{U.qtd(x.q)}</td><td className="n">{U.qtd(x.e)}</td>
-          <td className="n"><b style={{ color: x.falta ? 'var(--vermelho)' : undefined }}>{U.qtd(x.falta)}</b></td></tr>)}</tbody></table></div>
-        {!mps.length && <p className="sub">Nenhuma matéria-prima calculada (as peças precisam ter o material cadastrado).</p>}</section>}
+        {!pecas.length && <p className="sub">Nada a fabricar para os pedidos em aberto.</p>}</section></>
+      : <>
+        <section className="card mt" id="necPcp"><div className="card-cab"><h2>Pedidos do PCP</h2>{manuais.length > 0 && <span className="sub">{U.plural(manuais.length, 'pedido')}</span>}</div>
+          {manuais.length ? <div className="lista nec-lista" id="tNecPcp">{manuais.map(x => { const p = S.get('produtos', x.produto_id)
+            return <div key={x.id} className={'linha' + (sel.has('n:' + x.id) ? ' marcada' : '')} data-nec={x.id}><Ck k={'n:' + x.id} rot={p?.codigo || ''} />
+              <div className="meio"><b className="mono">{p?.codigo}</b><small>{p?.descricao}</small><small>{[x.criado_nome ? 'pedido por ' + x.criado_nome : '', x.motivo].filter(Boolean).join(' · ')}</small></div>
+              <div className="lado"><b>{U.qtd(x.qtd)} {un(x.produto_id)}</b><small>{x.prazo ? 'até ' + U.dataCurta(x.prazo) : 'sem prazo'}</small></div>
+              {lancar && <div className="nec-acoes"><button type="button" className="icone-btn mini" aria-label="Editar" onClick={() => formNecessidade(x)}><Ic n="lapis" /></button>
+                <button type="button" className="icone-btn mini" aria-label="Cancelar" data-cancelar={x.id} onClick={() => cancelarNecessidade(x)}><Ic n="x" /></button></div>}</div> })}</div>
+            : <p className="sub">Nada pedido pelo PCP agora.{lancar && !comprar ? ' Use “Pedir compra” para mandar uma necessidade ao Comercial.' : ''}</p>}
+          {viraram.length > 0 && <p className="peq mt">Já viraram pedido de compra: {viraram.map(x => `${S.get('produtos', x.produto_id)?.codigo || ''} (${U.qtd(x.qtd)} ${un(x.produto_id)})`).join(', ')}.</p>}
+        </section>
+        <section className="card mt"><div className="card-cab"><h2>Para os pedidos de clientes</h2></div>
+          <p className="sub">Calculado sozinho: estrutura de cada conjunto × saldo dos pedidos, descontando o estoque{verPed ? ' e o que já está em pedido de compra' : ''}.</p>
+          {mps.length > 0 && <div className="lista nec-lista mt" id="tNecM">{mps.map(x => <div key={x.p.id} className={'linha' + (sel.has('a:' + x.p.id) ? ' marcada' : '')}>
+            {comprar && (x.falta > 0 ? <Ck k={'a:' + x.p.id} rot={x.p.codigo} /> : <span className="nec-ck vazio" />)}
+            <div className="meio"><b className="mono">{x.p.codigo}</b><small>{x.p.descricao}</small>
+              <small>Precisa {U.qtd(x.q)} · estoque {U.qtd(x.e)}{verPed && x.ped ? ` · em pedido ${U.qtd(x.ped)}` : ''} {un(x.p.id)}</small></div>
+            <div className="lado">{x.falta ? <><b style={{ color: 'var(--vermelho)' }}>{U.qtd(x.falta)} {un(x.p.id)}</b><small>falta comprar</small></> : <Tag s={{ txt: 'Ok', cor: 'verde' }} />}</div></div>)}</div>}
+          {!mps.length && <p className="sub">Nenhuma matéria-prima calculada (as peças precisam ter o material cadastrado).</p>}</section>
+        {comprar && <div className="barra-acao" id="necBarra">
+          <span>{sel.size ? U.plural(sel.size, 'material marcado', 'materiais marcados') : 'Marque o que vai comprar'}</span>
+          <Btn txt="Fazer pedido de compra" icone="compras" cls="pri" data-n="pedido" disabled={!sel.size} onClick={fazerPedido} />
+        </div>}
+      </>}
     {semCad.length > 0 && <p className="sub mt">{U.plural(semCad.length, 'item', 'itens')} de pedido sem cadastro técnico ficaram fora da conta: {U.unicos(semCad.map(v => v.codigo || v.descricao || '')).slice(0, 12).join(', ')}{semCad.length > 12 ? '…' : ''}</p>}
   </>
 }

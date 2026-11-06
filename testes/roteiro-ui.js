@@ -577,7 +577,7 @@ window.roteiro = async function roteiro(filtro) {
   await passo('perfil PCP', async () => {
     await como('pcp');
     const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
-    conf(menu.join('|') === 'Início|Ordens de fabricação|Matéria-prima|Necessidade|Serviço externo|Requisições|Equipe|Pedidos de clientes|Clientes|Produtos|Peças|Ajuda', 'menu do PCP: as telas dele direto, OFs primeiro', menu);
+    conf(menu.join('|') === 'Início|Ordens de fabricação|Matéria-prima|Pedidos de clientes|Necessidade|Serviço externo|Requisições|Equipe|Clientes|Produtos|Peças|Ajuda', 'menu do PCP: as telas dele direto, OFs primeiro, pedidos de clientes no PCP', menu);
     conf(!document.querySelector('.lateral [data-acao=retirar]') && !!document.querySelector('.lateral [data-acao=novaOF]'), 'PCP tem "Nova OF" e não "Retirar peça"');
     conf(S.lista('movimentos').length === 0 && S.lista('lancamentos').length === 0 && S.lista('clientes').length > 0, 'banco manda ordens e clientes, sem movimentações nem financeiro');
     for (const r of ['#/maquinas', '#/movimentos', '#/compras', '#/financeiro', '#/rh']) { await ir(r); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'PCP sem ' + r); }
@@ -728,6 +728,94 @@ window.roteiro = async function roteiro(filtro) {
     conf(f && f.uf === 'SP' && f.cidade === 'Sao Paulo', 'fornecedor novo cadastrado com os dados da nota', f && { n: f.nome, uf: f.uf, c: f.cidade });
     const j2 = await escolher();
     conf(!!j2 && j2.textContent.includes('já foi lançada') && !botao('Lançar a nota', j2), 'a mesma nota não entra de novo');
+  });
+
+  // ================================================================ v2.7: passo a passo da OF, necessidade do PCP, compra de matéria-prima (Comercial)
+  await passo('passo a passo e quadradinhos da OF', async () => {
+    await como('pcp');
+    await S.garantir(['produtos', 'produto_estrutura', 'ofs']);
+    const pr = S.lista('produtos').find(p => p.codigo === 'CF 02.0002');
+    await ir('#/produto/' + pr.id); await espera(() => document.querySelector('#secProcesso'));
+    conf(document.querySelector('#secProcesso').textContent.includes('Estampar e dobrar'), 'passo a passo montado sozinho pela operação da peça');
+    await clicar(document.querySelector('[data-proc=editar]'));
+    const j = await espera(() => janela()?.querySelector('.passo-ed') && janela());
+    await clicar(j.querySelector('[data-add-passo]'));
+    const linhas = j.querySelectorAll('.passo-ed');
+    conf(document.activeElement === linhas[linhas.length - 1].querySelector('[name=op]'), 'passo novo já fica com o cursor');
+    digitar(linhas[linhas.length - 1].querySelector('[name=op]'), 'Rebarbar');
+    digitar(linhas[0].querySelector('[name=mq]'), S.lista('maquinas').find(m => m.ativo).id);
+    await okJanela('Salvar passo a passo');
+    const p2 = S.get('produtos', pr.id);
+    conf(p2.processo?.length === 2 && p2.processo[1].operacao === 'Rebarbar' && !!p2.processo[0].maquina_id, 'passo a passo salvo com a máquina', p2.processo || erroJanela(j));
+    await clicar(document.querySelector('.lateral [data-acao="novaOF"]') || document.querySelector('.aba-central[data-acao="novaOF"]'));
+    const k = await espera(janela);
+    await combo(k.querySelector('#ofProd'), 'CF 02.0002');
+    digitar(k.querySelector('[name=qtd]'), '20');
+    conf(!!await espera(() => k.querySelector('.previa-passos')), 'mostra o passo a passo antes de emitir a OF');
+    await okJanela('Emitir OF');
+    const o = await espera(() => S.lista('ofs').find(x => x.qtd === 20 && x.status === 'aberta' && S.get('produtos', x.produto_id)?.codigo === 'CF 02.0002'));
+    conf(o?.passos?.length === 2 && o.passos[1].operacao === 'Rebarbar' && o.passos.every(x => !x.feito), 'OF nasce com os passos do produto', o?.passos || erroJanela(k));
+    await como('operador');
+    await ir('#/of/' + o.id); await espera(() => document.querySelector('[data-passo="1"]'));
+    document.querySelector('[data-passo="1"]').click();
+    const o2 = await espera(() => S.get('ofs', o.id).passos[0].feito && S.get('ofs', o.id), 6000);
+    conf(o2 && o2.passos[0].feito_por === 'Beto (teste)' && !o2.passos[1].feito, 'produção marca o passo no aplicativo (com quem e quando)', o2?.passos);
+    await espera(() => document.querySelector('#ofPassos li.feito'));
+    conf(document.querySelector('#ofPassos').textContent.includes('1 de 2 feitos'), 'mostra quantos passos já foram feitos');
+    conf(!document.querySelector('[data-of-acao=refazer]'), 'com passo marcado não dá para trocar o passo a passo');
+  });
+  await passo('PCP pede compra e o Comercial compra matéria-prima', async () => {
+    await como('pcp');
+    await ir('#/necessidade?aba=mp'); await espera(() => document.querySelector('#necPcp'));
+    conf(!document.querySelector('#necBarra'), 'PCP não faz pedido de compra (só pede)');
+    await clicar(document.querySelector('[data-n=lancar]'));
+    const j = await espera(janela);
+    await combo(j.querySelector('#nMat'), 'IA07');
+    digitar(j.querySelector('[name=qtd]'), '25'); digitar(j.querySelector('[name=motivo]'), 'Teste do roteiro');
+    await okJanela('Mandar para o Comercial');
+    const nec = await espera(() => S.lista('necessidades').find(n => n.motivo === 'Teste do roteiro'));
+    conf(nec && nec.status === 'aberta' && Number(nec.qtd) === 25, 'necessidade lançada pelo PCP', nec || erroJanela(j));
+
+    await como('comercial');
+    const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
+    conf(menu.join('|') === 'Início|Pedidos de clientes|O que comprar|Pedidos de compra|Fornecedores|Estoque de material|Clientes|Ajuda', 'menu do Comercial', menu);
+    for (const r of ['#/financeiro', '#/rh', '#/movimentos']) { await ir(r); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'Comercial sem ' + r); }
+    await ir('#/compras/lista'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'lista de peças do almoxarifado fica com o almoxarifado');
+    conf(S.lista('lancamentos').length === 0 && S.lista('funcionarios_privado').length === 0, 'banco não manda financeiro nem dados pessoais para o Comercial');
+    await ir('#/necessidade'); await espera(() => document.querySelector(`[data-sel="n:${nec.id}"]`));
+    conf(document.querySelector('.chips .on, [aria-pressed=true]')?.textContent.includes('Matéria-prima') !== false, 'Comercial abre direto na matéria-prima');
+    document.querySelector(`[data-sel="n:${nec.id}"]`).click(); await dorme(80);
+    const salvaAntes = window.showSaveFilePicker; window.showSaveFilePicker = undefined;
+    try {
+      await clicar(document.querySelector('[data-n=pedido]'));
+      const f = await espera(() => janela()?.querySelector('#mpItens') && janela());
+      conf(f.querySelector('[name=imat]').value.startsWith('IA07.B01.cg') && U.num(f.querySelector('[name=iqtd]').value) === 25, 'pedido já vem com o material e a quantidade pedida', f.querySelector('[name=imat]').value);
+      if (!f.querySelector('[name=fornecedor_id]').dataset.comboId) await combo(f.querySelector('#mpForn'), 'Aço Exemplo');
+      digitar(f.querySelector('[name=ipreco]'), '32,5');
+      await clicar('Ver prévia', f.querySelector('.janela-pe'));
+      const pv = await espera(() => janela() !== f && janela()?.querySelector('#mpPrevia') && janela());
+      conf(!!pv && pv.textContent.includes('IA07.B01.cg') && pv.textContent.includes('812,50'), 'prévia mostra o material e o total antes de gerar', pv?.textContent.slice(0, 200));
+      const nAntes = S.lista('pedidos_compra').length;
+      await clicar('Voltar e corrigir', pv.querySelector('.janela-pe')); await dorme(150);
+      conf(document.body.contains(f) && S.lista('pedidos_compra').length === nAntes, 'voltar da prévia não grava nada');
+      await clicar('Ver prévia', f.querySelector('.janela-pe'));
+      const pv2 = await espera(() => janela() !== f && janela()?.querySelector('#mpPrevia') && janela());
+      await clicar('Gerar pedido e PDF', pv2.querySelector('.janela-pe'));
+      const ped = await espera(() => S.lista('pedidos_compra').find(p => p.tipo === 'mp' && C.itensDoPedido(p.id).some(i => S.get('produtos', i.produto_id)?.codigo === 'IA07.B01.cg' && Number(i.qtd) === 25)), 8000);
+      conf(!!ped && S.get('necessidades', nec.id)?.status === 'pedido', 'pedido de matéria-prima criado e a necessidade baixada', { ped: !!ped, nec: S.get('necessidades', nec.id)?.status });
+      UI.fecharTodas();
+      await ir('#/pedido/' + ped.id); await espera(() => document.querySelector('[data-p=receber]'));
+      await clicar(document.querySelector('[data-p=receber]'));
+      const r = await espera(janela);
+      digitar(r.querySelector('.rec'), '10'); digitar(r.querySelector('[name=documento]'), 'NF 9090');
+      await okJanela('Confirmar recebimento');
+      const lote = await espera(() => S.lista('mp_lotes').find(l => l.nota === 'NF 9090'), 6000);
+      conf(lote && Number(lote.qtd) === 10 && lote.pedido === String(ped.numero) && lote.status === 'Aguardando', 'receber cria o R.I. sozinho, com o nº do pedido', lote || erroJanela(r));
+      conf(S.get('pedidos_compra', ped.id).status === 'aguardando' && C.pendenteMP(lote.produto_id) >= 15, 'chegou parte: o resto continua a caminho');
+      conf(!!document.querySelector('#pLotes') && document.querySelector('#pLotes').textContent.includes('R.I. ' + lote.ri), 'ficha do pedido mostra o R.I. que entrou');
+      const pPecas = S.lista('pedidos_compra').find(p => p.tipo === 'pecas' && p.status === 'aguardando');
+      if (pPecas) { await ir('#/pedido/' + pPecas.id); await dorme(200); conf(!document.querySelector('[data-p=receber]') && !document.querySelector('[data-p=editar]'), 'Comercial não mexe em pedido de peças'); }
+    } finally { window.showSaveFilePicker = salvaAntes; }
   });
 
   // ================================================================ RH (perfil próprio)

@@ -23,6 +23,10 @@ function contadores(): Record<string, number> {
     c['compras/lista'] = C.listaCompras().filter(x => !x.jaPedido).length
     c.compras = S.lista('pedidos_compra').filter(p => p.status === 'aguardando' && p.prazo && p.prazo < hoje).length
   }
+  if (Perm.pode('menu_comercial')) {
+    c.necessidade = S.lista('necessidades').filter(n => n.status === 'aberta').length
+    c.compras = S.lista('pedidos_compra').filter(p => p.status === 'aguardando' && p.prazo && p.prazo < hoje).length
+  }
   if (Perm.pode('financeiro')) c.financeiro = S.lista('lancamentos').filter(l => !l.pago_em && l.vencimento <= hoje).length
   if (Perm.pode('pcp')) c.producao = S.lista('ordens').filter(o => (o.status === 'fila' || o.status === 'producao') && o.prazo && o.prazo < hoje).length
   if (Perm.pode('almox')) {
@@ -82,6 +86,8 @@ export function Casca() {
   const urgentes = al.some(a => a.nivel === 'alto')
   const podeRetirar = Perm.pode('retirar')
   const baixo = abasDeBaixo(s.perfil)
+  // aba de baixo acesa: a da tela; se a tela não está na barra, só a primeira da mesma área
+  const abaAcesa = baixo.some(x => x[0] === chave) ? chave : baixo.find(x => areaDaRota(x[0]) === area?.id)?.[0]
 
   const fecharMenu = () => classeCorpo('menu-aberto', false)
   const retirar = () => { fecharMenu(); void Telas.movimentos.retirar() }
@@ -152,7 +158,7 @@ export function Casca() {
       <nav className="abas" aria-label="Atalhos">{baixo.filter(([rt]) => !ACOES[rt] || ACOES[rt].pode).map(([rt, t, ic]) => ACOES[rt]
         ? <button key={rt} type="button" className="aba aba-central" data-acao={rt} onClick={ACOES[rt].fazer}><Ic n={ic} /><span>{t}</span></button>
         : rt === 'menu' ? <button key={rt} type="button" className="aba" data-acao="menu" onClick={() => document.body.classList.toggle('menu-aberto')}><Ic n={ic} /><span>{t}</span></button>
-        : <a key={rt} className={`aba ${rt === chave || (!baixo.some(x => x[0] === chave) && areaDaRota(rt) === area?.id) ? 'on' : ''}`} href={'#/' + rt} data-rota={rt} onClick={fecharMenu}><Ic n={ic} /><span>{t}</span></a>)}</nav>
+        : <a key={rt} className={`aba ${rt === abaAcesa ? 'on' : ''}`} href={'#/' + rt} data-rota={rt} onClick={fecharMenu}><Ic n={ic} /><span>{t}</span></a>)}</nav>
     </div>)
 }
 

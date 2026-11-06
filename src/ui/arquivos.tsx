@@ -99,8 +99,8 @@ export async function pdfPedido(ped: PedidoCompra): Promise<Blob> {
   tabela({
     ...estiloTabela, startY: y,
     head: [['#', 'Código', 'Descrição', 'Qtd', 'Preço unit.', 'Total']],
-    body: itens.map((i, n) => { const p = S.get('pecas', i.peca_id)
-      return [n + 1, p?.codigo || '', p?.descricao || '', `${U.qtd(i.qtd)} ${p?.unidade || ''}`, U.moeda(i.valor / i.qtd), U.moeda(i.valor)] }),
+    body: itens.map((i, n) => { const p = C.itemPedido(i)
+      return [n + 1, p.codigo, p.descricao, `${U.qtd(i.qtd)} ${p.unidade}`, U.moeda(i.valor / i.qtd), U.moeda(i.valor)] }),
     columnStyles: { 0: { cellWidth: 8, halign: 'center' }, 1: { cellWidth: 42, font: 'courier' }, 3: { halign: 'right', cellWidth: 18 }, 4: { halign: 'right', cellWidth: 25 }, 5: { halign: 'right', cellWidth: 27 } },
   })
   y = doc.lastAutoTable.finalY + 6

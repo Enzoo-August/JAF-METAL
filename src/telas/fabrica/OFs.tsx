@@ -14,6 +14,7 @@ import { ComboMaquina } from '../../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
 import { ComboProduto, ComTabelas, nr } from './comum.tsx'
+import { PassosOF, PreviaPassos } from './Processo.tsx'
 
 const TABS = ['produtos', 'produto_estrutura', 'mp_lotes', 'ofs', 'vendas'] as const
 
@@ -98,6 +99,7 @@ function Ficha({ id }: { id: string }) {
       ['Pedido do cliente', venda ? `${venda.cliente_nome || ''} · pedido ${venda.pedido || '—'} · ${U.qtd(venda.qtd)} pç para ${U.data(venda.prazo)}` : ''],
       ['Máquina', maq ? C.nomeMaquina(maq) : ''], ['OF do conjunto', pai ? <a href={'#/of/' + pai.id}>OF {pai.numero}</a> : ''],
       ['Observações', o.obs ? <Texto t={o.obs} /> : '']]} /></section>
+    <PassosOF o={o} />
     {o.tipo === 'conjunto' && <section className="card mt"><div className="card-cab"><h2>Componentes do conjunto</h2><span className="sub">OF de cada componente</span></div>
       {o.componentes.length ? <div className="rolagem-x"><table className="tabela-fab"><thead><tr><th>Código</th><th className="so-largo">Descrição</th><th className="n">Qtd</th><th>OF comp.</th></tr></thead>
         <tbody>{o.componentes.map((c, i) => { const cp = C.produtoPorCodigo(c.codigo), ref = ofPorNumero(c.ref)
@@ -136,6 +138,7 @@ function CorpoOF({ b }: { b: Partial<OF> }) {
     {prod && temEstr && <div className="card mt" style={{ boxShadow: 'none' }}><b>Conjunto — componentes por {q ? U.qtd(q) : '1'} pç</b>
       <ul className="sub" style={{ margin: '6px 0 0', paddingLeft: 18 }}>{C.componentes(prod.id).map(e => { const f = S.get('produtos', e.filho_id); return <li key={e.id}>{f?.codigo} — {U.qtd(Number(e.qtd) * (q || 1))} {e.unidade}</li> })}</ul>
       {!b.id && <Campo nome="gerar_componentes" rotulo="Emitir também as OFs dos componentes que são fabricados aqui" tipo="check" valor={true} />}</div>}
+    {prod && !b.id && <PreviaPassos p={prod} />}
     <ComboMaquina id="ofMaq" nome="maquina_id" rotulo="Máquina (opcional)" placeholder="Onde vai ser feita" inicial={S.get('maquinas', b.maquina_id)} />
     <Campo nome="emitido_por" rotulo="Emitido por" valor={b.emitido_por || API.sessao?.nome} />
     <Campo nome="obs" rotulo="Observações" tipo="area" linhas={2} valor={b.obs} />
@@ -218,13 +221,29 @@ export async function imprimirOF(o: OF): Promise<void> {
         columnStyles: { 0: { cellWidth: 8 }, 3: { halign: 'right' } } })
       y = c.doc.lastAutoTable.finalY + 6
     }
+    // passo a passo com quadradinhos para marcar no papel
+    if (o.passos?.length) {
+      c.tabela({ ...c.estilo, startY: y, theme: 'grid', head: [['', '#', 'Passo', 'Máquina', 'Feito por', 'Data']],
+        body: o.passos.map(x => ['', x.n, x.operacao + (x.peca ? '\n' + x.peca : ''), x.maquina || '', x.feito ? x.feito_por || '' : '', x.feito && x.feito_em ? U.dataCurta(x.feito_em) : '']),
+        styles: { ...c.estilo.styles, minCellHeight: 9, valign: 'middle' },
+        columnStyles: { 0: { cellWidth: 9 }, 1: { cellWidth: 8, halign: 'center' }, 3: { cellWidth: 34 }, 4: { cellWidth: 34 }, 5: { cellWidth: 20 } },
+        didDrawCell: (d: { section: string; column: { index: number }; row: { index: number }; cell: { x: number; y: number; width: number; height: number } }) => {
+          if (d.section !== 'body' || d.column.index !== 0) return
+          const t = 4.2, x = d.cell.x + (d.cell.width - t) / 2, yy = d.cell.y + (d.cell.height - t) / 2
+          c.doc.setDrawColor(40); c.doc.setLineWidth(0.35); c.doc.rect(x, yy, t, t)
+          if (o.passos[d.row.index]?.feito) { c.doc.setLineWidth(0.6); c.doc.line(x + 0.8, yy + 2.2, x + 1.8, yy + 3.4); c.doc.line(x + 1.8, yy + 3.4, x + 3.6, yy + 0.8) }
+        } })
+      y = c.doc.lastAutoTable.finalY + 6
+      if (y > c.H - 60) { c.doc.addPage(); y = 20 }
+    }
     c.tabela({ ...c.estilo, startY: y, head: [['Apontamento', '']], theme: 'grid', styles: { ...c.estilo.styles, minCellHeight: 9 },
       body: [['Qtde produzida', o.produzido !== null ? U.qtd(o.produzido) : ''], ['Realizado por', o.realizado_por || ''], ['Data', o.realizada_em ? U.data(o.realizada_em) : ''], ['Status', C.situacaoOF(o).txt]],
       columnStyles: { 0: { cellWidth: 48, fontStyle: 'bold' } } })
     y = c.doc.lastAutoTable.finalY + 6
     if (o.obs) y = c.texto('Observações: ' + o.obs, y + 2, { tam: 9 })
-    c.assinatura('Emitido por', o.emitido_por || '', 14, Math.max(y + 22, 250), 80)
-    c.assinatura('Realizado por', o.realizado_por || '', c.W - 94, Math.max(y + 22, 250), 80)
+    if (y + 32 > c.H - 12) { c.doc.addPage(); y = 20 }
+    c.assinatura('Emitido por', o.emitido_por || '', 14, Math.min(Math.max(y + 22, 250), c.H - 20), 80)
+    c.assinatura('Realizado por', o.realizado_por || '', c.W - 94, Math.min(Math.max(y + 22, 250), c.H - 20), 80)
   })
   await entregar(blob, `OF ${o.numero}.pdf`)
 }

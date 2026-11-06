@@ -14,15 +14,20 @@ export const AREAS: Area[] = [
   { id: 'inicio', rot: 'Início', ic: 'inicio', desc: 'Resumo do dia e atalhos', subs: [{ rota: 'inicio', rot: 'Início', perm: 'todos' }] },
   { id: 'pcp', rot: 'PCP', ic: 'producao', desc: 'Ordens de fabricação, matéria-prima e necessidade', grupo: 'Operação', subs: [
     { rota: 'ofs', rot: 'Ordens de fabricação', ic: 'producao', perm: 'of_menu', chaves: 'of ordem de fabricação form 034 042 conjunto componente apontar encerrar' },
-    { rota: 'mp', rot: 'Matéria-prima', ic: 'entrada', perm: 'mp_ver', chaves: 'ri r.i. e.s.m. esm entrada material lote saldo kg identificação' },
-    { rota: 'necessidade', rot: 'Necessidade', ic: 'lista', perm: 'necessidade', chaves: 'mrp necessidade de componentes mp falta fabricar' },
+    { rota: 'mp', rot: 'Matéria-prima', ic: 'entrada', perm: 'mp_ver', nao: 'menu_comercial', chaves: 'ri r.i. e.s.m. esm entrada material lote saldo kg identificação' },
+    { rota: 'pedidos', rot: 'Pedidos de clientes', ic: 'cliente', perm: 'menu_pcp', chaves: 'controle de pedidos entrega atraso prazo carteira' },
+    { rota: 'necessidade', rot: 'Necessidade', ic: 'lista', perm: 'necessidade', nao: 'menu_comercial', chaves: 'mrp necessidade de componentes mp falta fabricar pedir compra' },
     { rota: 'reg/servico_externo', rot: 'Serviço externo', ic: 'fornecedor', perm: 'pcp_reg_ver', chaves: 'sol serv ext tratamento zincagem fora retorno' },
     { rota: 'reg/requisicao', rot: 'Requisições', ic: 'retirar', perm: 'pcp_reg_ver', chaves: 'req componentes requisição' },
     { rota: 'producao', rot: 'Ordens de produção', ic: 'producao', perm: 'pcp', nao: 'of_menu', chaves: 'op fila produzindo pronta entrega' },
     { rota: 'equipe', rot: 'Equipe', ic: 'equipe', perm: 'pcp', nao: 'rh_ver', chaves: 'funcionários pessoas' },
   ] },
-  { id: 'comercial', rot: 'Comercial', ic: 'cliente', desc: 'Pedidos de clientes e entregas', grupo: 'Operação', subs: [
-    { rota: 'pedidos', rot: 'Pedidos de clientes', ic: 'cliente', perm: 'vendas', chaves: 'controle de pedidos entrega atraso prazo carteira faturamento' },
+  { id: 'comercial', rot: 'Comercial', ic: 'cliente', desc: 'Pedidos de clientes, entregas e compra de matéria-prima', grupo: 'Operação', subs: [
+    { rota: 'pedidos', rot: 'Pedidos de clientes', ic: 'cliente', perm: 'vendas', nao: 'menu_pcp', chaves: 'controle de pedidos entrega atraso prazo carteira faturamento' },
+    { rota: 'necessidade', rot: 'O que comprar', ic: 'lista', perm: 'menu_comercial', chaves: 'necessidade matéria-prima comprar falta material pcp' },
+    { rota: 'compras', rot: 'Pedidos de compra', ic: 'compras', perm: 'menu_comercial', chaves: 'pedido de compra material fornecedor receber chegou pdf' },
+    { rota: 'fornecedores', rot: 'Fornecedores', ic: 'fornecedor', perm: 'menu_comercial', chaves: 'fornecedor contato telefone' },
+    { rota: 'mp', rot: 'Estoque de material', ic: 'entrada', perm: 'menu_comercial', chaves: 'matéria-prima saldo r.i. lote kg' },
     { rota: 'clientes', rot: 'Clientes', ic: 'cliente', perm: 'clientes', chaves: 'cliente cnpj sigla' },
   ] },
   { id: 'tecnico', rot: 'Engenharia', ic: 'lapis', desc: 'Depto. técnico: produtos, desenvolvimento, alterações e qualidade', grupo: 'Operação', subs: [
@@ -99,6 +104,8 @@ export function chaveDaRota(r: Rota): string {
 }
 export function ondeEstou(r: Rota): { area: Area | null; sub: SubAba | null } {
   const k = chaveDaRota(r)
+  // a mesma tela pode estar em duas áreas (ex.: Pedidos de clientes no PCP e no Comercial): vale a que o login vê
+  for (const a of AREAS) for (const s of a.subs) if (s.rota === k && subPode(s)) return { area: a, sub: s }
   for (const a of AREAS) for (const s of a.subs) if (s.rota === k) return { area: a, sub: s }
   return { area: null, sub: null }
 }
@@ -109,7 +116,7 @@ export interface GrupoMenu { titulo: string | null; itens: ItemMenu[] }
 
 const POR_AREAS: Perfil[] = ['dono', 'escritorio']
 // a área principal de cada login vem primeiro no menu
-const PRINCIPAL: Partial<Record<Perfil, string>> = { pcp: 'pcp', rh: 'rh', tecnico: 'tecnico', manutencao: 'manutencao', producao: 'pcp' }
+const PRINCIPAL: Partial<Record<Perfil, string>> = { pcp: 'pcp', rh: 'rh', tecnico: 'tecnico', manutencao: 'manutencao', producao: 'pcp', comercial: 'comercial' }
 export const menuPlano = (p: Perfil): boolean => !POR_AREAS.includes(p)
 
 function juntar(lista: [titulo: string | null, item: ItemMenu][]): GrupoMenu[] {
@@ -135,7 +142,7 @@ export function gruposDoMenu(p: Perfil): GrupoMenu[] {
   return juntar([...de('inicio'), ...meio, ...de('admin'), ...de('ajuda')])
 }
 
-export const areaDaRota = (rota: string): string | undefined => AREAS.find(a => a.subs.some(s => s.rota === rota))?.id
+export const areaDaRota = (rota: string): string | undefined => (AREAS.find(a => a.subs.some(s => s.rota === rota && subPode(s))) || AREAS.find(a => a.subs.some(s => s.rota === rota)))?.id
 
 // barra de baixo do celular (o botão do meio é o que a pessoa mais faz)
 export type AbaBaixo = [rota: string, rot: string, ic: NomeIcone]
@@ -149,5 +156,6 @@ const BAIXO: Partial<Record<Perfil, AbaBaixo[]>> = {
   manutencao: [['inicio', 'Início', 'inicio'], ['os', 'OS', 'chave'], ['novaOS', 'Abrir OS', 'mais'], ['preventiva', 'Preventiva', 'ok'], ['menu', 'Menu', 'menu']],
   gerente: [['inicio', 'Início', 'inicio'], ['pecas', 'Almox.', 'estoque'], ['retirar', 'Retirar', 'retirar'], ['rh', 'Equipe', 'equipe'], ['menu', 'Menu', 'menu']],
   rh: [['inicio', 'Início', 'inicio'], ['rh', 'Pessoas', 'equipe'], ['rh/ponto', 'Ponto', 'relogio'], ['rh/ferias', 'Férias', 'calendario'], ['menu', 'Menu', 'menu']],
+  comercial: [['inicio', 'Início', 'inicio'], ['pedidos', 'Pedidos', 'cliente'], ['necessidade', 'Comprar', 'lista'], ['compras', 'Compras', 'compras'], ['menu', 'Menu', 'menu']],
 }
 export const abasDeBaixo = (p: Perfil): AbaBaixo[] => BAIXO[p] || BAIXO.producao!

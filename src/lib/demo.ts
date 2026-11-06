@@ -158,6 +158,7 @@ export async function criarDemo(): Promise<void> {
   await API.rpc('criar_acesso', { p_login: 'gerente', p_senha: senha, p_nome: 'Ivo (teste)', p_perfil: 'gerente', p_func: ids['Ivo Martins'] })
   await API.rpc('criar_acesso', { p_login: 'tecnico', p_senha: senha, p_nome: 'Tiago (teste)', p_perfil: 'tecnico', p_func: null })
   await API.rpc('criar_acesso', { p_login: 'manut', p_senha: senha, p_nome: 'Márcio (teste)', p_perfil: 'manutencao', p_func: null })
+  await API.rpc('criar_acesso', { p_login: 'comercial', p_senha: senha, p_nome: 'Carla (teste)', p_perfil: 'comercial', p_func: null })
 
   // na demonstração as senhas já são as definitivas (no sistema real o Dono cria provisórias)
   await API._pg!.query(`update public.perfis set trocar_senha = false`)
@@ -422,4 +423,14 @@ async function demoFabrica(dia: (n: number) => string): Promise<void> {
   await API.rpc('emitir_of', { p: { produto_id: pr.id, qtd: 200, ri: 1001, prazo: dia(3), emitido_por: 'Paula' } })
   const v = S.lista('vendas').find(x => x.pedido === 'PC 018/26')!
   await API.rpc('entregar_venda', { p: { venda_id: v.id, qtd: 10, data: dia(-1), nf: '7001' } })
+  // passo a passo conferido de uma peça (com máquina), um pedido de compra de material e uma necessidade do PCP
+  const cod = (c: string) => S.lista('produtos').find(p => p.codigo === c)!
+  const curv = S.lista('maquinas').find(m => m.nome === 'Curvadora')
+  await API.rpc('salvar_processo', { p: { produto_id: cod('CF 02.0003').id, passos: [
+    { operacao: 'Serrar no comprimento (400 mm)', peca: null, maquina_id: null }, { operacao: 'Amassar a ponta', peca: null, maquina_id: null },
+    { operacao: 'Curvar', peca: null, maquina_id: curv?.id || null }, { operacao: 'Rebarbar e conferir', peca: null, maquina_id: null }] } })
+  const aco = S.lista('fornecedores').find(f => f.nome === 'Aço Exemplo Distribuidora')!
+  await API.rpc('salvar_pedido', { p: { tipo: 'mp', fornecedor_id: aco.id, data: dia(-3), prazo: dia(4), documento: 'Orçamento 2031',
+    itens: [{ produto_id: cod('IA07.B01.cg').id, qtd: 40, valor: 1300 }] } })
+  await API.rpc('salvar_necessidade', { p: { produto_id: cod('AE01.B01.ac').id, qtd: 50, prazo: dia(7), motivo: 'Estoque de segurança do pino' } })
 }

@@ -19,6 +19,7 @@ import { ComboProduto, ComTabelas } from './comum.tsx'
 import { LinhaOF, formOF } from './OFs.tsx'
 import { detalhe as detalheLote, formLote } from './MP.tsx'
 import { NOMES_REG } from './Registros.tsx'
+import { SecaoProcesso } from './Processo.tsx'
 
 const TABS = ['produtos', 'produto_estrutura', 'mp_lotes', 'ofs', 'vendas', 'registros'] as const
 const CHECKS: [string, string][] = [['solic_desenv', 'Solic. desenvolvimento'], ['rf_pc', 'RF e PC'], ['desenhos', 'Desenhos'], ['planos_montagem', 'Planos de montagem']]
@@ -104,6 +105,7 @@ function Ficha({ id }: { id: string }) {
       ['Matéria-prima', p.mp_codigo && !mp ? `${p.mp_codigo} (não cadastrada)` : ''], ['Entrada', p.data_entrada ? U.data(p.data_entrada) : ''],
       ['Documentação', CHECKS.some(([k]) => p.checks?.[k] !== undefined) ? CHECKS.map(([k, t]) => (p.checks?.[k] ? '✓ ' : '✗ ') + t).join(' · ') : ''],
       ['Observações', p.obs ? <Texto t={p.obs} /> : '']]} /></section>
+    {p.classe === 'peca' && <SecaoProcesso p={p} />}
     {comps.length > 0 && <section className="card mt"><div className="card-cab"><h2>Estrutura (componentes)</h2><span className="sub">por 1 conjunto</span></div>
       <div className="lista">{comps.map(e => { const f = S.get('produtos', e.filho_id)
         return <a key={e.id} className="linha" href={'#/produto/' + e.filho_id}><div className="meio"><b>{f?.codigo}</b><small>{f?.descricao}</small></div><div className="lado"><b>{U.qtd(e.qtd)}</b><small>{e.unidade}</small></div></a> })}</div></section>}

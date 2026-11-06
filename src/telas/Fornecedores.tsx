@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { App } from '../app/controle.tsx'
 import { API } from '../lib/api.ts'
+import { Perm } from '../lib/perm.ts'
 import { C, S } from '../lib/dados.ts'
 import type { Fornecedor } from '../lib/tipos.ts'
 import * as U from '../lib/util.ts'
@@ -11,6 +12,8 @@ import { useLembrar, type Rota } from '../ui/ganchos.ts'
 import { Ic } from '../ui/icones.tsx'
 import { lerForm, modal, useJanela } from '../ui/janelas.tsx'
 import { form as formPedido, LinhaPedido } from './Compras.tsx'
+import { formPedidoMP } from './fabrica/Compra.tsx'
+import { ComTabelas } from './fabrica/comum.tsx'
 import { LinhaManut } from './Maquinas.tsx'
 import { LinhaPeca } from './Pecas.tsx'
 
@@ -42,7 +45,7 @@ function Linha({ f }: { f: Fornecedor }) {
     <div className="lado"><b>{tot ? U.moeda0(tot) : '—'}</b><small>{n ? U.plural(n, 'peça') : ''} {tot ? 'em ' + ano : ''}</small></div></a>
 }
 
-export function TelaFornecedores({ r }: { r: Rota }) { return r.nome === 'fornecedor' ? <Ficha id={r.id!} /> : <Lista r={r} /> }
+export function TelaFornecedores({ r }: { r: Rota }) { return r.nome === 'fornecedor' ? <ComTabelas tabs={['produtos']}>{() => <Ficha id={r.id!} />}</ComTabelas> : <Lista r={r} /> }
 export const tituloFornecedores = (r: Rota) => r.nome === 'fornecedor' ? (S.get('fornecedores', r.id)?.nome || 'Fornecedor') : 'Fornecedores'
 
 function Lista({ r }: { r: Rota }) {
@@ -94,7 +97,8 @@ function Ficha({ id }: { id: string }) {
   return <>
     <Voltar para="#/fornecedores" txt="Fornecedores" />
     <header className="cab"><div><h1>{f.nome} {!f.ativo && <span className="tag t-cinza">inativo</span>}</h1><p className="sub">{[f.razao, f.tipo].filter(Boolean).join(' · ')}</p></div>
-      <div className="acoes"><Btn txt="Novo pedido" icone="compras" cls="pri" data-fo="pedido" onClick={() => void formPedido({ fornecedor_id: f.id })} /><Btn txt="Editar" icone="lapis" data-fo="editar" onClick={() => void form(f)} /></div></header>
+      <div className="acoes">{Perm.pode('compras') && <Btn txt={Perm.pode('compras_mp') ? 'Pedido de peças' : 'Novo pedido'} icone="compras" cls="pri" data-fo="pedido" onClick={() => void formPedido({ fornecedor_id: f.id })} />}
+        {Perm.pode('compras_mp') && <Btn txt="Pedido de material" icone="compras" cls={Perm.pode('compras') ? 'sec' : 'pri'} data-fo="pedidoMP" onClick={() => void formPedidoMP({ fornecedor_id: f.id })} />}<Btn txt="Editar" icone="lapis" data-fo="editar" onClick={() => void form(f)} /></div></header>
     <section className="card"><Contatos f={f} />
       <div className="mt"><Dl pares={[['Contato', [f.contato, f.contato2].filter(Boolean).join(' / ')], ['CNPJ', f.cnpj || ''], ['Inscrição estadual', f.ie || ''],
         ['Endereço', [f.endereco, f.bairro, [f.cidade, f.uf].filter(Boolean).join('/'), f.cep].filter(Boolean).join(' — ')],

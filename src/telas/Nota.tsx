@@ -110,7 +110,7 @@ async function conferir(nota: Nota, conf: Conferencia): Promise<void> {
         if (destino === 'mp') {
           if (!d['mp_' + it.n]) throw new ErroApp(`Item ${it.n} (${it.descricao}): escolha o material, ou marque “Não lançar”.`)
           if (!(d['q_' + it.n] > 0)) throw new ErroApp(`Item ${it.n}: informe a quantidade.`)
-          return { ...base, produto_id: d['mp_' + it.n], qtd: d['q_' + it.n], status: d['st_' + it.n] || 'Aprovado', pedido: it.pedido || null }
+          return { ...base, produto_id: d['mp_' + it.n], qtd: d['q_' + it.n], status: d['st_' + it.n] || 'Aprovado', pedido: it.pedido || null, pedido_item_id: d['ped_' + it.n] ? pedidoDe[it.n] || null : null }
         }
         return base
       })
@@ -139,6 +139,7 @@ async function conferir(nota: Nota, conf: Conferencia): Promise<void> {
 function FormNota({ nota, conf, sug, pedidoDe }: { nota: Nota; conf: Conferencia; sug: Record<number, Sugestao>; pedidoDe: Record<number, string> }) {
   const [destino, setDestino] = useState<Record<number, Destino>>(() => Object.fromEntries(nota.itens.map(it => [it.n, sug[it.n].destino])))
   const [peca, setPeca] = useState<Record<number, string>>(() => Object.fromEntries(nota.itens.map(it => [it.n, sug[it.n].peca?.id || ''])))
+  const [mat, setMat] = useState<Record<number, string>>(() => Object.fromEntries(nota.itens.map(it => [it.n, sug[it.n].produto?.id || ''])))
   const [forn, setForn] = useState<string>(() => fornecedorSugerido(nota, conf)?.id || '')
   const fin = Perm.pode('financeiro')
   const [contas, setContas] = useState(() => fin && nota.duplicatas.length > 0 && !jaTemConta())
@@ -155,6 +156,12 @@ function FormNota({ nota, conf, sug, pedidoDe }: { nota: Nota; conf: Conferencia
   const pedidoAberto = (pecaId: string) => {
     if (!pecaId || !Perm.pode('compras')) return null
     const l = C.pedidosAbertosDaPeca(pecaId)
+    return l.find(x => x.ped.fornecedor_id === forn) || (forn ? null : l[0]) || null
+  }
+  // pedido de compra de matéria-prima aguardando para o material
+  const pedidoAbertoMP = (produtoId: string) => {
+    if (!produtoId || !Perm.pode('compras_mp')) return null
+    const l = C.pedidosAbertosDoMaterial(produtoId)
     return l.find(x => x.ped.fornecedor_id === forn) || (forn ? null : l[0]) || null
   }
 
@@ -188,7 +195,7 @@ function FormNota({ nota, conf, sug, pedidoDe }: { nota: Nota; conf: Conferencia
       <p className="sub">Diga para onde vai cada item. Da próxima nota deste fornecedor o sistema já lembra.</p>
       <div className="nf-itens">{nota.itens.map(it => {
         const dest = destino[it.n], s = sug[it.n]
-        const ped = dest === 'peca' ? pedidoAberto(peca[it.n]) : null
+        const ped = dest === 'peca' ? pedidoAberto(peca[it.n]) : dest === 'mp' ? pedidoAbertoMP(mat[it.n]) : null
         if (ped) pedidoDe[it.n] = ped.item.id; else delete pedidoDe[it.n]
         const ops: [Destino, string][] = [...(podePecas() ? [['peca', 'Peça do estoque'] as [Destino, string]] : []), ...(podeMP() ? [['mp', 'Matéria-prima'] as [Destino, string]] : []), ['ignorar', 'Não lançar']]
         return <section key={it.n} className="nf-item" data-item={it.n}>
@@ -208,11 +215,13 @@ function FormNota({ nota, conf, sug, pedidoDe }: { nota: Nota; conf: Conferencia
             {ped && <label className="check"><input type="checkbox" name={'ped_' + it.n} defaultChecked /> <span>Chegou do pedido de compra nº {ped.ped.numero} (faltam {U.qtd(ped.item.qtd - ped.item.recebido)}): baixar o pedido</span></label>}
           </>}
           {dest === 'mp' && <>
-            <ComboProduto id={'nfMp' + it.n} nome={'mp_' + it.n} rotulo="Material" classe="mp" req placeholder="Código ou descrição do material" inicial={s.produto} />
+            <ComboProduto id={'nfMp' + it.n} nome={'mp_' + it.n} rotulo="Material" classe="mp" req placeholder="Código ou descrição do material" inicial={s.produto}
+              aoEscolher={(p) => setMat(x => ({ ...x, [it.n]: p.id }))} aoLimpar={() => setMat(x => ({ ...x, [it.n]: '' }))} />
             <div className="linha-campos l2">
               <Campo nome={'q_' + it.n} rotulo={`Quantidade (${it.unidade || 'kg'})`} tipo="qtd" req valor={U.campoNum(it.qtd, 3)} ajuda="Ganha um R.I. novo" />
               <Campo nome={'st_' + it.n} rotulo="Inspeção" tipo="select" valor="Aprovado" opcoes={['Aprovado', 'Aguardando', 'Reprovado'].map(v => ({ v, t: v }))} />
             </div>
+            {ped && <label className="check"><input type="checkbox" name={'ped_' + it.n} defaultChecked /> <span>Chegou do pedido de compra nº {ped.ped.numero} (faltam {U.qtd(ped.item.qtd - ped.item.recebido)} {C.unidadeMP(mat[it.n])}): baixar o pedido</span></label>}
           </>}
         </section>
       })}</div>

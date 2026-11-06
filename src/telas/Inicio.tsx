@@ -27,6 +27,7 @@ import { formLote } from './fabrica/MP.tsx'
 import { lerNota } from './Nota.tsx'
 import { detalhe as detalheVenda, formVenda } from './fabrica/Pedidos.tsx'
 import { formProduto } from './fabrica/Produtos.tsx'
+import { formNecessidade, formPedidoMP } from './fabrica/Compra.tsx'
 import { defReg, formReg } from './fabrica/Registros.tsx'
 
 // ------------------------------------------------------------------ o que dá para pôr no Início
@@ -37,7 +38,11 @@ export const ATALHOS: Atalho[] = [
   { id: 'notaXML', rot: 'Ler nota fiscal', sub: 'arquivo XML', ic: 'nota', perm: ['entrada', 'mp_editar'], fazer: () => lerNota() },
   { id: 'listaCompras', rot: 'O que comprar', sub: 'peças faltando', ic: 'lista', perm: ['compras'], ir: '#/compras/lista' },
   { id: 'novoPedido', rot: 'Novo pedido', sub: 'de compra', ic: 'compras', perm: ['compras'], fazer: () => formPedido() },
-  { id: 'fornecedores', rot: 'Fornecedores', sub: 'contatos e pedidos', ic: 'fornecedor', perm: ['compras'], ir: '#/fornecedores' },
+  { id: 'comprarMP', rot: 'O que comprar', sub: 'matéria-prima', ic: 'lista', perm: ['compras_mp'], ir: '#/necessidade?aba=mp' },
+  { id: 'novoPedidoMP', rot: 'Pedido de material', sub: 'compra de matéria-prima', ic: 'compras', perm: ['compras_mp'], fazer: () => formPedidoMP() },
+  { id: 'novaNecessidade', rot: 'Pedir compra', sub: 'lançar necessidade', ic: 'enviar', perm: ['necessidade_criar'], fazer: () => formNecessidade() },
+  { id: 'pedidosCompra', rot: 'Pedidos de compra', sub: 'o que vai chegar', ic: 'compras', perm: ['compras_ver'], ir: '#/compras' },
+  { id: 'fornecedores', rot: 'Fornecedores', sub: 'contatos e pedidos', ic: 'fornecedor', perm: ['fornecedores'], ir: '#/fornecedores' },
   { id: 'estoque', rot: 'Estoque', sub: 'todas as peças', ic: 'estoque', perm: ['estoque_ver'], ir: '#/pecas' },
   { id: 'novaOrdem', rot: 'Nova ordem', sub: 'de produção', ic: 'producao', perm: ['producao_editar'], fazer: () => formOrdem() },
   { id: 'ordens', rot: 'Ordens', sub: 'fila e produção', ic: 'producao', perm: ['pcp'], ir: '#/producao' },
@@ -81,7 +86,8 @@ export const BLOCOS: Bloco[] = [
   { id: 'rhNumeros', rot: 'Números do RH', sub: 'pessoas, férias, exames', perm: ['rh_ver'], El: () => <NumerosRH /> },
   { id: 'foraHoje', rot: 'Quem está fora', sub: 'férias, atestados, afastados', perm: ['rh_ver'], El: () => <ForaHoje /> },
   { id: 'aniversariantes', rot: 'Aniversariantes do mês', sub: 'da equipe', perm: ['rh_sensivel'], El: () => <Aniversariantes /> },
-  { id: 'chegando', rot: 'Pedidos para chegar', sub: 'compras em aberto', perm: ['compras'], El: () => <Chegando /> },
+  { id: 'chegando', rot: 'Pedidos para chegar', sub: 'compras em aberto', perm: ['compras_ver'], El: () => <ComTabelas tabs={['produtos']}>{() => <Chegando />}</ComTabelas> },
+  { id: 'necessidadesAbertas', rot: 'Necessidades', sub: 'o que o PCP pediu para comprar', perm: ['compras_mp'], El: () => <ComTabelas tabs={['necessidades', 'produtos', 'mp_lotes']}>{() => <NecAbertas />}</ComTabelas> },
   { id: 'ultimas', rot: 'Últimas movimentações', sub: 'entradas e retiradas', perm: ['historico_mov'], El: () => <Ultimas /> },
   { id: 'minhasOrdens', rot: 'Ordens em andamento', sub: 'as suas primeiro', perm: ['pcp'], El: () => <MinhasOrdens /> },
   { id: 'minhasRetiradas', rot: 'Minhas retiradas de hoje', sub: 'o que você tirou', perm: ['retirar'], El: () => <MinhasRetiradas /> },
@@ -94,7 +100,8 @@ const PADRAO: Record<Perfil, { atalhos: string[]; blocos: string[] }> = {
   dono: { atalhos: ['retirar', 'entrada', 'novaOF', 'pedidosClientes', 'listaCompras', 'fornecedores', 'novaConta'], blocos: ['atencao', 'numeros', 'pedidosAtraso', 'ofsAbertas', 'foraHoje', 'chegando'] },
   escritorio: { atalhos: ['retirar', 'entrada', 'pedidosClientes', 'listaCompras', 'novaConta', 'fornecedores'], blocos: ['atencao', 'numeros', 'pedidosAtraso', 'chegando', 'ultimas'] },
   almoxarife: { atalhos: ['retirar', 'entrada', 'entradaMP', 'listaCompras', 'novoPedido', 'chamado'], blocos: ['atencao', 'numeros', 'chegando', 'ultimas'] },
-  pcp: { atalhos: ['novaOF', 'ofs', 'entradaMP', 'pedidosClientes', 'necessidade', 'produtos'], blocos: ['atencao', 'pedidosAtraso', 'ofsAbertas'] },
+  pcp: { atalhos: ['novaOF', 'ofs', 'entradaMP', 'pedidosClientes', 'necessidade', 'novaNecessidade', 'produtos'], blocos: ['atencao', 'pedidosAtraso', 'ofsAbertas'] },
+  comercial: { atalhos: ['comprarMP', 'novoPedidoMP', 'pedidosClientes', 'pedidosCompra', 'fornecedores', 'clientes'], blocos: ['atencao', 'necessidadesAbertas', 'chegando', 'pedidosAtraso'] },
   producao: { atalhos: ['ofs', 'retirar', 'chamado', 'estoque', 'solicitarAlteracao'], blocos: ['atencao', 'ofsAbertas', 'minhasRetiradas'] },
   gerente: { atalhos: ['ofs', 'pedidosClientes', 'chamado', 'pessoas', 'ponto'], blocos: ['atencao', 'ofsAbertas', 'pedidosAtraso', 'foraHoje'] },
   tecnico: { atalhos: ['produtos', 'novoProduto', 'solicitarAlteracao', 'desenvolvimento', 'desvio', 'ata'], blocos: ['atencao', 'tecnicoPendentes'] },
@@ -230,9 +237,19 @@ function Chegando() {
   const peds = S.lista('pedidos_compra').filter(p => p.status === 'aguardando').sort((a, b) => (a.prazo || '9') < (b.prazo || '9') ? -1 : 1).slice(0, 6)
   return <section className="card mt"><div className="card-cab"><h2>Para chegar</h2><a href="#/compras">Ver todos</a></div>
     {peds.length ? <div className="lista">{peds.map(p => <a key={p.id} className="linha" href={'#/pedido/' + p.id}><div className="meio"><b>Nº {p.numero} · {S.get('fornecedores', p.fornecedor_id)?.nome || ''}</b>
-      <small>{C.itensDoPedido(p.id).map(i => S.get('pecas', i.peca_id)?.codigo).filter(Boolean).join(', ')}</small></div>
+      <small>{C.itensDoPedido(p.id).map(i => C.itemPedido(i).codigo).filter(Boolean).join(', ')}</small></div>
       <div className="lado"><Tag s={C.situacaoPedido(p)} /><small>{p.prazo ? U.relativo(p.prazo) : 'sem prazo'}</small></div></a>)}</div>
       : <p className="sub">Nenhum pedido aguardando.</p>}</section>
+}
+
+function NecAbertas() {
+  const l = S.lista('necessidades').filter(n => n.status === 'aberta').sort((a, b) => (a.prazo || '9') < (b.prazo || '9') ? -1 : 1)
+  return <section className="card mt"><div className="card-cab"><h2>Pedidos do PCP para comprar</h2><a href="#/necessidade?aba=mp">Ver tudo</a></div>
+    {l.length ? <div className="lista">{l.slice(0, 6).map(n => { const p = S.get('produtos', n.produto_id)
+      return <a key={n.id} className="linha" href="#/necessidade?aba=mp"><div className="meio"><b>{p?.codigo || ''} · {U.qtd(n.qtd)} {C.unidadeMP(n.produto_id)}</b>
+        <small>{[p?.descricao, n.criado_nome ? 'pedido por ' + n.criado_nome : '', n.motivo].filter(Boolean).join(' · ')}</small></div>
+        <div className="lado"><small>{n.prazo ? 'até ' + U.data(n.prazo) : 'sem prazo'}</small></div></a> })}</div>
+      : <p className="sub">Nada pedido pelo PCP agora.</p>}</section>
 }
 
 function Ultimas() {

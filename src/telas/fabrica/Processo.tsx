@@ -1,0 +1,143 @@
+/* Passo a passo (processo) de cada produto e os quadradinhos da OF.
+   O passo a passo nasce sozinho da estrutura (peças fabricadas aqui + operação de cada uma);
+   o Técnico / PCP completa uma vez por produto (ex.: pôr "Amassar", escolher a máquina) e toda OF nova já sai com ele. */
+import { useEffect, useRef, useState } from 'react'
+import { App } from '../../app/controle.tsx'
+import { API, ErroApp } from '../../lib/api.ts'
+import { C, S } from '../../lib/dados.ts'
+import { Perm } from '../../lib/perm.ts'
+import type { OF, PassoProcesso, Produto } from '../../lib/tipos.ts'
+import * as U from '../../lib/util.ts'
+import { aviso } from '../../ui/avisos.ts'
+import { Btn, Tag } from '../../ui/base.tsx'
+import { Ic } from '../../ui/icones.tsx'
+import { confirmar, modal } from '../../ui/janelas.tsx'
+
+// a mesma regra do banco (_passos_de): primeiro as peças fabricadas aqui, depois a operação do próprio produto
+export function passosSugeridos(prodId: string, nivel = 0): PassoProcesso[] {
+  const pr = S.get('produtos', prodId)
+  if (!pr) return []
+  if (nivel > 0 && pr.processo?.length) return pr.processo.map(x => ({ operacao: x.operacao, peca: x.peca || pr.descricao, maquina_id: x.maquina_id || null }))
+  const v: PassoProcesso[] = []
+  if (nivel < 4) {
+    for (const e of C.componentes(prodId)) {
+      const f = S.get('produtos', e.filho_id)
+      if (!f || f.classe !== 'peca' || /^\s*controlar\s+recebimento/i.test(f.operacao || '')) continue
+      if (f.mp_codigo || C.componentes(f.id).length) v.push(...passosSugeridos(f.id, nivel + 1))
+    }
+  }
+  if (pr.operacao?.trim()) v.push({ operacao: pr.operacao.trim(), peca: nivel > 0 ? pr.descricao : null, maquina_id: null })
+  return v
+}
+export const passosDoProduto = (p: Produto): { passos: PassoProcesso[]; auto: boolean } =>
+  p.processo?.length ? { passos: p.processo, auto: false } : { passos: passosSugeridos(p.id), auto: true }
+const nomeMaq = (id: string | null | undefined): string => { const m = S.get('maquinas', id); return m ? C.nomeMaquina(m) : '' }
+
+// ---------------------------------------------------------------- no cadastro do produto
+export function SecaoProcesso({ p }: { p: Produto }) {
+  const { passos, auto } = passosDoProduto(p)
+  const pode = Perm.pode('produtos_editar')
+  return <section className="card mt" id="secProcesso"><div className="card-cab"><h2>Passo a passo (processo)</h2>
+    {passos.length > 0 && <Tag s={auto ? { txt: 'Montado pela estrutura', cor: 'cinza' } : { txt: 'Conferido', cor: 'verde' }} />}
+    {pode && <Btn txt={auto ? 'Completar' : 'Editar'} icone="lapis" cls="fantasma mini" data-proc="editar" onClick={() => editarProcesso(p)} />}</div>
+    {passos.length ? <ol className="passos">{passos.map((x, i) => <li key={i}><span><b>{x.operacao}</b>{(x.peca || x.maquina_id) && <small>{[x.peca, nomeMaq(x.maquina_id)].filter(Boolean).join(' · ')}</small>}</span></li>)}</ol>
+      : <p className="sub">Ainda sem passo a passo.{pode ? ' Toque em Completar e escreva os passos (serrar, amassar, soldar…).' : ''}</p>}
+    {auto && passos.length > 0 && <p className="peq">Montado sozinho pela estrutura e pela operação de cada peça. {pode ? 'Confira, ponha o que falta (ex.: amassar) e escolha as máquinas.' : ''}</p>}
+    <p className="peq">Toda OF nova deste código sai com estes passos e os quadradinhos para marcar.</p>
+  </section>
+}
+
+interface LinhaP { k: number; operacao: string; peca: string; maquina_id: string }
+let kP = 0
+const linhaP = (x?: PassoProcesso): LinhaP => ({ k: ++kP, operacao: x?.operacao || '', peca: x?.peca || '', maquina_id: x?.maquina_id || '' })
+
+export async function editarProcesso(p: Produto): Promise<void> {
+  await S.garantir(['produtos', 'produto_estrutura'])
+  const { passos, auto } = passosDoProduto(p)
+  const ler = (f: HTMLElement): PassoProcesso[] => [...f.querySelectorAll<HTMLElement>('.passo-ed')].map(r => ({
+    operacao: U.limpa(r.querySelector<HTMLInputElement>('[name=op]')!.value), peca: U.limpa(r.querySelector<HTMLInputElement>('[name=pc]')!.value) || null,
+    maquina_id: r.querySelector<HTMLSelectElement>('[name=mq]')!.value || null })).filter(x => x.operacao || x.peca || x.maquina_id)
+  const gravar = async (lista: PassoProcesso[]) => {
+    await API.rpc('salvar_processo', { p: { produto_id: p.id, passos: lista } })
+    await App.gravou(['produtos'])
+  }
+  await modal({
+    titulo: `Passo a passo — ${p.codigo}`, largura: 'larga',
+    corpo: <EditorPassos ini={passos} auto={auto} />,
+    botoes: [
+      ...(!auto ? [{ txt: 'Voltar ao automático', cls: 'fantasma', icone: 'desfazer' as const, acao: async () => {
+        if (!(await confirmar('Apagar o passo a passo conferido e voltar a montar pela estrutura?', { ok: 'Sim, voltar ao automático' }))) return false
+        await gravar([]); aviso('Passo a passo volta a ser montado pela estrutura.')
+      } }] : []),
+      { txt: 'Salvar passo a passo', icone: 'ok', acao: async (f) => {
+        const l = ler(f)
+        const sem = l.findIndex(x => !x.operacao)
+        if (sem >= 0) throw new ErroApp(`Escreva o que se faz no passo ${sem + 1}.`)
+        if (!l.length) throw new ErroApp('Coloque pelo menos um passo (ou use “Voltar ao automático”).')
+        await gravar(l); aviso('Passo a passo salvo. As próximas OFs já saem com ele.')
+      } }],
+  })
+}
+
+function EditorPassos({ ini, auto }: { ini: PassoProcesso[]; auto: boolean }) {
+  const [ls, setLs] = useState<LinhaP[]>(() => ini.length ? ini.map(linhaP) : [linhaP()])
+  const focar = useRef<number | null>(null)
+  useEffect(() => { if (focar.current) { document.querySelector<HTMLInputElement>(`.passo-ed[data-k="${focar.current}"] [name=op]`)?.focus(); focar.current = null } })
+  const maqs = U.ordenar(S.lista('maquinas').filter(m => m.ativo), m => C.nomeMaquina(m))
+  const mudar = (k: number, m: Partial<LinhaP>) => setLs(l => l.map(x => x.k === k ? { ...x, ...m } : x))
+  const mover = (i: number, d: number) => setLs(l => { const c = [...l]; const j = i + d; if (j < 0 || j >= c.length) return l; [c[i], c[j]] = [c[j], c[i]]; return c })
+  return <>
+    <p className="sub">{auto ? 'Estes passos foram montados pela estrutura. Confira, ponha o que falta e escolha a máquina de cada um.' : 'Na ordem em que a peça é feita.'} Ex.: Serrar, Amassar, Furar, Soldar, Polir.</p>
+    <datalist id="lOper">{U.unicos(['Serrar', 'Cortar', 'Amassar', 'Dobrar', 'Curvar', 'Furar', 'Rosquear', 'Tornear', 'Soldar', 'Lixar', 'Polir', 'Montar', 'Embalar',
+      ...S.lista('produtos').map(x => x.operacao || '').filter(Boolean)]).slice(0, 80).map(o => <option key={o} value={o} />)}</datalist>
+    <div className="passos-ed" id="procEd">{ls.map((x, i) => <div key={x.k} className="passo-ed" data-k={x.k}>
+      <span className="pn">{i + 1}</span>
+      <div className="campo"><label>O que fazer</label><input name="op" list="lOper" value={x.operacao} maxLength={200} placeholder="Ex.: Amassar ponta" onChange={(e) => mudar(x.k, { operacao: e.target.value })} /></div>
+      <div className="campo"><label>Peça</label><input name="pc" value={x.peca} maxLength={120} placeholder="(o próprio produto)" onChange={(e) => mudar(x.k, { peca: e.target.value })} /></div>
+      <div className="campo"><label>Máquina</label><select name="mq" value={x.maquina_id} onChange={(e) => mudar(x.k, { maquina_id: e.target.value })}>
+        <option value="">—</option>{maqs.map(m => <option key={m.id} value={m.id}>{C.nomeMaquina(m)}</option>)}</select></div>
+      <div className="pbtn">
+        <button type="button" className="icone-btn" aria-label="Subir" disabled={i === 0} onClick={() => mover(i, -1)}><Ic n="seta" /></button>
+        <button type="button" className="icone-btn desce" aria-label="Descer" disabled={i === ls.length - 1} onClick={() => mover(i, 1)}><Ic n="seta" /></button>
+        <button type="button" className="icone-btn" aria-label="Tirar o passo" onClick={() => setLs(l => { const r = l.filter(y => y.k !== x.k); return r.length ? r : [linhaP()] })}><Ic n="lixo" /></button>
+      </div></div>)}</div>
+    <button type="button" className="btn sec mini mt" data-add-passo onClick={() => { const n = linhaP(); focar.current = n.k; setLs(l => [...l, n]) }}><Ic n="mais" /><span>Adicionar passo</span></button>
+  </>
+}
+
+// ---------------------------------------------------------------- na OF: os quadradinhos
+export function PassosOF({ o }: { o: OF }) {
+  const [ocup, setOcup] = useState<number | null>(null)
+  const passos = o.passos || []
+  const aberta = o.status === 'aberta'
+  const marca = Perm.pode('of_passos') && aberta
+  const feitos = passos.filter(x => x.feito).length
+  const marcar = async (n: number, feito: boolean) => {
+    setOcup(n)
+    try { await API.rpc('marcar_passo_of', { p: { id: o.id, n, feito } }); await App.gravou(['ofs']) } finally { setOcup(null) }
+  }
+  const refazer = async () => {
+    await API.rpc('refazer_passos_of', { p_id: o.id }); await App.gravou(['ofs']); aviso('Passo a passo atualizado pelo cadastro do produto.')
+  }
+  const podeRefazer = aberta && Perm.pode('of_emitir') && !feitos
+  return <section className="card mt" id="ofPassos"><div className="card-cab"><h2>Passo a passo</h2>
+    {passos.length > 0 && <span className="sub">{feitos} de {passos.length} feitos</span>}
+    {podeRefazer && <Btn txt="Atualizar" icone="atualizar" cls="fantasma mini" data-of-acao="refazer" title="Trocar pelo passo a passo atual do produto" onClick={refazer} />}</div>
+    {passos.length > 0 && <div className="barra-prog" aria-hidden><i style={{ width: `${Math.round(feitos / passos.length * 100)}%` }} /></div>}
+    {passos.length ? <ul className="passos-of">{passos.map(x => <li key={x.n} className={x.feito ? 'feito' : ''}>
+      <label><input type="checkbox" checked={!!x.feito} disabled={!marca || ocup !== null} data-passo={x.n} onChange={(e) => void marcar(x.n, e.target.checked)} />
+        <span className="pt"><b>{x.n}. {x.operacao}</b>{(x.peca || x.maquina) && <small>{[x.peca, x.maquina].filter(Boolean).join(' · ')}</small>}</span></label>
+      {x.feito && <small className="pq">{x.feito_por}{x.feito_em ? ' · ' + U.dataCurta(x.feito_em) + ' ' + x.feito_em.slice(11, 16) : ''}</small>}
+      {ocup === x.n && <span className="giro" />}</li>)}</ul>
+      : <p className="sub">Esta OF não tem passo a passo. {Perm.pode('produtos_editar') ? <a href={'#/produto/' + o.produto_id}>Monte no cadastro do produto</a> : 'Peça ao Técnico ou ao PCP para montar no cadastro do produto.'}{podeRefazer ? ' e depois toque em Atualizar.' : '.'}</p>}
+    {!aberta && passos.length > 0 && <p className="peq">A OF está {o.status}: reabra para marcar.</p>}
+  </section>
+}
+
+// prévia na hora de emitir a OF
+export function PreviaPassos({ p }: { p: Produto }) {
+  const { passos, auto } = passosDoProduto(p)
+  if (!passos.length) return <p className="peq">Este produto ainda não tem passo a passo: a OF sai sem os quadradinhos.</p>
+  return <details className="previa-passos"><summary>Passo a passo que vai na OF ({passos.length}){auto ? ' — montado pela estrutura' : ''}</summary>
+    <ol className="passos">{passos.map((x, i) => <li key={i}><span><b>{x.operacao}</b>{(x.peca || x.maquina_id) && <small>{[x.peca, nomeMaq(x.maquina_id)].filter(Boolean).join(' · ')}</small>}</span></li>)}</ol></details>
+}

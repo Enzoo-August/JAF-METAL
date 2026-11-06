@@ -70,7 +70,7 @@ conf((await erro(dono, 'criar_acesso', 'zé ruela', 'senha-forte-2', 'Zé', 'esc
 conf((await erro(dono, 'criar_acesso', 'xyz', 'senha-forte-2', 'Xis', 'admin', null))?.includes('Perfil'), 'perfil inválido recusado')
 conf((await erro(esc, 'criar_acesso', 'bia', 'senha-forte-2', 'Bia', 'dono', null))?.includes('perfil não pode'), 'escritório não cria acesso')
 conf((await erro('anon', 'criar_acesso', 'bia', 'senha-forte-2', 'Bia', 'dono', null)) !== null, 'anônimo não cria acesso')
-conf((await erro(dono, 'editar_acesso', dono, 'Flávio', 'escritorio', true, null))?.includes('pelo menos um Dono'), 'último dono não pode deixar de ser dono')
+conf((await erro(dono, 'editar_acesso', dono, 'Fulano', 'escritorio', true, null))?.includes('pelo menos um Dono'), 'último dono não pode deixar de ser dono')
 conf((await ver(esc, 'select * from public.perfis')).length === 1, 'escritório só vê o próprio acesso')
 conf((await ver(dono, 'select * from public.perfis')).length === 5, 'dono vê todos os acessos')
 conf((await ver(prod, 'select * from public.nomes_usuarios()')).length === 5, 'nomes de quem lança visíveis para todos')
@@ -671,6 +671,121 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   const negado = async (sql) => { try { await ver(dono, sql); return false } catch (e) { return /permission denied/i.test(e.message) } }
   conf(await negado('select * from public.notas_fiscais') && await negado('select * from public.nota_vinculos'), 'tabelas da nota só pelas funções')
   conf((await q(`select count(*)::int n from public.historico where tabela = 'notas_fiscais'`))[0].n === 3, 'cada nota lançada fica no histórico')
+}
+
+// ---------------------------------------------------------------- v2.7: processo na OF, perfil Comercial, compra de matéria-prima — dados inventados
+{
+  const pcp = (await q(`select user_id from public.perfis where login = 'paula.pcp'`))[0].user_id
+  const tec = (await q(`select user_id from public.perfis where login = 'tiago.tec'`))[0].user_id
+  const jul = await rpc(dono, 'criar_acesso', 'carla.com', 'senha-forte-13', 'Carla Comercial', 'comercial', null)
+  conf(!!jul, 'perfil novo: comercial')
+  const maq = (await q(`select id from public.maquinas where codigo = 'TA 01'`))[0].id
+
+  // produtos de teste: barra (conjunto) = tubo (cortado aqui) + 2 flanges (usinadas) + 4 parafusos (comprados)
+  const novoProd = (p) => rpc(dono, 'salvar_produto', p)
+  const mpInox = await novoProd({ codigo: 'TB-INOX-T', descricao: 'Tubo inox teste', classe: 'mp' })
+  const tubo = await novoProd({ codigo: 'TUBO-T', descricao: 'Tubo cortado teste', mp_codigo: 'TB-INOX-T', mp_qtd: 0.3, mp_unidade: 'Kg', operacao: 'Cortar Blank Conforme Desenho' })
+  const flange = await novoProd({ codigo: 'FLANGE-T', descricao: 'Flange teste', mp_codigo: 'TB-INOX-T', mp_qtd: 0.1, mp_unidade: 'Kg', operacao: 'Usinar Conforme Desenho' })
+  await novoProd({ codigo: 'PARAF-T', descricao: 'Parafuso teste', mp_codigo: 'PARAF-T', operacao: 'Controlar Recebimento Conforme P. Inspeção' })
+  const barra = await novoProd({ codigo: 'BARRA-T', descricao: 'Barra de apoio teste', mp_codigo: 'Conforme Componentes', operacao: 'Montar e Soldar Conjunto',
+    estrutura: [{ codigo: 'TUBO-T', qtd: 1 }, { codigo: 'FLANGE-T', qtd: 2 }, { codigo: 'PARAF-T', qtd: 4 }] })
+
+  // processo montado sozinho pela estrutura
+  const sug = await rpc(pcp, 'processo_sugerido', barra)
+  conf(sug.length === 3 && sug[0].operacao.startsWith('Cortar') && sug[0].peca === 'Tubo cortado teste' && sug[1].peca === 'Flange teste'
+    && sug[2].operacao === 'Montar e Soldar Conjunto' && !sug[2].peca, 'passo a passo sugerido pela estrutura (peça comprada fica fora)', sug)
+  conf((await erro((await q(`select user_id from public.perfis where login = 'beto'`))[0].user_id, 'salvar_processo', { produto_id: tubo, passos: [] }))?.includes('perfil não pode'), 'produção não mexe no processo')
+  conf((await erro(tec, 'salvar_processo', { produto_id: tubo, passos: [{ operacao: '  ' }] }))?.includes('Escreva'), 'passo sem descrição recusado')
+  await rpc(tec, 'salvar_processo', { produto_id: tubo, passos: [{ operacao: 'Serrar no comprimento', maquina_id: maq }, { operacao: 'Amassar a ponta' }] })
+  const sug2 = await rpc(pcp, 'processo_sugerido', barra)
+  conf(sug2.length === 4 && sug2[1].operacao === 'Amassar a ponta' && sug2[0].peca === 'Tubo cortado teste', 'processo salvo de um componente entra no passo a passo do conjunto', sug2)
+
+  // a OF nasce com o passo a passo e os quadradinhos
+  const ofB = await rpc(pcp, 'emitir_of', { produto_id: barra, qtd: 100 })
+  const pas = (await q(`select passos from public.ofs where id = $1`, [ofB.id]))[0].passos
+  conf(pas.length === 4 && pas.every((x, i) => x.n === i + 1 && x.feito === false) && pas[0].maquina === 'Torno teste', 'OF já sai com o passo a passo (máquina com nome)', pas)
+  const ofT = await rpc(pcp, 'emitir_of', { produto_id: tubo, qtd: 100 })
+  conf((await q(`select jsonb_array_length(passos) n from public.ofs where id = $1`, [ofT.id]))[0].n === 2, 'OF do componente usa o processo dele')
+  const beto = (await q(`select user_id from public.perfis where login = 'beto'`))[0].user_id
+  const m1 = await rpc(beto, 'marcar_passo_of', { id: ofB.id, n: 2, feito: true })
+  conf(m1[1].feito === true && m1[1].feito_por === 'Beto Torno' && !!m1[1].feito_em && m1[0].feito === false, 'produção marca o passo feito (quem e quando)', m1[1])
+  conf((await erro(pcp, 'refazer_passos_of', ofB.id))?.includes('já tem passo marcado'), 'passo a passo não troca depois de começar')
+  const m2 = await rpc(beto, 'marcar_passo_of', { id: ofB.id, n: 2, feito: false })
+  conf(m2[1].feito === false && m2[1].feito_por === null, 'desmarcar um passo')
+  conf((await erro(beto, 'marcar_passo_of', { id: ofB.id, n: 9 }))?.includes('não encontrado'), 'passo que não existe recusado')
+  await rpc(tec, 'salvar_processo', { produto_id: barra, passos: [{ operacao: 'Serrar' }, { operacao: 'Amassar' }, { operacao: 'Soldar', maquina_id: maq }] })
+  const ref = await rpc(pcp, 'refazer_passos_of', ofB.id)
+  conf(ref.length === 3 && ref[2].maquina === 'Torno teste', 'OF que não começou pega o processo novo do produto', ref)
+  await rpc(beto, 'apontar_of', { id: ofT.id, produzido: 100, status: 'encerrada' })
+  conf((await erro(beto, 'marcar_passo_of', { id: ofT.id, n: 1 }))?.includes('encerrada'), 'OF encerrada não marca passo')
+  await rpc(tec, 'salvar_processo', { produto_id: barra, passos: [] })
+  conf((await q(`select processo from public.produtos where id = $1`, [barra]))[0].processo === null, 'lista vazia volta a montar pela estrutura')
+
+  // perfil Comercial: o que vê e o que não vê
+  conf((await ver(jul, 'select * from public.vendas')).length > 0 && (await ver(jul, 'select * from public.clientes')).length > 0
+    && (await ver(jul, 'select * from public.mp_lotes')).length > 0, 'comercial vê pedidos de clientes, clientes e matéria-prima')
+  conf((await ver(jul, 'select * from public.lancamentos')).length === 0 && (await ver(jul, 'select * from public.funcionarios_privado')).length === 0
+    && (await ver(jul, 'select * from public.rh_ponto')).length === 0, 'comercial não vê financeiro nem RH (dados pessoais e ponto)')
+  const forn = await rpc(jul, 'salvar_fornecedor', { nome: 'Aço Inox Teste Ltda' })
+  conf(!!forn, 'comercial cadastra fornecedor')
+
+  // necessidade (PCP) → pedido de compra de matéria-prima (Comercial)
+  conf((await erro(beto, 'salvar_necessidade', { produto_id: mpInox, qtd: 10 }))?.includes('perfil não pode'), 'produção não lança necessidade')
+  const nec1 = await rpc(pcp, 'salvar_necessidade', { produto_id: mpInox, qtd: 50, motivo: 'Estoque para a barra' })
+  const nec2 = await rpc(pcp, 'salvar_necessidade', { produto_id: mpInox, qtd: 20 })
+  conf((await ver(jul, `select criado_nome, status from public.necessidades where id = $1`, [nec1]))[0]?.criado_nome === 'Paula PCP', 'comercial vê a necessidade do PCP (com quem pediu)')
+  conf((await erro(jul, 'salvar_pedido', { tipo: 'pecas', fornecedor_id: forn, itens: [{ peca_id: null, qtd: 1 }] }))?.includes('matéria-prima'), 'comercial não faz pedido de peças do almoxarifado')
+  conf((await erro(pcp, 'salvar_pedido', { tipo: 'mp', fornecedor_id: forn, itens: [{ produto_id: mpInox, qtd: 1 }] }))?.includes('perfil não pode'), 'PCP não faz pedido de compra')
+  conf((await erro(jul, 'salvar_pedido', { tipo: 'mp', fornecedor_id: forn, itens: [] }))?.includes('material'), 'pedido sem material recusado')
+  const ped = await rpc(jul, 'salvar_pedido', { tipo: 'mp', fornecedor_id: forn, prazo: '2026-12-01', itens: [{ produto_id: mpInox, qtd: 100, valor: 2500 }], necessidades: [nec1] })
+  const n1 = (await q(`select status, pedido_id from public.necessidades where id = $1`, [nec1]))[0]
+  conf(n1.status === 'pedido' && n1.pedido_id === ped.id, 'necessidade vira "pedido" ligada ao pedido de compra', n1)
+  const it = (await q(`select id, produto_id, peca_id from public.pedido_itens where pedido_id = $1`, [ped.id]))[0]
+  conf(it.produto_id === mpInox && it.peca_id === null, 'item do pedido é material (não peça)')
+  conf((await ver(pcp, 'select * from public.pedidos_compra')).length === 0, 'PCP continua sem ver preços de compra')
+
+  // recebimento: o R.I. nasce sozinho, sem duplicar
+  conf((await erro(jul, 'receber_pedido', { pedido_id: ped.id, itens: [{ item_id: it.id, qtd: 10 }], conta: { valor: 100, vencimento: '2026-12-10' } }))?.includes('Só o Dono'), 'comercial não lança conta a pagar')
+  const lotesAntes = (await q(`select count(*)::int n from public.mp_lotes`))[0].n
+  const chave = '6f1c2a54-0000-4000-8000-000000000027'
+  const rec1 = await rpc(jul, 'receber_pedido', { pedido_id: ped.id, chave, documento: 'NF 777', itens: [{ item_id: it.id, qtd: 60 }] })
+  const rec1b = await rpc(jul, 'receber_pedido', { pedido_id: ped.id, chave, documento: 'NF 777', itens: [{ item_id: it.id, qtd: 60 }] })
+  const lt = await q(`select ri, qtd::float q, status, pedido, nota, pedido_item_id from public.mp_lotes where pedido_item_id = $1`, [it.id])
+  conf(rec1.ris.length === 1 && rec1b.repetido === true && lt.length === 1 && (await q(`select count(*)::int n from public.mp_lotes`))[0].n === lotesAntes + 1,
+    'receber matéria-prima cria um R.I. (o toque repetido não cria outro)', { rec1, rec1b, lt })
+  conf(lt[0].q === 60 && lt[0].status === 'Aguardando' && lt[0].pedido === String((await q(`select numero from public.pedidos_compra where id = $1`, [ped.id]))[0].numero)
+    && lt[0].nota === 'NF 777', 'R.I. vem com quantidade, nº do pedido, nota e aguardando inspeção', lt[0])
+  const p1st = (await q(`select status from public.pedidos_compra where id = $1`, [ped.id]))[0].status
+  await rpc(jul, 'receber_pedido', { pedido_id: ped.id, chave: '6f1c2a54-0000-4000-8000-000000000028', itens: [{ item_id: it.id, qtd: 40, status: 'Aprovado' }] })
+  const p2 = (await q(`select p.status, i.recebido::float r from public.pedidos_compra p join public.pedido_itens i on i.pedido_id = p.id where p.id = $1`, [ped.id]))[0]
+  conf(p1st === 'aguardando' && p2.status === 'recebido' && p2.r === 100, 'chegou tudo: pedido baixado sozinho', { p1st, p2 })
+
+  // pedido cancelado devolve a necessidade para a lista
+  const ped2 = await rpc(jul, 'salvar_pedido', { tipo: 'mp', fornecedor_id: forn, itens: [{ produto_id: mpInox, qtd: 20, valor: 500 }], necessidades: [nec2] })
+  await rpc(jul, 'cancelar_pedido', ped2.id, 'Fornecedor sem estoque')
+  conf((await q(`select status, pedido_id from public.necessidades where id = $1`, [nec2]))[0].status === 'aberta', 'pedido cancelado: a necessidade volta para comprar')
+  await rpc(pcp, 'cancelar_necessidade', nec2, 'Não precisa mais')
+  conf((await erro(pcp, 'cancelar_necessidade', nec2))?.includes('aberta'), 'necessidade cancelada não cancela de novo')
+  conf((await erro(pcp, 'salvar_necessidade', { id: nec1, produto_id: mpInox, qtd: 5 }))?.includes('virou pedido'), 'necessidade que virou pedido não muda')
+
+  // pedido de peças do almoxarifado continua só com o almoxarifado
+  const pecaX = (await q(`select id from public.pecas limit 1`))[0].id
+  const pedP = await rpc(dono, 'salvar_pedido', { fornecedor_id: forn, itens: [{ peca_id: pecaX, qtd: 2, valor: 10 }] })
+  await rpc(dono, 'cancelar_pedido', pedP.id, null)
+  conf((await erro(jul, 'reabrir_pedido', pedP.id))?.includes('almoxarifado') && (await erro(jul, 'cancelar_pedido', pedP.id))?.includes('aguardando'), 'comercial não reabre pedido de peças')
+  await rpc(dono, 'reabrir_pedido', pedP.id)
+  conf((await erro(jul, 'cancelar_pedido', pedP.id))?.includes('almoxarifado'), 'comercial não cancela pedido de peças')
+
+  // nota fiscal de matéria-prima baixa o pedido de matéria-prima
+  const ped3 = await rpc(jul, 'salvar_pedido', { tipo: 'mp', fornecedor_id: forn, itens: [{ produto_id: mpInox, qtd: 30, valor: 750 }] })
+  const it3 = (await q(`select id from public.pedido_itens where pedido_id = $1`, [ped3.id]))[0].id
+  const chaveNF = '35' + '2611' + '11222333000181' + '55' + '001' + '000004321' + '1' + '12345678' + '9'
+  const nf = await rpc(jul, 'lancar_nota', { chave: chaveNF, numero: '4321', fornecedor_id: forn,
+    itens: [{ n: 1, destino: 'mp', produto_id: mpInox, qtd: 30, pedido_item_id: it3, status: 'Aprovado', descricao: 'TUBO INOX' }] })
+  const l3 = await q(`select qtd::float q, pedido_item_id, nota, status from public.mp_lotes where pedido_item_id = $1`, [it3])
+  conf(nf.ris.length === 1 && l3.length === 1 && l3[0].q === 30 && l3[0].nota === '4321' && l3[0].status === 'Aprovado'
+    && (await q(`select status from public.pedidos_compra where id = $1`, [ped3.id]))[0].status === 'recebido', 'nota de matéria-prima recebe pelo pedido (R.I. + baixa)', { nf, l3 })
+  conf((await q(`select count(*)::int n from public.historico where tabela = 'necessidades'`))[0].n >= 3, 'necessidade fica no histórico')
 }
 
 // ---------------------------------------------------------------- funções liberadas

@@ -65,7 +65,7 @@ window.auditar = async function auditar(opt = {}) {
     '#/rh/treinamentos?aba=reciclagem', '#/rh/treinamentos?aba=metas', '#/rh/seguranca', '#/rh/seguranca?f=epi', '#/rh/disciplina', '#/rh/processos', '#/rh/organograma', '#/rh/relatorios', '#/rh/indicadores', '#/rh/seguranca?f=ca',
     '#/rh/ajustes?aba=cargos', '#/rh/ajustes?aba=feriados', '#/rh/ajustes?aba=jornada',
     // fábrica (v2.5)
-    '#/ofs', '#/mp', '#/necessidade', '#/pedidos', '#/produtos', '#/tecnico', '#/os', '#/preventiva', '#/manut',
+    '#/ofs', '#/mp', '#/necessidade', '#/necessidade?aba=mp', '#/pedidos', '#/produtos', '#/tecnico', '#/os', '#/preventiva', '#/manut',
     ...['desenvolvimento', 'projeto', 'melhoria', 'alteracao', 'desvio', 'desenho', 'copia', 'imds', 'ata', 'setup', 'servico_externo', 'requisicao', 'servico_manut', 'gasto_manut', 'peca_critica', 'pendencia', 'ferramentaria'].map(t => '#/reg/' + t)];
   const f0 = S.lista('funcionarios').find(f => f.ativo)
   if (f0) { rotas.push(`#/rh/ponto?f=${f0.id}&m=${U.hoje().slice(0, 7)}`); for (const a of ['dados', 'cargo', 'ferias', 'ponto', 'treinos', 'seguranca', 'disciplina', 'documentos']) rotas.push(`#/funcionario/${f0.id}?aba=${a}`) }
@@ -139,7 +139,7 @@ window.auditar = async function auditar(opt = {}) {
 // roda a varredura com os 4 perfis no tamanho atual
 window.auditarPerfis = async function (opt = {}) {
   const res = {};
-  for (const login of ['dono', 'escritorio', 'almox', 'pcp', 'operador', 'helena', 'gerente', 'tecnico', 'manut']) {
+  for (const login of ['dono', 'escritorio', 'almox', 'pcp', 'operador', 'helena', 'gerente', 'tecnico', 'manut', 'comercial']) {
     await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await new Promise(ok => setTimeout(ok, 700));
     UI.fecharTodas();
     const a = await window.auditar(opt);

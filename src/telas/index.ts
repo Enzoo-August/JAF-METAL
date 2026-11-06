@@ -1,4 +1,5 @@
 /* Rotas (endereço #/...) → telas, e as ações de cada tela (usadas pelos botões e pelos testes automáticos) */
+import { API } from '../lib/api.ts'
 import type { ReactNode } from 'react'
 import type { Acao } from '../lib/perm.ts'
 import { registrarCadastroRapido } from '../ui/Combo.tsx'
@@ -32,8 +33,8 @@ import { lerNota } from './Nota.tsx'
 export interface DefTela { Tela: (p: { r: Rota }) => ReactNode; perm?: Acao; titulo: string | ((r: Rota) => string) }
 
 const pecas: DefTela = { Tela: Pecas.TelaPecas, perm: 'estoque_ver', titulo: Pecas.tituloPecas }
-const compras: DefTela = { Tela: Compras.TelaCompras, perm: 'compras', titulo: Compras.tituloCompras }
-const fornecedores: DefTela = { Tela: Fornecedores.TelaFornecedores, perm: 'compras', titulo: Fornecedores.tituloFornecedores }
+const compras: DefTela = { Tela: Compras.TelaCompras, perm: 'compras_ver', titulo: Compras.tituloCompras }
+const fornecedores: DefTela = { Tela: Fornecedores.TelaFornecedores, perm: 'fornecedores', titulo: Fornecedores.tituloFornecedores }
 const maquinas: DefTela = { Tela: Maquinas.TelaMaquinas, perm: 'almox', titulo: Maquinas.tituloMaquinas }
 const clientes: DefTela = { Tela: Clientes.TelaClientes, perm: 'clientes', titulo: Clientes.tituloClientes }
 const ofs: DefTela = { Tela: OFs.TelaOFs, perm: 'of_ver', titulo: OFs.tituloOFs }
@@ -56,7 +57,7 @@ export const ROTAS: Record<string, DefTela> = {
   ofs, of: ofs,
   mp: { Tela: MP.TelaMP, perm: 'of_ver', titulo: 'Matéria-prima' },
   pedidos: { Tela: Pedidos.TelaPedidos, perm: 'vendas', titulo: 'Pedidos de clientes' },
-  necessidade: { Tela: Pedidos.TelaPedidos, perm: 'necessidade', titulo: 'Necessidade' },
+  necessidade: { Tela: Pedidos.TelaPedidos, perm: 'necessidade', titulo: () => API.sessao?.perfil === 'comercial' ? 'O que comprar' : 'Necessidade' },
   produtos, produto: produtos,
   reg: { Tela: Registros.TelaRegistros, titulo: Registros.tituloRegistros },
   tecnico: { Tela: TelaTecnico, perm: 'tecnico_ver', titulo: 'Engenharia' },

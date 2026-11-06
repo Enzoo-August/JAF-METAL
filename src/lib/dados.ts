@@ -19,10 +19,10 @@ const INCR: Record<NomeTabela, string | null> = {
   rh_ocorrencias: 'atualizado_em', rh_anexos: null, rh_processos: 'atualizado_em',
   rh_cargos_salarios: null, rh_epi_catalogo: 'atualizado_em', rh_indicadores: null,
   produtos: 'atualizado_em', produto_estrutura: 'atualizado_em', mp_lotes: 'atualizado_em', vendas: 'atualizado_em', vendas_entregas: null,
-  ofs: 'atualizado_em', preventivas: 'atualizado_em', registros: 'atualizado_em',
+  ofs: 'atualizado_em', preventivas: 'atualizado_em', registros: 'atualizado_em', necessidades: 'atualizado_em',
 }
 // tabelas grandes da fábrica: só são lidas quando alguém abre uma tela que precisa delas (o sistema abre rápido no celular)
-export const FABRICA: NomeTabela[] = ['produtos', 'produto_estrutura', 'mp_lotes', 'vendas', 'vendas_entregas', 'ofs', 'preventivas', 'registros']
+export const FABRICA: NomeTabela[] = ['produtos', 'produto_estrutura', 'mp_lotes', 'vendas', 'vendas_entregas', 'ofs', 'preventivas', 'registros', 'necessidades']
 const SOB_DEMANDA = new Set<NomeTabela>(FABRICA)
 const carregadas = new Set<NomeTabela>()
 const lendo = new Map<NomeTabela, Promise<void>>()
@@ -50,6 +50,7 @@ export const S = {
     const p = API.sessao?.perfil
     if (p === 'rh') return ['config', 'funcionarios', ...RH_SENSIVEL, ...RH_BASE]
     if (p === 'pcp') return ['config', 'pecas', 'maquinas', 'funcionarios', 'ordens', 'clientes', 'fornecedores', 'rh_feriados', ...FABRICA]
+    if (p === 'comercial') return ['config', 'pecas', 'funcionarios', 'clientes', 'fornecedores', 'pedidos_compra', 'pedido_itens', 'rh_feriados', ...FABRICA]
     if (p === 'tecnico') return ['config', 'maquinas', 'funcionarios', 'clientes', 'fornecedores', 'rh_feriados', ...FABRICA]
     const t: NomeTabela[] = ['config', 'pecas', 'maquinas', 'manutencoes', 'funcionarios', 'ordens', 'movimentos', 'rh_feriados', ...FABRICA]
     if (p === 'dono' || p === 'escritorio' || p === 'almoxarife') t.push('fornecedores', 'pedidos_compra', 'pedido_itens')
@@ -192,6 +193,37 @@ export const C = {
 
   // ---------------- pedidos de compra
   itensDoPedido(pedId: string): PedidoItem[] { return S.lista('pedido_itens').filter(x => x.pedido_id === pedId).sort((a, b) => a.ordem - b.ordem) },
+  // item do pedido de compra: peça do almoxarifado ou matéria-prima, mostrados do mesmo jeito
+  itemPedido(i: PedidoItem): { codigo: string; descricao: string; unidade: string; link: string } {
+    if (i.produto_id) { const p = S.get('produtos', i.produto_id); return { codigo: p?.codigo || '', descricao: p?.descricao || '', unidade: C.unidadeMP(i.produto_id), link: '#/produto/' + i.produto_id } }
+    const p = S.get('pecas', i.peca_id); return { codigo: p?.codigo || '', descricao: p?.descricao || '', unidade: p?.unidade || 'un', link: '#/peca/' + i.peca_id }
+  },
+  // unidade em que a matéria-prima é comprada (a mesma em que as peças a consomem; quase sempre quilo)
+  unidadeMP(produtoId: string | null | undefined): string {
+    const m = produtoId ? S.get('produtos', produtoId) : null
+    if (!m) return 'kg'
+    const u = S.lista('produtos').find(x => x.mp_codigo && x.mp_unidade && x.mp_codigo.toLowerCase() === m.codigo.toLowerCase())?.mp_unidade
+    return (u || 'kg').toLowerCase().replace(/^kgs?$/, 'kg')
+  },
+  pedidosAbertosDoMaterial(produtoId: string): { ped: PedidoCompra; item: PedidoItem }[] {
+    const r: { ped: PedidoCompra; item: PedidoItem }[] = []
+    for (const x of S.lista('pedido_itens')) {
+      if (x.produto_id !== produtoId || x.recebido >= x.qtd) continue
+      const ped = S.get('pedidos_compra', x.pedido_id)
+      if (ped && ped.status === 'aguardando') r.push({ ped, item: x })
+    }
+    return r
+  },
+  // quanto da matéria-prima ainda vai chegar de pedidos de compra em aberto
+  pendenteMP(produtoId: string): number {
+    let n = 0
+    for (const x of S.lista('pedido_itens')) {
+      if (x.produto_id !== produtoId) continue
+      const ped = S.get('pedidos_compra', x.pedido_id)
+      if (ped && ped.status === 'aguardando') n += Math.max(0, x.qtd - x.recebido)
+    }
+    return n
+  },
   totalPedido(ped: PedidoCompra): number { return U.r2(U.soma(C.itensDoPedido(ped.id), 'valor') + (Number(ped.frete) || 0)) },
   situacaoPedido(ped: PedidoCompra): Situacao {
     if (ped.status === 'cancelado') return { cod: 'cancelado', txt: 'Cancelado', cor: 'cinza' }

@@ -15,11 +15,13 @@ import { Ic } from '../ui/icones.tsx'
 import { confirmar, lerForm, modal, useJanela } from '../ui/janelas.tsx'
 import { form as formConta, LinhaConta } from './Financeiro.tsx'
 import { LinhaMov } from './Movimentos.tsx'
+import { ComTabelas } from './fabrica/comum.tsx'
+import { formPedidoMP } from './fabrica/Compra.tsx'
 
 export function TelaCompras({ r }: { r: Rota }) {
-  if (r.nome === 'pedido') return <Ficha id={r.id!} />
-  if (r.sub === 'lista') return <ListaCompras />
-  return <Lista r={r} />
+  if (r.sub === 'lista') return Perm.pode('compras') ? <ListaCompras /> : <Vazio icone="cadeado" titulo="Sem acesso" texto="A lista de peças do almoxarifado é com o almoxarifado."><a className="btn pri" href="#/necessidade?aba=mp">O que comprar de material</a></Vazio>
+  // pedidos de matéria-prima mostram o material (cadastro de produtos, lido sob demanda)
+  return <ComTabelas tabs={['produtos', 'mp_lotes']}>{() => r.nome === 'pedido' ? <Ficha id={r.id!} /> : <Lista r={r} />}</ComTabelas>
 }
 export const tituloCompras = (r: Rota) => r.nome === 'pedido' ? 'Pedido nº ' + (S.get('pedidos_compra', r.id)?.numero || '') : r.sub === 'lista' ? 'Lista de compras' : 'Pedidos de compra'
 
@@ -36,7 +38,7 @@ function filtrar(f: string, busca: string): PedidoCompra[] {
   if (busca.trim()) {
     const t = U.sem(busca.trim()).split(' ')
     l = l.filter(p => { const txt = U.sem([p.numero, S.get('fornecedores', p.fornecedor_id)?.nome, p.documento, p.obs,
-      ...C.itensDoPedido(p.id).map(i => { const pc = S.get('pecas', i.peca_id); return pc ? pc.codigo + ' ' + pc.descricao : '' })].join(' '))
+      ...C.itensDoPedido(p.id).map(i => { const it = C.itemPedido(i); return it.codigo + ' ' + it.descricao })].join(' '))
       return t.every(x => txt.includes(x)) })
   }
   return l.slice().sort((a, b) => f === 'aberto' || f === 'atrasado' || f === 'hoje' ? ((a.prazo || '9') < (b.prazo || '9') ? -1 : 1) : (b.numero - a.numero))
@@ -44,9 +46,9 @@ function filtrar(f: string, busca: string): PedidoCompra[] {
 
 export function LinhaPedido({ p }: { p: PedidoCompra }) {
   const f = S.get('fornecedores', p.fornecedor_id)
-  const nomes = C.itensDoPedido(p.id).map(i => S.get('pecas', i.peca_id)?.codigo).filter(Boolean)
+  const nomes = C.itensDoPedido(p.id).map(i => C.itemPedido(i).codigo).filter(Boolean)
   return <a className="linha" href={'#/pedido/' + p.id}>
-    <div className="meio"><b>Nº {p.numero} · {f?.nome || '—'}</b>
+    <div className="meio"><b>Nº {p.numero} · {f?.nome || '—'}{p.tipo === 'mp' ? <span className="etiqueta-mp">Matéria-prima</span> : null}</b>
       <small>{nomes.slice(0, 4).join(', ')}{nomes.length > 4 ? ` +${nomes.length - 4}` : ''} · pedido em {U.dataCurta(p.data)}{p.prazo ? ' · entrega ' + U.dataCurta(p.prazo) : ''}</small></div>
     <div className="lado"><b>{U.moeda(C.totalPedido(p))}</b><Tag s={C.situacaoPedido(p)} /></div></a>
 }
@@ -63,8 +65,10 @@ function Lista({ r }: { r: Rota }) {
   const l = filtrar(f, busca)
   return <>
     <Cab titulo="Pedidos de compra" sub="O que foi pedido aos fornecedores e o que já chegou">
-      <Btn txt="Novo pedido" icone="mais" cls="pri" data-c="novo" onClick={() => void form({})} />
-      <a className="btn sec" href="#/compras/lista"><Ic n="lista" /><span>Lista de compras{lc ? ` (${lc})` : ''}</span></a>
+      {Perm.pode('compras') && <Btn txt={Perm.pode('compras_mp') ? 'Pedido de peças' : 'Novo pedido'} icone="mais" cls="pri" data-c="novo" onClick={() => void form({})} />}
+      {Perm.pode('compras_mp') && <Btn txt="Pedido de matéria-prima" icone="mais" cls={Perm.pode('compras') ? 'sec' : 'pri'} data-c="novoMP" onClick={() => void formPedidoMP({})} />}
+      {Perm.pode('compras') && <a className="btn sec" href="#/compras/lista"><Ic n="lista" /><span>Lista de compras{lc ? ` (${lc})` : ''}</span></a>}
+      {!Perm.pode('compras') && <a className="btn sec" href="#/necessidade?aba=mp"><Ic n="lista" /><span>O que comprar</span></a>}
     </Cab>
     <div className="barra-filtros"><BuscaLista id="bPed" valor={busca} placeholder="Número, fornecedor, peça ou documento" aoMudar={setBusca} /></div>
     <Chips atual={f} aoEscolher={setF} opcoes={chips} />
@@ -85,6 +89,9 @@ function Ficha({ id }: { id: string }) {
   const pendente = itens.some(i => i.recebido < i.qtd)
   const recebeu = itens.some(i => i.recebido > 0)
   const movs = S.lista('movimentos').filter(m => itens.some(i => i.id === m.pedido_item_id)).sort((a, b) => b.seq - a.seq)
+  const lotes = p.tipo === 'mp' ? S.lista('mp_lotes').filter(l => itens.some(i => i.id === l.pedido_item_id)).sort((a, b) => b.ri - a.ri) : []
+  const mp = p.tipo === 'mp'
+  const mexe = mp ? Perm.pode('compras_mp') : Perm.pode('compras')   // pedido de peças é com o almoxarifado
   const contas = Perm.pode('financeiro') ? S.lista('lancamentos').filter(l => l.pedido_id === p.id) : []
   const atraso = aberto && p.prazo && p.prazo < U.hoje() ? U.dias(p.prazo, U.hoje()) : 0
   return <>
@@ -92,28 +99,33 @@ function Ficha({ id }: { id: string }) {
     <header className="cab"><div><h1>Pedido nº {p.numero} <Tag s={sit} /></h1>
       <p className="sub"><a href={'#/fornecedor/' + p.fornecedor_id}>{f?.nome || ''}</a> · pedido em {U.data(p.data)}{p.prazo ? ` · entrega combinada ${U.data(p.prazo)}` : ''}{p.recebido_em ? ` · recebido em ${U.data(p.recebido_em)}` : ''}</p></div>
       <div className="acoes">
-        {aberto && <Btn txt="Receber" icone="entrada" cls="pri" data-p="receber" onClick={() => void receber(p)} />}
+        {aberto && mexe && <Btn txt="Receber" icone="entrada" cls="pri" data-p="receber" onClick={() => void receber(p)} />}
         <Btn txt="PDF" icone="imprimir" data-p="pdf" onClick={async () => entregar(await pdfPedido(p), `Pedido de compra ${p.numero} - ${f?.nome || ''}.pdf`)} />
         <Btn txt="Enviar" icone="whatsapp" data-p="enviar" onClick={() => void enviar(p)} />
-        {aberto && <Btn txt="Editar" icone="lapis" data-p="editar" onClick={() => void form({ pedido: p })} />}
-        <Btn txt="Duplicar" icone="copiar" cls="fantasma" data-p="duplicar" onClick={() => void form({ fornecedor_id: p.fornecedor_id, itens: itens.map(i => ({ peca: S.get('pecas', i.peca_id), qtd: i.qtd, preco: i.valor / i.qtd })) })} />
-        {aberto && <Btn txt={recebeu ? 'Encerrar' : 'Cancelar'} icone="x" cls="fantasma" data-p="cancelar" onClick={() => void cancelar(p)} />}
-        {!aberto && pendente && <Btn txt="Reabrir" icone="desfazer" cls="fantasma" data-p="reabrir" onClick={async () => { await API.rpc('reabrir_pedido', { p_id: p.id }); await App.gravou(['pedidos_compra']); aviso('Pedido reaberto.') }} />}
+        {aberto && mexe && <Btn txt="Editar" icone="lapis" data-p="editar" onClick={() => void (mp ? formPedidoMP({ pedido: p }) : form({ pedido: p }))} />}
+        {mexe && <Btn txt="Duplicar" icone="copiar" cls="fantasma" data-p="duplicar" onClick={() => void (mp
+          ? formPedidoMP({ fornecedor_id: p.fornecedor_id, itens: itens.map(i => ({ produto_id: i.produto_id!, qtd: i.qtd, preco: i.valor / i.qtd })) })
+          : form({ fornecedor_id: p.fornecedor_id, itens: itens.map(i => ({ peca: S.get('pecas', i.peca_id), qtd: i.qtd, preco: i.valor / i.qtd })) }))} />}
+        {aberto && mexe && <Btn txt={recebeu ? 'Encerrar' : 'Cancelar'} icone="x" cls="fantasma" data-p="cancelar" onClick={() => void cancelar(p)} />}
+        {!aberto && pendente && mexe && <Btn txt="Reabrir" icone="desfazer" cls="fantasma" data-p="reabrir" onClick={async () => { await API.rpc('reabrir_pedido', { p_id: p.id }); await App.gravou(['pedidos_compra']); aviso('Pedido reaberto.') }} />}
       </div></header>
     {atraso > 0 && <p className="nota vermelha">Atrasado há {U.plural(atraso, 'dia')}. {f && (f.celular || f.telefone) ? `Ligue ou mande mensagem para ${f.contato || f.nome}: ${U.tel(f.celular || f.telefone)}.` : ''}</p>}
     <section className="card mt"><div className="tabela-caixa"><table className="tabela cartoes">
       <thead><tr><th>Código</th><th>Descrição</th><th className="num">Pedido</th><th className="num">Chegou</th><th className="num">Falta</th><th className="num">Preço</th><th className="num">Total</th></tr></thead>
-      <tbody>{itens.map(i => { const pc = S.get('pecas', i.peca_id); const falta = Math.max(0, i.qtd - i.recebido)
-        return <tr key={i.id}><td data-r="Código" className="titulo mono"><a href={'#/peca/' + i.peca_id}>{pc?.codigo || ''}</a></td><td data-r="Descrição">{pc?.descricao || ''}</td>
-          <td data-r="Pedido" className="num">{U.qtd(i.qtd)}</td><td data-r="Chegou" className="num">{U.qtd(i.recebido)}</td>
+      <tbody>{itens.map(i => { const pc = C.itemPedido(i); const falta = Math.max(0, i.qtd - i.recebido)
+        return <tr key={i.id}><td data-r="Código" className="titulo mono"><a href={pc.link}>{pc.codigo}</a></td><td data-r="Descrição">{pc.descricao}</td>
+          <td data-r="Pedido" className="num">{U.qtd(i.qtd)}{mp ? ' ' + pc.unidade : ''}</td><td data-r="Chegou" className="num">{U.qtd(i.recebido)}</td>
           <td data-r="Falta" className="num" style={falta && p.status !== 'cancelado' ? { color: 'var(--vermelho)', fontWeight: 700 } : undefined}>{U.qtd(falta)}</td>
           <td data-r="Preço" className="num">{U.moeda(i.valor / i.qtd)}</td><td data-r="Total" className="num">{U.moeda(i.valor)}</td></tr> })}</tbody>
       <tfoot>{p.frete ? <tr><td colSpan={6} className="dir">Frete</td><td className="num">{U.moeda(p.frete)}</td></tr> : null}<tr><td colSpan={6} className="dir">Total do pedido</td><td className="num">{U.moeda(C.totalPedido(p))}</td></tr></tfoot>
     </table></div>
       <Dl pares={[['Documento / referência', p.documento || ''], ['Observações', p.obs ? <Texto t={p.obs} /> : ''], ['Lançado por', S.nomeUsuario(p.criado_por)]]} /></section>
     {movs.length > 0 && <section className="card mt"><div className="card-cab"><h2>Recebimentos</h2></div><div className="lista">{movs.map(m => <LinhaMov key={m.id} m={m} />)}</div></section>}
+    {lotes.length > 0 && <section className="card mt" id="pLotes"><div className="card-cab"><h2>Recebimentos (entrada de matéria-prima)</h2></div><div className="lista">{lotes.map(l => { const pr = S.get('produtos', l.produto_id)
+      return <a key={l.id} className="linha" href="#/mp"><div className="meio"><b>R.I. {l.ri} · {pr?.codigo || ''}</b><small>{U.qtd(l.qtd)} {C.unidadeMP(l.produto_id)} · {U.data(l.data)}{l.nota ? ' · NF ' + l.nota : ''}</small></div>
+        <div className="lado"><Tag s={{ txt: l.status === 'Aguardando' ? 'Aguardando inspeção' : l.status, cor: l.status === 'Aprovado' ? 'verde' : l.status === 'Reprovado' ? 'vermelho' : 'amarelo' }} /></div></a> })}</div></section>}
     {Perm.pode('financeiro') && <section className="card mt"><div className="card-cab"><h2>Contas a pagar deste pedido</h2>
-      <Btn txt="Lançar conta" icone="mais" cls="sec mini" data-p="conta" onClick={() => void formConta({ tipo: 'pagar', descricao: 'Compra - pedido nº ' + p.numero, categoria: 'Compras / almoxarifado', valor: C.totalPedido(p), fornecedor_id: p.fornecedor_id, pedido_id: p.id, documento: p.documento })} /></div>
+      <Btn txt="Lançar conta" icone="mais" cls="sec mini" data-p="conta" onClick={() => void formConta({ tipo: 'pagar', descricao: 'Compra - pedido nº ' + p.numero, categoria: mp ? 'Compras / matéria-prima' : 'Compras / almoxarifado', valor: C.totalPedido(p), fornecedor_id: p.fornecedor_id, pedido_id: p.id, documento: p.documento })} /></div>
       {contas.length ? <div className="lista">{contas.map(l => <LinhaConta key={l.id} l={l} />)}</div> : <p className="sub">{p.status === 'recebido' ? 'Nenhuma conta lançada para este pedido.' : 'A conta pode ser lançada ao receber.'}</p>}</section>}
   </>
 }
@@ -137,7 +149,7 @@ async function cancelar(p: PedidoCompra) {
 function textoPedido(p: PedidoCompra): string {
   const f = S.get('fornecedores', p.fornecedor_id), emp = S.cfg<{ nome?: string }>('empresa', {})
   return `Olá${f?.contato ? ', ' + f.contato.split(' ')[0] : ''}! Segue o pedido de compra nº ${p.numero} da ${emp.nome || 'JAF Metal'}:\n\n` +
-    C.itensDoPedido(p.id).map(i => { const pc = S.get('pecas', i.peca_id); return `• ${U.qtd(i.qtd)} ${pc?.unidade || 'un'} — ${pc?.codigo} (${pc?.descricao})${i.valor ? ' — ' + U.moeda(i.valor / i.qtd) + ' cada' : ''}` }).join('\n') +
+    C.itensDoPedido(p.id).map(i => { const pc = C.itemPedido(i); return `• ${U.qtd(i.qtd)} ${pc.unidade} — ${pc.codigo} (${pc.descricao})${i.valor ? ' — ' + U.moeda(i.valor / i.qtd) + ' por ' + pc.unidade : ''}` }).join('\n') +
     `\n\nTotal: ${U.moeda(C.totalPedido(p))}${p.prazo ? `\nEntrega combinada: ${U.data(p.prazo)}` : ''}${p.documento ? `\nReferência: ${p.documento}` : ''}\n\nPor favor, confirme o recebimento e informe o nº ${p.numero} na nota fiscal. Obrigado!`
 }
 export async function enviar(p: PedidoCompra | null): Promise<void> {
@@ -282,10 +294,11 @@ export async function receber(p: PedidoCompra | null): Promise<void> {
       if (!its.some(i => i.qtd > 0) && !d.encerrar) throw new ErroApp('Informe quanto chegou de pelo menos uma peça.')
       if (!f.dataset.envio) f.dataset.envio = U.uuid()
       const conta = fin && d.lancar && d.cvalor > 0 ? { valor: d.cvalor, vencimento: d.cvenc, parcelas: d.cparc, intervalo: '30' } : null
-      const r = await API.rpc<{ status: string }>('receber_pedido', { p: { pedido_id: p.id, chave: f.dataset.envio, data: d.data, documento: d.documento || null,
-        itens: its.filter(i => i.qtd > 0).map(({ item_id, qtd }) => ({ item_id, qtd })), encerrar: !!d.encerrar, conta } })
-      await App.gravou(['pecas', 'movimentos', 'pedidos_compra', 'pedido_itens', 'lancamentos'], { inteira: ['pedido_itens'] })
-      aviso(r.status === 'recebido' ? `Pedido nº ${p.numero} recebido e estoque atualizado.` : 'Recebimento lançado. O resto continua aguardando.')
+      const r = await API.rpc<{ status: string; ris?: number[] }>('receber_pedido', { p: { pedido_id: p.id, chave: f.dataset.envio, data: d.data, documento: d.documento || null,
+        itens: its.filter(i => i.qtd > 0).map(({ item_id, qtd }) => ({ item_id, qtd, status: p.tipo === 'mp' ? d.status || 'Aguardando' : undefined })), encerrar: !!d.encerrar, conta } })
+      await App.gravou(p.tipo === 'mp' ? ['mp_lotes', 'pedidos_compra', 'pedido_itens', 'lancamentos'] : ['pecas', 'movimentos', 'pedidos_compra', 'pedido_itens', 'lancamentos'], { inteira: ['pedido_itens'] })
+      const ris = r.ris?.length ? ` R.I. ${r.ris.join(', ')}.` : ''
+      aviso(r.status === 'recebido' ? `Pedido nº ${p.numero} recebido e estoque atualizado.${ris}` : `Recebimento lançado.${ris} O resto continua aguardando.`)
     } }],
   })
 }
@@ -303,17 +316,19 @@ function FormReceber({ p }: { p: PedidoCompra }) {
   for (const i of itens) { const n = U.num(chegou[i.id]) || 0; total += n * (i.valor / i.qtd); if (n < i.qtd - i.recebido) parcial = true }
   total = U.r2(total + (primeiraVez ? Number(p.frete) || 0 : 0))
   return <>
-    <p className="sub">{S.get('fornecedores', p.fornecedor_id)?.nome || ''}. Confira cada peça. Se chegou só uma parte, mude a quantidade — o resto continua aguardando.</p>
-    <div className="tabela-caixa"><table className="tabela"><thead><tr><th>Peça</th><th className="num">Falta</th><th className="num" style={{ width: 130 }}>Chegou agora</th></tr></thead>
-      <tbody>{itens.map(i => { const pc = S.get('pecas', i.peca_id); const falta = i.qtd - i.recebido
-        return <tr key={i.id}><td><b className="mono">{pc?.codigo}</b><div className="peq">{pc?.descricao} · {U.moeda(i.valor / i.qtd)} cada</div></td><td className="num">{U.qtd(falta)}</td>
-          <td className="num"><input className="rec" data-item={i.id} data-falta={falta} data-preco={i.valor / i.qtd} inputMode="decimal" value={chegou[i.id]} aria-label={'Chegou de ' + pc?.codigo}
+    <p className="sub">{S.get('fornecedores', p.fornecedor_id)?.nome || ''}. Confira cada {p.tipo === 'mp' ? 'material' : 'peça'}. Se chegou só uma parte, mude a quantidade — o resto continua aguardando.{p.tipo === 'mp' ? ' Cada material que chegar vira um R.I. (entrada de matéria-prima) com o número deste pedido.' : ''}</p>
+    <div className="tabela-caixa"><table className="tabela"><thead><tr><th>{p.tipo === 'mp' ? 'Material' : 'Peça'}</th><th className="num">Falta</th><th className="num" style={{ width: 130 }}>Chegou agora</th></tr></thead>
+      <tbody>{itens.map(i => { const pc = C.itemPedido(i); const falta = i.qtd - i.recebido
+        return <tr key={i.id}><td><b className="mono">{pc.codigo}</b><div className="peq">{pc.descricao} · {U.moeda(i.valor / i.qtd)} por {pc.unidade}</div></td><td className="num">{U.qtd(falta)}{p.tipo === 'mp' ? ' ' + pc.unidade : ''}</td>
+          <td className="num"><input className="rec" data-item={i.id} data-falta={falta} data-preco={i.valor / i.qtd} inputMode="decimal" value={chegou[i.id]} aria-label={'Chegou de ' + pc.codigo}
             onChange={(e) => setChegou(c => ({ ...c, [i.id]: e.target.value }))}
             style={{ width: '100%', minHeight: 40, textAlign: 'right', border: '1px solid var(--borda-forte)', borderRadius: 6, padding: '4px 8px', font: 'inherit', fontSize: 16, background: 'var(--cartao)', color: 'var(--texto)' }} /></td></tr> })}</tbody></table></div>
     <div className="linha-campos mt">
       <Campo nome="documento" rotulo="Nota fiscal" placeholder={p.documento ? 'Em branco = ' + p.documento : 'Ex.: NF 000.044.892'} />
       <Campo nome="data" rotulo="Data que chegou" tipo="date" valor={U.hoje()} attrs={{ max: U.hoje() }} />
     </div>
+    {p.tipo === 'mp' && <Campo nome="status" rotulo="Situação do material (inspeção de recebimento)" tipo="select" valor="Aguardando"
+      opcoes={[{ v: 'Aguardando', t: 'Aguardando inspeção' }, { v: 'Aprovado', t: 'Já inspecionado e aprovado' }]} />}
     <div id="rParcial">{parcial && <Campo nome="encerrar" rotulo="Não vai chegar o resto: encerrar o pedido assim mesmo" tipo="check" />}</div>
     {fin ? <div className="card mt" style={{ background: 'var(--cartao-2)' }}>
       <label className="check"><input type="checkbox" name="lancar" checked={lancar} onChange={(e) => setLancar(e.target.checked)} /> <span>Lançar a conta a pagar agora</span></label>

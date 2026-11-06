@@ -45,6 +45,13 @@ export const ARTIGOS: Artigo[] = [
     'Em *Compras → O que comprar* aparecem as peças abaixo do mínimo (a mesma regra da planilha). A quantidade sugerida completa até o máximo e já desconta o que está a caminho. Marque e toque em *Gerar pedido*.'] },
   { id: 'enviarPedido', area: 'compras', titulo: 'Como mandar o pedido para o fornecedor', palavras: 'enviar pedido whatsapp email pdf fornecedor', perm: 'compras', corpo: [
     'Abra o pedido → *Enviar*. Dá para mandar o PDF, abrir o WhatsApp do fornecedor com o texto pronto ou o e-mail.'] },
+  { id: 'comprarMP', area: 'comercial', titulo: 'Comprar matéria-prima (pedido com prévia e PDF)', palavras: 'comprar matéria-prima material pedido de compra fornecedor pdf prévia necessidade comercial', perm: 'compras_mp', rota: '#/necessidade?aba=mp', corpo: [
+    'Em *O que comprar* aparece o material que falta: o que o PCP pediu e o que os pedidos de clientes vão consumir (já descontando o estoque e o que está em pedido de compra).',
+    { passos: ['Marque os materiais e toque em *Fazer pedido de compra*.', 'Se forem de fornecedores diferentes, sai um pedido (e um PDF) para cada fornecedor, um depois do outro.', 'Confira quantidade e preço e toque em *Ver prévia*: aparece a folha como vai para o fornecedor.', '*Voltar e corrigir* ou *Gerar pedido e PDF*.'] },
+    'Quando o material chegar, abra o pedido e toque em *Receber* (ou leia o XML da nota): o R.I. nasce sozinho no estoque de matéria-prima e o pedido é baixado.'] },
+  { id: 'pedirCompra', area: 'pcp', titulo: 'Pedir compra de material ao Comercial', palavras: 'necessidade pedir compra material comercial pcp falta', perm: 'necessidade_criar', rota: '#/necessidade?aba=mp', corpo: [
+    'Em *PCP → Necessidade → Matéria-prima* toque em *Pedir compra*, escolha o material, a quantidade e até quando precisa. O Comercial vê na hora em *O que comprar*.',
+    'Quando ele fizer o pedido, a necessidade some da lista e aparece em “Já viraram pedido”. Se o pedido for cancelado, ela volta para a lista.'] },
   { id: 'chamado', area: 'almoxarifado', titulo: 'A máquina deu problema', palavras: 'máquina quebrou chamado manutenção corretiva', perm: 'manutencao', corpo: [
     'Em *Almoxarifado → Máquinas e manutenção* toque em *Máquina com problema* (ou ponha esse atalho no Início), escolha a máquina e descreva. Quando resolver, abra o chamado, escreva a solução e marque *Concluída*.'] },
   // ---------------- PCP
@@ -66,6 +73,11 @@ export const ARTIGOS: Artigo[] = [
   { id: 'novaOF', area: 'pcp', titulo: 'Emitir uma OF (ordem de fabricação)', palavras: 'nova of emitir ordem fabricação ri lote kg material', perm: 'of_emitir', rota: '#/ofs', corpo: [
     { passos: ['Toque em *Nova OF* (botão do meio no celular).', 'Escolha o produto pelo código: o sistema já mostra o material e quantos kg vão.', 'Digite a quantidade e o prazo.', 'No *R.I.*, escolha o lote de matéria-prima: a lista mostra só os lotes do material certo que ainda têm saldo.', 'Se for um conjunto, deixe marcado *Emitir também as OFs dos componentes*.', 'Toque em *Emitir OF*. O número sai sozinho e o botão *Imprimir* gera a folha FORM.034/042.'] }],
     tour: [{ rota: '#/ofs', alvo: '[data-acao=novaOF]', texto: 'Toque aqui para emitir uma OF nova.' }] },
+  { id: 'passoAPasso', area: 'pcp', titulo: 'Passo a passo da peça e os quadradinhos da OF', palavras: 'processo passo a passo serrar amassar curvar máquina quadradinho marcar feito of imprimir', perm: 'of_ver', corpo: [
+    'Cada produto tem o seu *passo a passo* (serrar, amassar, curvar…). Ele nasce sozinho da estrutura e da operação de cada peça; o Técnico ou o PCP confere *uma vez* em *Engenharia → Produtos → (o produto) → Passo a passo → Completar*, põe o que falta e escolhe a máquina.',
+    'Toda OF nova já sai com esses passos. No *Imprimir* da OF vem a tabela com um quadradinho para marcar à caneta, a máquina, quem fez e a data.',
+    'Se preferir, marque no aplicativo: abra a OF e toque no quadradinho do passo. Fica gravado quem marcou e quando.',
+    'Mudou o passo a passo do produto depois de emitir a OF? Se nenhum passo foi marcado, toque em *Atualizar* na OF.'] },
   { id: 'apontarOF', area: 'pcp', titulo: 'Apontar e encerrar a OF', palavras: 'apontar encerrar of produzido refugo realizado', perm: 'of_apontar', corpo: [
     'Abra a OF e toque em *Apontar / encerrar*. Digite quanto foi produzido (e o refugo, se teve). *Salvar sem encerrar* guarda o andamento; *Encerrar OF* fecha e anota quem fez e quando.'] },
   { id: 'notaXML', area: 'compras', titulo: 'Ler a nota fiscal pelo arquivo XML', palavras: 'nota fiscal nf nfe xml danfe chave entrada fornecedor parcelas boleto duplicata', perm: 'entrada', corpo: [
