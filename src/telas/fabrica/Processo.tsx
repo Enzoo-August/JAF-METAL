@@ -162,6 +162,11 @@ export function PassosOF({ o }: { o: OF }) {
   const aberta = o.status === 'aberta'
   const marca = Perm.pode('of_passos') && aberta
   const feitos = passos.filter(x => x.feito).length
+  // OF ligada (conjunto ↔ componente): o banco marca o mesmo passo nas duas
+  const pai = o.pai_id ? S.get('ofs', o.pai_id) : null
+  const filhas = S.lista('ofs').filter(x => x.pai_id === o.id && x.status === 'aberta')
+  const ligadas = [pai && pai.status === 'aberta' ? `na OF ${pai.numero} do conjunto` : '',
+    filhas.length === 1 ? `na OF ${filhas[0].numero} do componente` : filhas.length > 1 ? 'nas OFs dos componentes' : ''].filter(Boolean).join(' e ')
   const marcar = async (n: number, feito: boolean) => {
     setOcup(n)
     try { await API.rpc('marcar_passo_of', { p: { id: o.id, n, feito } }); await App.gravou(['ofs']) } finally { setOcup(null) }
@@ -181,6 +186,7 @@ export function PassosOF({ o }: { o: OF }) {
       {ocup === x.n && <span className="giro" />}</li>)}</ul>
       : <p className="sub">Esta OF não tem passo a passo. {Perm.pode('produtos_editar') ? <a href={'#/produto/' + o.produto_id}>Monte no cadastro do produto</a> : 'Peça ao Técnico ou ao PCP para montar no cadastro do produto.'}{podeRefazer ? ' e depois toque em Atualizar.' : '.'}</p>}
     {!aberta && passos.length > 0 && <p className="peq">A OF está {o.status}: reabra para marcar.</p>}
+    {marca && passos.length > 0 && ligadas && <p className="peq" id="ofPassosLig">O passo marcado aqui também fica marcado {ligadas}.</p>}
   </section>
 }
 

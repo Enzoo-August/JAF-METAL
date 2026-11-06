@@ -721,6 +721,39 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   await rpc(tec, 'salvar_processo', { produto_id: barra, passos: [] })
   conf((await q(`select processo from public.produtos where id = $1`, [barra]))[0].processo === null, 'lista vazia volta a montar pela estrutura')
 
+  // v2.9: o mesmo passo fica marcado na OF do conjunto e na OF do componente
+  const ofC = await rpc(pcp, 'emitir_of', { produto_id: barra, qtd: 10, gerar_componentes: true })
+  const fil = await q(`select f.id, p.codigo from public.ofs f join public.produtos p on p.id = f.produto_id where f.pai_id = $1`, [ofC.id])
+  const ofTubo = fil.find(x => x.codigo === 'TUBO-T')?.id, ofFl = fil.find(x => x.codigo === 'FLANGE-T')?.id
+  const passosDe = async (id) => (await q(`select passos from public.ofs where id = $1`, [id]))[0].passos
+  const pC0 = await passosDe(ofC.id)
+  conf(!!ofTubo && !!ofFl && pC0.length === 4 && pC0[1].operacao === 'Amassar a ponta' && pC0[1].peca === 'Tubo cortado teste', 'conjunto com as OFs dos componentes para sincronizar', { fil, pC0 })
+  await rpc(beto, 'marcar_passo_of', { id: ofTubo, n: 2, feito: true })
+  let pC = await passosDe(ofC.id)
+  conf(pC[1].feito === true && pC[1].feito_por === 'Beto Torno' && !!pC[1].feito_em && !pC[0].feito && !pC[2].feito && !pC[3].feito, 'marcou na OF do componente: marca o mesmo passo na OF do conjunto', pC)
+  await rpc(beto, 'marcar_passo_of', { id: ofC.id, n: 1, feito: true })
+  let pT = await passosDe(ofTubo)
+  conf(pT[0].feito === true && pT[0].feito_por === 'Beto Torno' && pT[1].feito === true, 'marcou na OF do conjunto: marca na OF do componente', pT)
+  await rpc(beto, 'marcar_passo_of', { id: ofC.id, n: 3, feito: true })
+  conf((await passosDe(ofFl))[0].feito === true && (await passosDe(ofTubo)).every(x => x.feito), 'passo de outra peça vai para a OF dessa peça')
+  await rpc(beto, 'marcar_passo_of', { id: ofC.id, n: 4, feito: true })
+  conf((await passosDe(ofTubo)).length === 2 && (await passosDe(ofFl)).filter(x => x.feito).length === 1, 'passo do próprio conjunto (montar) não mexe nos componentes')
+  await rpc(beto, 'marcar_passo_of', { id: ofTubo, n: 2, feito: true })   // já estava marcado: não muda nada
+  conf((await passosDe(ofC.id)).filter(x => x.feito).length === 4, 'marcar de novo o que já estava feito não muda nada')
+  await rpc(beto, 'marcar_passo_of', { id: ofTubo, n: 2, feito: false })
+  pC = await passosDe(ofC.id)
+  conf(pC[1].feito === false && pC[1].feito_por === null && pC[0].feito === true, 'desmarcou no componente: desmarca no conjunto', pC)
+  await rpc(beto, 'marcar_passo_of', { id: ofC.id, n: 1, feito: false })
+  conf((await passosDe(ofTubo))[0].feito === false, 'desmarcou no conjunto: desmarca no componente')
+  await rpc(beto, 'apontar_of', { id: ofFl, produzido: 20, status: 'encerrada' })
+  await rpc(beto, 'marcar_passo_of', { id: ofC.id, n: 3, feito: false })
+  conf((await passosDe(ofC.id))[2].feito === false && (await passosDe(ofFl))[0].feito === true, 'OF de componente já encerrada não é mexida')
+  await rpc(beto, 'apontar_of', { id: ofC.id, produzido: 10, status: 'encerrada' })
+  await rpc(beto, 'marcar_passo_of', { id: ofTubo, n: 1, feito: true })
+  conf((await passosDe(ofTubo))[0].feito === true && (await passosDe(ofC.id))[0].feito === false, 'conjunto encerrado: o componente marca sozinho')
+  conf((await erro(beto, '_sinc_passo_of', ofTubo, 'x', true, 'a', 'b'))?.includes('permission denied') && (await erro(beto, '_chave_passo', {}, 'x'))?.includes('permission denied'),
+    'funções internas da sincronização fechadas para o aplicativo')
+
   // perfil Comercial: o que vê e o que não vê
   conf((await ver(jul, 'select * from public.vendas')).length > 0 && (await ver(jul, 'select * from public.clientes')).length > 0
     && (await ver(jul, 'select * from public.mp_lotes')).length > 0, 'comercial vê pedidos de clientes, clientes e matéria-prima')

@@ -766,6 +766,39 @@ window.roteiro = async function roteiro(filtro) {
     conf(document.querySelector('#ofPassos').textContent.includes('1 de 2 feitos'), 'mostra quantos passos já foram feitos');
     conf(!document.querySelector('[data-of-acao=refazer]'), 'com passo marcado não dá para trocar o passo a passo');
   });
+  await passo('passo marcado na OF do componente também marca na OF do conjunto', async () => {
+    await como('pcp');
+    await S.garantir(['produtos', 'produto_estrutura', 'ofs']);
+    // um conjunto cujo componente fabricado aqui tem operação (o passo dele aparece nas duas OFs)
+    const fabricado = (f) => f && f.classe === 'peca' && f.situacao !== 'bloqueado' && f.mp_codigo && f.operacao && !/controlar\s+recebimento/i.test(f.operacao);
+    const cj = S.lista('produtos').find(p => p.classe !== 'mp' && !p.processo?.length && S.lista('produto_estrutura').some(e => e.pai_id === p.id && fabricado(S.get('produtos', e.filho_id))));
+    conf(!!cj, 'achou um conjunto com componente fabricado nos dados de teste');
+    if (!cj) return;
+    const r = await API.rpc('emitir_of', { p: { produto_id: cj.id, qtd: 3, gerar_componentes: true } });
+    await App.gravou(['ofs']);
+    const pai = await espera(() => S.get('ofs', r.id));
+    let alvo = null;
+    for (const f of S.lista('ofs').filter(x => x.pai_id === r.id)) {
+      const desc = S.get('produtos', f.produto_id)?.descricao;
+      const x = (f.passos || []).find(x => !x.peca && pai.passos.some(y => y.peca === desc && y.operacao === x.operacao));
+      if (x) { alvo = { f, x, desc }; break; }
+    }
+    conf(!!alvo, 'OF do conjunto e OF do componente têm o mesmo passo', pai.passos);
+    if (!alvo) return;
+    const noPai = () => S.get('ofs', pai.id).passos.find(y => y.peca === alvo.desc && y.operacao === alvo.x.operacao);
+    await como('operador');
+    await ir('#/of/' + alvo.f.id); await espera(() => document.querySelector(`[data-passo="${alvo.x.n}"]`));
+    conf((document.querySelector('#ofPassosLig')?.textContent || '').includes(`OF ${pai.numero} do conjunto`), 'a OF do componente avisa que marca também na do conjunto', document.querySelector('#ofPassos')?.textContent);
+    document.querySelector(`[data-passo="${alvo.x.n}"]`).click();
+    const y = await espera(() => noPai()?.feito && noPai(), 6000);
+    conf(y && y.feito_por === 'Beto (teste)', 'marcou no componente: aparece marcado na OF do conjunto', noPai());
+    await ir('#/of/' + pai.id); await espera(() => document.querySelector('#ofPassos li.feito'));
+    conf((document.querySelector('#ofPassosLig')?.textContent || '').includes('do componente') || (document.querySelector('#ofPassosLig')?.textContent || '').includes('dos componentes'), 'a OF do conjunto avisa que marca também nos componentes');
+    const n = noPai().n;
+    document.querySelector(`[data-passo="${n}"]`).click();
+    const z = await espera(() => !S.get('ofs', alvo.f.id).passos.find(x => x.n === alvo.x.n).feito && S.get('ofs', alvo.f.id), 6000);
+    conf(!!z && !noPai().feito, 'desmarcou no conjunto: desmarca no componente', z?.passos);
+  });
   await passo('PCP pede compra e o Comercial compra matéria-prima', async () => {
     await como('pcp');
     await ir('#/necessidade?aba=mp'); await espera(() => document.querySelector('#necPcp'));
