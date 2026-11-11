@@ -20,9 +20,10 @@ const INCR: Record<NomeTabela, string | null> = {
   rh_cargos_salarios: null, rh_epi_catalogo: 'atualizado_em', rh_indicadores: null,
   produtos: 'atualizado_em', produto_estrutura: 'atualizado_em', mp_lotes: 'atualizado_em', vendas: 'atualizado_em', vendas_entregas: null,
   ofs: 'atualizado_em', preventivas: 'atualizado_em', registros: 'atualizado_em', necessidades: 'atualizado_em',
+  vendas_releases: 'atualizado_em', vendas_release_itens: null,   // os itens de cada atualização só são lidos quando alguém abre (API.lerOnde)
 }
 // tabelas grandes da fábrica: só são lidas quando alguém abre uma tela que precisa delas (o sistema abre rápido no celular)
-export const FABRICA: NomeTabela[] = ['produtos', 'produto_estrutura', 'mp_lotes', 'vendas', 'vendas_entregas', 'ofs', 'preventivas', 'registros', 'necessidades']
+export const FABRICA: NomeTabela[] = ['produtos', 'produto_estrutura', 'mp_lotes', 'vendas', 'vendas_entregas', 'ofs', 'preventivas', 'registros', 'necessidades', 'vendas_releases']
 const SOB_DEMANDA = new Set<NomeTabela>(FABRICA)
 const carregadas = new Set<NomeTabela>()
 const lendo = new Map<NomeTabela, Promise<void>>()
@@ -581,6 +582,12 @@ export const C = {
       const v = S.lista('vendas'), atr = v.filter(x => C.situacaoVenda(x).cod === 'atraso').length, hj = v.filter(x => C.situacaoVenda(x).cod === 'atencao').length
       if (atr) add('alto', `${U.plural(atr, 'item', 'itens')} de pedido de cliente em atraso`, '#/pedidos', atr)
       if (hj) add('medio', `${U.plural(hj, 'item', 'itens')} de pedido de cliente para entregar hoje`, '#/pedidos', hj)
+      // programação do cliente (release) sem arquivo novo há mais de uma semana
+      if (Perm.pode('vendas_editar')) {
+        const ult = new Map<string, { nome: string; em: string }>()
+        for (const r of S.lista('vendas_releases')) { if (r.desfeito_em) continue; const k = r.cliente_id || r.cliente_nome || ''; const x = ult.get(k); if (!x || r.criado_em > x.em) ult.set(k, { nome: r.cliente_nome || '', em: r.criado_em }) }
+        for (const x of ult.values()) { const dd = U.dias(x.em.slice(0, 10), hoje()); if (dd > 7) add('baixo', `Programação da ${x.nome} sem atualizar há ${dd} dias`, '#/pedidos', 1) }
+      }
     }
     if (Perm.pode('mp_editar')) {
       const ag = S.lista('mp_lotes').filter(l => l.status === 'Aguardando').length

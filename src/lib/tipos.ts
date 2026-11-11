@@ -123,6 +123,18 @@ export interface Venda {
   id: string; cliente_id: string | null; cliente_nome: string | null; produto_id: string | null; codigo: string | null; codigo_cliente: string | null
   descricao: string | null; pedido: string | null; prazo: string | null; qtd: number; valor: number; entregue: number; entregue_em: string | null
   cancelado: boolean; obs: string | null; criado_por: string | null; criado_em: string; atualizado_em: string
+  release_id: string | null; release_de: number | null   // última atualização da programação que mexeu neste pedido e o saldo de antes (vazio = entrou novo)
+}
+// programação de entregas do cliente (release): cada arquivo recebido é uma atualização
+export interface Release {
+  id: string; cliente_id: string | null; cliente_nome: string | null; arquivo: string | null; data_ref: string | null; ate: string | null
+  linhas: number; novos: number; alterados: number; sairam: number; iguais: number; sem_cadastro: string[]
+  ultimas_nf: { codigo: string; nf: string; data: string | null; qtd: number | null }[]; layout: Record<string, unknown> | null
+  desfeito_em: string | null; desfeito_por: string | null; criado_por: string | null; criado_nome: string | null; criado_em: string; atualizado_em: string
+}
+export interface ReleaseItem {
+  id: string; release_id: string; venda_id: string | null; tipo: 'novo' | 'alterado' | 'saiu'; codigo: string | null; codigo_cliente: string | null
+  descricao: string | null; pedido: string | null; prazo: string | null; saldo_antes: number | null; saldo_depois: number | null
 }
 export interface Entrega { id: string; venda_id: string; data: string; qtd: number; nf: string | null; obs: string | null; criado_por: string | null; criado_em: string }
 export interface ComponenteOF { codigo: string; qtd: number; ref: string | null }
@@ -176,7 +188,7 @@ export interface Tabelas {
   rh_metas: RhMeta; rh_epis: RhEpi; rh_asos: RhAso; rh_ocorrencias: RhOcorrencia; rh_anexos: RhAnexo; rh_processos: RhProcesso
   rh_cargos_salarios: RhCargoSalario; rh_epi_catalogo: RhEpiCatalogo; rh_indicadores: RhIndicador
   produtos: Produto; produto_estrutura: Estrutura; mp_lotes: LoteMP; vendas: Venda; vendas_entregas: Entrega; ofs: OF; preventivas: Preventiva; registros: RegistroFab
-  necessidades: Necessidade
+  necessidades: Necessidade; vendas_releases: Release; vendas_release_itens: ReleaseItem
 }
 export type NomeTabela = keyof Tabelas
 

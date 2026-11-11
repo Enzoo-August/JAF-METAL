@@ -1016,6 +1016,103 @@ window.roteiro = async function roteiro(filtro) {
       UI.fecharTodas(); await dorme(500);
     }
   });
+  // ================================================================ v3.0: programação do cliente pelo arquivo (release) — fica por último porque mexe nos pedidos
+  await passo('programação do cliente pelo arquivo (release)', async () => {
+    await como('pcp');
+    await S.garantir(['produtos', 'vendas', 'vendas_releases']);
+    const cx = S.lista('clientes').find(c => c.nome.startsWith('Cliente Exemplo'));
+    const dCli = () => S.lista('vendas').filter(v => v.cliente_id === cx.id);
+    const antes = JSON.stringify(dCli().map(v => [v.id, v.qtd, v.cancelado]).sort());
+    const nAbertos = dCli().filter(v => !v.cancelado && v.qtd > v.entregue && v.prazo && v.prazo <= U.somaDias(U.hoje(), 120)).length;
+    const d = (n) => U.somaDias(U.hoje(), n).split('-').reverse().join('.');
+    // arquivo no formato que o sistema do cliente exporta (tabulações, sem cabeçalho) — tudo inventado
+    const lin = (doc, cod, desc, q, dias) => ['', doc, '01', '0', '', '900001', 'FORNECEDOR TESTE', cod, '1710', desc, String(q).padStart(14), 'PC', d(dias), 'B', '7001-1', d(-3), '      10,000'].join('\t');
+    const arquivo = (nome, linhas) => new File([['', '  ' + linhas.length + ' Records selected', '', '\t\t\tplan', '', ...linhas].join('\r\n')], nome, { type: 'text/plain' });
+    const escolher = async (arq) => {
+      await ir('#/pedidos'); const b = await espera(() => document.querySelector('[data-ven=programacao]'));
+      conf(!!b, 'Pedidos de clientes tem o botão Atualizar programação');
+      await clicar(b);
+      const j = await espera(() => janela()?.querySelector('[data-rel=arquivo] input') && janela());
+      const inp = j.querySelector('[data-rel=arquivo] input'), dt = new DataTransfer();
+      dt.items.add(arq); inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+      await espera(() => j.querySelector('#relLido'), 6000);
+      return j;
+    };
+    // ---- 1ª vez
+    const j = await escolher(arquivo('RELEASE TESTE.TXT', [lin('4500771', 'CX-1001', 'PINO 6 X 40', '800', 7), lin('4500771', 'CX-1001', 'PINO 6 X 40', '300', 14), lin('4500771', 'CX-1001', 'PINO 6 X 40', '300', 14),
+      lin('4500991', 'CX-9999', 'PECA SEM CADASTRO', '1.250', 21), lin('4500771', 'CX-1001', 'PINO 6 X 40', '50', 400)]));
+    conf(j.querySelector('#relLido')?.textContent.includes('5 entregas de 2 peças'), 'arquivo lido: entregas e peças', j.querySelector('#relLido')?.textContent || erroJanela(j));
+    conf(j.querySelector('#relCli').value.startsWith('Cliente Exemplo'), 'o cliente é reconhecido pelas peças do arquivo', j.querySelector('#relCli').value);
+    const col = (c) => j.querySelector(`[data-rel-col=${c}]`).value;
+    conf(col('codigo') === '7' && col('qtd') === '10' && col('prazo') === '12' && col('pedido') === '1' && col('descricao') === '9', 'colunas achadas sozinhas (código, quantidade, data, pedido)', ['codigo', 'qtd', 'prazo', 'pedido', 'descricao'].map(col));
+    conf(!j.querySelector('.rel-mapa').open, 'leitura automática: o ajuste de colunas fica recolhido');
+    conf(j.querySelector('#relPer').parentElement.textContent.includes('Entram 4 de 5'), 'o período mostra quantas entregas entram', j.querySelector('#relPer').parentElement.textContent);
+    await okJanela('Comparar com o sistema');
+    const k = await espera(() => janela()?.querySelector('#relConf') && janela(), 8000);
+    const kpi = (n) => k?.querySelector(`[data-rel-kpi=${n}] b`)?.textContent;
+    conf(k && kpi('novos') === '3' && kpi('alterados') === '0' && kpi('sairam') === String(nAbertos) && kpi('iguais') === '0', 'conferência antes de gravar: novas, mudaram, saíram, iguais', k ? ['novos', 'alterados', 'sairam', 'iguais'].map(kpi) : erroJanela(j));
+    conf(k.querySelector('#relSemCad')?.textContent.includes('CX-9999'), 'avisa a peça sem cadastro');
+    conf(JSON.stringify(dCli().map(v => [v.id, v.qtd, v.cancelado]).sort()) === antes && S.lista('vendas_releases').length === 0, 'nada é gravado antes de confirmar');
+    // a amostra sem código não veio no arquivo, mas continua valendo: desmarca
+    const amostra = dCli().find(v => v.pedido === '4500-80');
+    k.querySelector(`[name="sai_${amostra.id}"]`).click(); await dorme(60);
+    conf(k.querySelector('[data-rel-kpi=sairam] span').textContent.includes((nAbertos - 1) + ' ser'), 'desmarcar tira o item dos que serão fechados', k.querySelector('[data-rel-kpi=sairam] span').textContent);
+    await okJanela('Atualizar a programação');
+    const r1 = await espera(() => S.lista('vendas_releases')[0], 8000);
+    conf(r1 && r1.novos === 3 && r1.sairam === nAbertos - 1 && r1.criado_nome === 'Paula (teste)' && r1.cliente_id === cx.id, 'programação gravada com quem fez', r1 || erroJanela(k));
+    const novo7 = dCli().find(v => v.prazo === U.somaDias(U.hoje(), 7) && v.release_id === r1.id);
+    const novo14 = dCli().find(v => v.prazo === U.somaDias(U.hoje(), 14)), sem = dCli().find(v => v.codigo_cliente === 'CX-9999');
+    conf(novo7?.qtd === 800 && novo7.codigo === 'CF 02.0001' && novo7.valor === 0.9 && novo14?.qtd === 600 && sem?.qtd === 1250 && !sem.produto_id, 'entregas novas: peça do cadastro, linhas somadas, milhar lido e último preço', [novo7, novo14, sem]);
+    conf(dCli().find(v => v.pedido === '4500-77').cancelado === true && !S.get('vendas', amostra.id).cancelado, 'o que saiu foi fechado; o que foi desmarcado continua');
+    await espera(() => document.querySelector('#venProg [data-rel]'));
+    const card = document.querySelector('#venProg');
+    conf(card && card.textContent.includes('Cliente Exemplo') && card.textContent.includes('Atualizada') && card.textContent.includes('por Paula (teste)') && card.textContent.includes('hoje'), 'a tela mostra a última atualização de cada cliente (quando e quem)', card?.textContent);
+    await clicar([...document.querySelectorAll('.chip')].find(c => c.textContent.includes('Mudou na programação')));
+    await espera(() => document.querySelectorAll('#lVen [data-rel-tag]').length === 2 + nAbertos);
+    conf(document.querySelectorAll('#lVen [data-rel-tag]').length === 2 + nAbertos && document.querySelector('#lVen').textContent.includes('entrou agora'), 'filtro “Mudou na programação” mostra o que entrou e o que saiu', document.querySelectorAll('#lVen [data-rel-tag]').length);
+
+    // ---- 2ª vez (o cliente mudou a quantidade e tirou uma peça)
+    const j2 = await escolher(arquivo('RELEASE TESTE 2.TXT', [lin('4500771', 'CX-1001', 'PINO 6 X 40', '500', 7), lin('4500771', 'CX-1001', 'PINO 6 X 40', '600', 14)]));
+    conf(j2.querySelector('#relCli').value.startsWith('Cliente Exemplo'), 'na 2ª vez o cliente também já vem escolhido');
+    await okJanela('Comparar com o sistema');
+    const k2 = await espera(() => janela()?.querySelector('#relConf') && janela(), 8000);
+    const kpi2 = (n) => k2?.querySelector(`[data-rel-kpi=${n}] b`)?.textContent;
+    conf(k2 && kpi2('novos') === '0' && kpi2('alterados') === '1' && kpi2('sairam') === '2' && kpi2('iguais') === '1', '2ª programação: só o que mudou', k2 ? ['novos', 'alterados', 'sairam', 'iguais'].map(kpi2) : erroJanela(j2));
+    conf(k2.querySelector('[data-rel-item=alterado]')?.textContent.replace(/\s+/g, ' ').includes('800 → 500'), 'mostra de quanto para quanto mudou', k2.querySelector('[data-rel-item=alterado]')?.textContent);
+    await okJanela('Atualizar a programação');
+    const r2 = await espera(() => S.lista('vendas_releases').find(x => x.id !== r1.id), 8000);
+    conf(r2 && S.get('vendas', novo7.id).qtd === 500 && S.get('vendas', novo7.id).release_de === 800 && S.get('vendas', sem.id).cancelado, 'quantidade acertada e peça que saiu fechada', [r2, S.get('vendas', novo7.id)]);
+    await ir('#/pedidos'); await espera(() => document.querySelector(`#lVen [data-venda="${novo7.id}"]`) || document.querySelector('.chip'));
+    await clicar([...document.querySelectorAll('.chip')].find(c => c.textContent.includes('Mudou na programação')));
+    const lin7 = await espera(() => document.querySelector(`#lVen [data-venda="${novo7.id}"]`));
+    conf(lin7?.textContent.includes('era 800'), 'na lista, o pedido mostra quanto era antes', lin7?.textContent);
+    await clicar(lin7);
+    const jd = await espera(janela);
+    conf(jd.textContent.includes('O saldo era 800 e mudou'), 'o pedido mostra a mudança da programação', jd.textContent.slice(0, 300));
+    UI.fecharTodas(); await dorme(300);
+
+    // ---- ver o que mudou e desfazer (as duas)
+    await clicar(document.querySelector(`#venProg [data-rel="${r2.id}"]`));
+    const jv = await espera(() => janela()?.querySelector('#relDet') && janela(), 6000);
+    conf(jv && jv.querySelector('[data-rel-bloco=alterado]') && jv.textContent.includes('Atualizações anteriores') && !!botao('Desfazer esta atualização', jv), 'a atualização mostra o que mudou, as anteriores e o botão de desfazer', jv?.textContent.slice(0, 200));
+    await clicar('Desfazer esta atualização', jv); await confirmar(true);
+    await espera(() => S.get('vendas_releases', r2.id)?.desfeito_em, 8000);
+    conf(S.get('vendas', novo7.id).qtd === 800 && !S.get('vendas', sem.id).cancelado, 'desfazer volta as quantidades', S.get('vendas', novo7.id));
+    await dorme(400); UI.fecharTodas(); await dorme(200);
+    Telas.fabrica.verRelease(r1.id);
+    const jv1 = await espera(() => janela()?.querySelector('#relDet') && janela(), 6000);
+    await clicar('Desfazer esta atualização', jv1); await confirmar(true);
+    await espera(() => S.get('vendas_releases', r1.id)?.desfeito_em && !S.get('vendas', novo7.id), 8000);
+    conf(JSON.stringify(dCli().map(v => [v.id, v.qtd, v.cancelado]).sort()) === antes, 'desfeitas as duas, os pedidos voltam exatamente ao que eram', dCli().length);
+    await dorme(300); UI.fecharTodas();
+    await ir('#/pedidos'); await dorme(300);
+    conf(!document.querySelector('#venProg'), 'sem programação valendo, o quadro some');
+
+    // ---- quem só consulta não atualiza
+    await como('gerente');
+    await ir('#/pedidos'); await espera(() => document.querySelector('#lVen'));
+    conf(!document.querySelector('[data-ven=programacao]'), 'gerente consulta os pedidos mas não atualiza a programação');
+  });
   R.fim = true;
   console.log(`${R.ok} OK, ${R.falhas.length} falha(s)`, R.falhas);
   return R;

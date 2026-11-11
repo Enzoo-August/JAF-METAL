@@ -6,4 +6,4 @@ export const CONFIG = {
   chave: 'sb_publishable_FRZXelaTsURBe6CMI6y1HQ_rB7dpQKp',
 }
 
-export const VERSAO = '2.9.1'
+export const VERSAO = '3.0.0'

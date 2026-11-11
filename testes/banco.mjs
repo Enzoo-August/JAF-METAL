@@ -821,7 +821,132 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   conf((await q(`select count(*)::int n from public.historico where tabela = 'necessidades'`))[0].n >= 3, 'necessidade fica no histórico')
 }
 
+// ---------------------------------------------------------------- v3.0: programação de entregas do cliente (release) — dados inventados
+{
+  const pcp = (await q(`select user_id from public.perfis where login = 'paula.pcp'`))[0].user_id
+  const cli = await rpc(dono, 'salvar_cliente', { nome: 'Montadora Teste', razao: 'Montadora Teste S.A.' })
+  const np = (p) => rpc(dono, 'salvar_produto', p)
+  const eixo = await np({ codigo: 'MT 01.0001', descricao: 'Eixo teste', cliente_id: cli, codigo_cliente: 'Z40.010.001', mp_codigo: 'TB-INOX-T', mp_qtd: 0.2, mp_unidade: 'Kg', operacao: 'Tornear' })
+  const bucha = await np({ codigo: 'MT 01.0002', descricao: 'Bucha teste', cliente_id: cli, codigo_cliente: 'Z40.010.002', mp_codigo: 'TB-INOX-T', mp_qtd: 0.1, mp_unidade: 'Kg', operacao: 'Tornear' })
+  await np({ codigo: 'MT 01.0003', descricao: 'Pino teste', cliente_id: cli, codigo_cliente: 'Z40.010.003', mp_codigo: 'TB-INOX-T', mp_qtd: 0.1, mp_unidade: 'Kg', operacao: 'Tornear' })
+  const venda = (o) => rpc(pcp, 'salvar_venda', { cliente_id: cli, ...o })
+  // o que já está em aberto no sistema (lançado à mão antes)
+  const vA = await venda({ produto_id: eixo, pedido: '5700000001', prazo: '2026-12-03', qtd: 200, valor: 4.5 })        // vai mudar para 40
+  const vB = await venda({ produto_id: eixo, pedido: '5700000001', prazo: '2026-12-10', qtd: 300, valor: 4.5 })        // igual
+  const vC = await venda({ produto_id: bucha, pedido: '5700000002', prazo: '2026-11-26', qtd: 500, valor: 1.2 })       // 180 entregues; o arquivo pede mais 400
+  await rpc(pcp, 'entregar_venda', { venda_id: vC, qtd: 180, data: '2026-11-20', nf: '9001' })
+  const vD = await venda({ produto_id: bucha, pedido: '5700000002', prazo: '2026-12-17', qtd: 250, valor: 1.2 })       // saiu do arquivo (nada entregue)
+  const vE = await venda({ produto_id: bucha, pedido: '5700000002', prazo: '2026-11-19', qtd: 100, valor: 1.2 })       // saiu do arquivo (60 entregues)
+  await rpc(pcp, 'entregar_venda', { venda_id: vE, qtd: 60, data: '2026-11-18', nf: '9000' })
+  const vF = await venda({ produto_id: eixo, pedido: '5700000001', prazo: '2027-06-10', qtd: 90, valor: 4.5 })         // fora do período: não mexe
+  const vG = await venda({ produto_id: eixo, pedido: 'AVULSO-1', prazo: '2026-12-01', qtd: 15, valor: 5 })              // saiu, mas a pessoa manda manter
+  const outro = await rpc(pcp, 'salvar_venda', { cliente_nome: 'Outro Cliente Teste', descricao: 'Peça de outro cliente', prazo: '2026-12-03', qtd: 7 })
+  const linhas = [
+    { codigo: 'Z40.010.001', pedido: '5700000001', prazo: '2026-12-03', qtd: 40, descricao: 'EIXO TESTE' },
+    { codigo: 'z40.010.001', pedido: '5700000001', prazo: '2026-12-10', qtd: 100 }, { codigo: 'Z40.010.001', pedido: '5700000001', prazo: '2026-12-10', qtd: 200 },   // a mesma entrega em duas linhas: soma 300
+    { codigo: 'Z40.010.002', pedido: '5700000002', prazo: '2026-11-26', qtd: 400 },
+    { codigo: 'Z40.010.002', pedido: '5700000002', prazo: '2026-12-24', qtd: 250 },      // a data nova do que saiu de 17/12
+    { codigo: 'Z40.010.003', pedido: '5700000003', prazo: '2026-12-05', qtd: 60 },       // peça com cadastro, sem pedido ainda
+    { codigo: 'Z99.999.999', pedido: '5700000009', prazo: '2026-12-08', qtd: 12, descricao: 'PECA NOVA SEM CADASTRO' },
+    { codigo: 'Z40.010.001', pedido: '5700000001', prazo: '2027-09-09', qtd: 999 },      // depois do período
+    { codigo: 'Z40.010.003', pedido: '5700000003', prazo: '2026-12-12', qtd: 0 },        // zerada: ignora
+  ]
+  const base = { cliente_id: cli, arquivo: 'RELEASE TESTE 20.11.2026.TXT', data_ref: '2026-11-20', ate: '2027-03-20', linhas,
+    ultimas_nf: [{ codigo: 'Z40.010.002', nf: '9002-1', data: '2026-11-21', qtd: 100 }], layout: { periodo: '120' } }
+  const estado = async () => Object.fromEntries((await q(`select id, qtd::float q, entregue::float e, cancelado c, release_de::float de, release_id r, obs from public.vendas where cliente_id = $1 or id = $2`, [cli, outro])).map(x => [x.id, x]))
+  const antes = await estado()
+
+  // simular não grava nada
+  const sim = await rpc(pcp, 'importar_release', { ...base, simular: true })
+  conf(sim.simulado === true && sim.linhas === 6 && sim.fora === 1 && sim.iguais === 1 && sim.n_novos === 3 && sim.n_alterados === 2 && sim.n_sairam === 3, 'simulação da programação: novas, alteradas, saíram e iguais', sim)
+  conf(JSON.stringify(await estado()) === JSON.stringify(antes) && (await q(`select count(*)::int n from public.vendas_releases`))[0].n === 0, 'simular não grava nada')
+  const a1 = sim.alterados.find(x => x.venda_id === vA), a2 = sim.alterados.find(x => x.venda_id === vC)
+  conf(a1?.de === 200 && a1?.para === 40 && a2?.de === 320 && a2?.para === 400, 'simulação mostra o saldo de antes e o de agora', sim.alterados)
+  conf(sim.sem_cadastro.join() === 'Z99.999.999' && sim.sairam.map(x => x.venda_id).sort().join() === [vD, vE, vG].sort().join(), 'peça sem cadastro e o que saiu aparecem na conferência', { s: sim.sem_cadastro, sai: sim.sairam })
+  conf(!sim.sairam.some(x => x.venda_id === vF || x.venda_id === outro), 'entrega fora do período e pedido de outro cliente não entram na comparação')
+
+  // quem pode
+  conf((await erro(prod, 'importar_release', { ...base, simular: true }))?.includes('perfil não pode'), 'produção não atualiza programação')
+  conf((await erro(pcp, 'importar_release', { ...base, cliente_id: null }))?.includes('Escolha o cliente'), 'programação sem cliente recusada')
+  conf((await erro(pcp, 'importar_release', { ...base, linhas: [] }))?.includes('nenhuma entrega'), 'arquivo vazio recusado')
+  conf((await erro(pcp, 'importar_release', { ...base, linhas: [{ codigo: 'X', prazo: '32/13/2026', qtd: 1 }] }))?.includes('Data inválida'), 'data inválida recusada')
+  conf((await erro(pcp, 'importar_release', { ...base, linhas: [{ codigo: '', prazo: '2026-12-01', qtd: 1 }] }))?.includes('sem código'), 'linha sem código recusada')
+  conf((await erro(pcp, 'importar_release', { ...base, ate: '2026-01-01' }))?.includes('período'), 'período que não pega nenhuma entrega recusado')
+
+  // gravar (mantendo o avulso em aberto)
+  const idRel = '11111111-2222-4333-8444-555555555555'
+  const hAntes = (await q(`select count(*)::int n from public.historico where tabela = 'vendas'`))[0].n
+  const r1 = await rpc(pcp, 'importar_release', { ...base, id: idRel, manter: [vG] })
+  const d = await estado()
+  conf(r1.id === idRel && r1.n_novos === 3 && r1.n_alterados === 2 && r1.n_sairam === 2 && r1.iguais === 1, 'programação gravada', r1)
+  conf(d[vA].q === 40 && d[vA].de === 200 && d[vA].r === idRel && !d[vA].c, 'quantidade menor: o pedido é acertado e guarda quanto era', d[vA])
+  conf(d[vC].q === 580 && d[vC].e === 180 && d[vC].de === 320, 'quantidade do arquivo é o saldo: pedido = entregue + saldo', d[vC])
+  conf(d[vB].q === 300 && d[vB].r === null, 'entrega igual não é mexida', d[vB])
+  conf(d[vD].c === true && d[vD].q === 250 && /Saiu da programação do cliente em 20\/11\/2026/.test(d[vD].obs), 'saiu sem entrega: cancelado com a anotação', d[vD])
+  conf(d[vE].c === false && d[vE].q === 60 && d[vE].e === 60, 'saiu com parte entregue: fecha no que foi entregue', d[vE])
+  conf(d[vG].q === 15 && !d[vG].c && d[vG].r === null && d[vF].q === 90 && d[outro].q === 7, 'mantido, fora do período e outro cliente continuam iguais')
+  const novos = await q(`select v.codigo, v.codigo_cliente cc, v.descricao d, v.pedido, v.prazo::text p, v.qtd::float q, v.valor::float val, v.produto_id pid from public.vendas v
+    where v.release_id = $1 and v.release_de is null and not v.cancelado order by v.prazo`, [idRel])
+  conf(novos.length === 3 && novos[0].codigo === 'MT 01.0003' && novos[0].q === 60 && novos[1].cc === 'Z99.999.999' && novos[1].pid === null && novos[1].d === 'PECA NOVA SEM CADASTRO'
+    && novos[2].codigo === 'MT 01.0002' && novos[2].p === '2026-12-24' && novos[2].val === 1.2, 'entregas novas entram com produto, descrição e o último preço do cliente', novos)
+  const rel = (await q(`select * from public.vendas_releases where id = $1`, [idRel]))[0]
+  conf(rel.cliente_nome === 'Montadora Teste' && rel.criado_nome === 'Paula PCP' && rel.linhas === 6 && rel.novos === 3 && rel.alterados === 2 && rel.sairam === 2 && rel.iguais === 1
+    && rel.sem_cadastro[0] === 'Z99.999.999' && rel.ultimas_nf[0].nf === '9002-1', 'a atualização guarda quem fez, o arquivo e o resumo', rel)
+  const itens = await q(`select tipo, count(*)::int n from public.vendas_release_itens where release_id = $1 group by 1 order by 1`, [idRel])
+  conf(itens.map(x => x.tipo + x.n).join() === 'alterado2,novo3,saiu2', 'cada mudança fica registrada', itens)
+  conf((await q(`select count(*)::int n from public.historico where tabela = 'vendas'`))[0].n === hAntes, 'a programação não enche o histórico geral (tem o registro próprio)')
+  const r1b = await rpc(pcp, 'importar_release', { ...base, id: idRel, manter: [vG] })
+  conf(r1b.repetido === true && (await q(`select count(*)::int n from public.vendas_releases`))[0].n === 1, 'o mesmo envio de novo não grava duas vezes')
+
+  // o mesmo arquivo de novo: nada muda
+  const sim2 = await rpc(pcp, 'importar_release', { ...base, simular: true })
+  conf(sim2.n_novos === 0 && sim2.n_alterados === 0 && sim2.iguais === 6 && sim2.sairam.length === 1 && sim2.sairam[0].venda_id === vG, 'importar o mesmo arquivo de novo não muda nada', sim2)
+
+  // quem lê
+  const jul = (await q(`select user_id from public.perfis where login = 'carla.com'`))[0].user_id
+  conf((await ver(jul, 'select * from public.vendas_releases')).length === 1 && (await ver(jul, 'select * from public.vendas_release_itens')).length === 7, 'comercial vê as programações')
+  conf((await ver(prod, 'select * from public.vendas_releases')).length === 0 && (await ver(prod, 'select * from public.vendas_release_itens')).length === 0, 'produção não vê as programações')
+  conf((await erro(pcp, '_chave_venda', null, 'x', 'y', '2026-01-01'))?.includes('permission denied'), 'função interna da programação fechada')
+  let direto = null
+  try { await ver(pcp, `insert into public.vendas_releases (cliente_nome) values ('x')`) } catch (e) { direto = e.message }
+  conf(/permission denied/.test(direto || ''), 'ninguém grava programação direto na tabela', direto)
+
+  // segunda atualização (a quantidade sobe e uma entrega nova é entregue), depois desfazer
+  await rpc(pcp, 'entregar_venda', { venda_id: (await q(`select id from public.vendas where release_id = $1 and codigo = 'MT 01.0003'`, [idRel]))[0].id, qtd: 10, data: '2026-11-25' })
+  const base2 = { ...base, arquivo: 'RELEASE TESTE 27.11.2026.TXT', data_ref: '2026-11-27', manter: [vG],
+    linhas: linhas.filter(x => x.qtd > 0 && x.prazo < '2027-01-01').map(x => x.prazo === '2026-12-03' ? { ...x, qtd: 75 } : x.codigo === 'Z40.010.003' ? { ...x, qtd: 50 } : x).concat([{ codigo: 'Z40.010.001', pedido: '5700000001', prazo: '2026-12-29', qtd: 33 }]) }
+  conf((await erro(pcp, 'desfazer_release', '00000000-0000-4000-8000-000000000000'))?.includes('não encontrada'), 'desfazer atualização que não existe recusado')
+  const r2 = await rpc(pcp, 'importar_release', base2)
+  const d2 = await estado()
+  conf(r2.n_novos === 1 && r2.n_alterados === 1 && r2.n_sairam === 0 && d2[vA].q === 75 && d2[vA].de === 40 && d2[vA].r === r2.id, 'segunda atualização: só o que mudou de novo', { r2: { n: r2.n_novos, a: r2.n_alterados, s: r2.n_sairam }, vA: d2[vA] })
+  conf((await erro(pcp, 'desfazer_release', idRel))?.includes('última atualização'), 'só dá para desfazer a última atualização do cliente')
+  conf((await erro(prod, 'desfazer_release', r2.id))?.includes('perfil não pode'), 'produção não desfaz programação')
+  const nov2 = (await q(`select id from public.vendas where release_id = $1 and release_de is null`, [r2.id]))[0].id
+  await rpc(pcp, 'emitir_of', { produto_id: eixo, qtd: 33, venda_id: nov2 })
+  const u2 = await rpc(pcp, 'desfazer_release', r2.id)
+  const d3 = await estado()
+  conf(u2.desfeitos === 1 && u2.ficaram === 1 && d3[vA].q === 40 && d3[vA].r === null && !!d3[nov2], 'desfazer volta a quantidade; o que já tem OF fica', { u2, vA: d3[vA] })
+  conf((await erro(pcp, 'desfazer_release', r2.id))?.includes('já foi desfeita'), 'desfazer duas vezes recusado')
+  const u1 = await rpc(pcp, 'desfazer_release', idRel)
+  const d4 = await estado()
+  conf(u1.ficaram === 1 && d4[vA].q === 200 && d4[vC].q === 500 && d4[vD].c === false && d4[vD].obs === null && d4[vE].q === 100 && d4[vB].q === 300, 'desfazer a primeira: tudo volta ao que era (menos o que já teve entrega)', { u1, d: [d4[vA], d4[vC], d4[vD], d4[vE]] })
+  conf((await q(`select count(*)::int n from public.vendas where release_id is not null`))[0].n === 0
+    && (await q(`select count(*)::int n from public.vendas_releases where desfeito_em is not null and desfeito_por = 'Paula PCP'`))[0].n === 2, 'atualizações desfeitas ficam marcadas (quem e quando)')
+
+  // quantidade = total do pedido (cliente que manda o pedido inteiro, não o saldo)
+  const r3 = await rpc(pcp, 'importar_release', { ...base, qtd_saldo: false, arquivo: 'pedido total.csv', manter: [vD, vE, vG],
+    linhas: [{ codigo: 'Z40.010.002', pedido: '5700000002', prazo: '2026-11-26', qtd: 600 }, { codigo: 'MT 01.0001', pedido: '5700000001', prazo: '2026-12-03', qtd: 200 }, { codigo: 'Z40.010.001', pedido: '5700000001', prazo: '2026-12-10', qtd: 300 }] })
+  const d5 = await estado()
+  conf(r3.n_alterados === 1 && d5[vC].q === 600 && d5[vC].e === 180 && r3.iguais === 2, 'quantidade como total do pedido: desconta o que já foi entregue; acha a peça também pelo código JAF', { r3: { a: r3.n_alterados, i: r3.iguais }, vC: d5[vC] })
+}
+
 // ---------------------------------------------------------------- funções liberadas
+const sb = await rpc(dono, 'saude_banco')
+conf(sb.bytes > 0 && sb.tabelas.length > 0 && sb.historico > 0, 'Dono vê o espaço usado no banco', sb)
+conf((await erro(esc, 'saude_banco'))?.includes('perfil não pode'), 'só o Dono vê o espaço do banco')
+const gat = await q(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prorettype = 'trigger'::regtype
+  and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'))`)
+conf(gat.length === 0, 'funções de gatilho fechadas para quem usa o aplicativo', gat.map(r => r.proname))
 const livres = await q(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute') order by 1`)
 conf(livres.map(r => r.proname).join() === 'ha_dono,primeiro_dono', 'anônimo só chama ha_dono e primeiro_dono', livres.map(r => r.proname))

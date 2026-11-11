@@ -478,6 +478,7 @@ function Copia() {
       ['OFs', S.lista('ofs'), { produto_id: np, pai_id: (v) => String(S.get('ofs', v)?.numero || ''), venda_id: (v) => v ? 'sim' : '', maquina_id: (v) => S.get('maquinas', v)?.nome || '' }],
       ['Pedidos de clientes', S.lista('vendas'), { cliente_id: (v) => S.get('clientes', v)?.nome || '', produto_id: np }],
       ['Entregas', S.lista('vendas_entregas'), { venda_id: (v) => { const x = S.get('vendas', v); return x ? `${x.cliente_nome} ${x.codigo || ''} ${x.pedido || ''}` : '' } }],
+      ['Programações de clientes', S.lista('vendas_releases').map(({ layout: _l, ultimas_nf: _u, ...x }) => x), { cliente_id: (v) => S.get('clientes', v)?.nome || '' }],
       ['Check-lists preventiva', S.lista('preventivas'), { maquina_id: (v) => S.get('maquinas', v)?.nome || '' }],
       ['Registros', S.lista('registros'), { maquina_id: (v) => S.get('maquinas', v)?.nome || '', cliente_id: (v) => S.get('clientes', v)?.nome || '', fornecedor_id: fn }],
     ]
@@ -490,7 +491,30 @@ function Copia() {
     <p>Baixa um Excel com <b>todos</b> os dados (no mesmo formato da planilha antiga nas abas do almoxarifado). Guarde no computador ou no Google Drive.</p>
     <p className={`nota ${!ult || U.dias(ult, U.hoje()) > 7 ? 'amarela' : 'verde'}`}>{ult ? `Última cópia baixada neste aparelho: ${U.data(ult)} (${U.relativo(ult)}).` : 'Nenhuma cópia baixada neste aparelho ainda.'} Recomendado: uma por semana.</p>
     <p className="sub">Por que: o plano grátis do banco não guarda cópias automáticas. Se algo for apagado por engano, é esta cópia que salva.</p>
-    <Btn txt="Baixar cópia completa (Excel)" icone="baixar" cls="pri mt" data-copia="1" onClick={() => baixar()} /></section>
+    <Btn txt="Baixar cópia completa (Excel)" icone="baixar" cls="pri mt" data-copia="1" onClick={() => baixar()} />
+    {Perm.pode('acessos') && <Saude />}</section>
+}
+
+// espaço usado no banco (só o Dono): para ninguém ser pego de surpresa quando o plano encher
+interface SaudeBanco { bytes: number; anexos: number; historico: number; tabelas: { nome: string; bytes: number; linhas: number }[] }
+const NOME_TAB: Record<string, string> = { rh_anexos_conteudo: 'Arquivos anexados (RH)', registros: 'Registros (técnico, PCP, manutenção)', vendas: 'Pedidos de clientes', historico: 'Histórico de alterações',
+  rh_ponto: 'Ponto', mp_lotes: 'Matéria-prima (R.I.)', ofs: 'Ordens de fabricação', produtos: 'Produtos', movimentos: 'Movimentações do almoxarifado', manutencoes: 'Ordens de serviço',
+  vendas_release_itens: 'Programações de clientes (mudanças)', vendas_entregas: 'Entregas a clientes', produto_estrutura: 'Estrutura de produtos',
+  pecas: 'Peças do almoxarifado', pedido_itens: 'Itens de pedidos de compra', pedidos_compra: 'Pedidos de compra', funcionarios: 'Pessoas', lancamentos: 'Contas', preventivas: 'Check-lists de preventiva', rh_anexos: 'Anexos do RH (lista)' }
+function Saude() {
+  const [s, setS] = useState<SaudeBanco | null>(null)
+  useEffect(() => { API.rpc<SaudeBanco>('saude_banco', {}).then(setS).catch(() => setS(null)) }, [])
+  if (!s) return null
+  const mb = (b: number) => b >= 1048576 ? `${U.qtd(Math.round(b / 1048576))} MB` : `${U.qtd(Math.max(1, Math.round(b / 1024)))} kB`
+  const LIM = 500 * 1048576, uso = s.bytes / LIM
+  return <div className="mt" id="saudeBanco"><h3>Espaço usado no banco</h3>
+    <p className={'nota ' + (uso > 0.8 ? 'vermelha' : uso > 0.5 ? 'amarela' : 'verde')}><b>{mb(s.bytes)}</b> usados — {U.pct(uso)} dos 500 MB do plano grátis.
+      {uso > 0.5 ? ' Está na hora de passar para o plano pago (8 GB e cópia automática todo dia) antes de encher.' : ' Com folga.'}</p>
+    <div className="barra-prog grande" aria-hidden="true"><i style={{ width: `${Math.min(100, uso * 100)}%` }} /></div>
+    <div className="lista mt">{s.tabelas.slice(0, 6).map(t => <div key={t.nome} className="linha"><div className="meio"><b>{NOME_TAB[t.nome] || t.nome}</b>{Number(t.linhas) > 0 && <small>{U.plural(Number(t.linhas), 'linha')}</small>}</div>
+      <div className="lado"><b>{mb(Number(t.bytes))}</b></div></div>)}</div>
+    {s.anexos > s.bytes * 0.5 && <p className="peq mt">Os arquivos anexados no RH (PDFs e fotos) são a maior parte do espaço. Prefira PDF leve e foto em tamanho médio.</p>}
+  </div>
 }
 
 // ---------------------------------------------------------------- histórico de alterações

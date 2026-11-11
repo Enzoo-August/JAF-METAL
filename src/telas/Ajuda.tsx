@@ -89,6 +89,11 @@ export const ARTIGOS: Artigo[] = [
     'Cada chegada de material é um *R.I.* (lote), como na E.S.M. Em *Nova entrada* informe material, fornecedor, NF, peso e o certificado. Depois o sistema oferece imprimir a *etiqueta de Identificação de Material*.',
     'O saldo do lote baixa sozinho com as OFs. Se aparecer o aviso amarelo de *R.I. usado em OF sem entrada*, é só tocar no R.I. e lançar a entrada que faltou.',
     'Para conferir a balança com o sistema use *Inventário*: digite o peso real de cada lote.'] },
+  { id: 'programacao', area: 'comercial', titulo: 'Programação do cliente pelo arquivo (release)', palavras: 'programação release arquivo txt csv excel importar pedido cliente sap atualizar última atualização desfazer', perm: 'vendas_editar', rota: '#/pedidos', corpo: [
+    'O cliente manda a programação num arquivo (*.TXT*, *.CSV* ou *Excel*) e manda de novo quando muda. Em *Pedidos de clientes → Atualizar programação*, escolha o arquivo do jeito que veio.',
+    'O sistema acha sozinho o código, a quantidade, a data e o pedido, reconhece o cliente pelas peças e *compara com os pedidos em aberto*: mostra o que é *entrega nova*, o que *mudou de quantidade* e o que *saiu*. Nada é gravado antes de você tocar em *Atualizar a programação*.',
+    'Depois, a tela mostra *quando foi a última atualização* de cada cliente e quem fez. O filtro *Mudou na programação* lista o que mudou, com “era 200”.',
+    'Errou o arquivo? Toque na programação do cliente e em *Desfazer esta atualização*: as quantidades voltam.'] },
   { id: 'pedidosAjuda', area: 'comercial', titulo: 'Pedidos de clientes e entregas', palavras: 'pedido cliente entrega saldo situação atraso nf controle de pedidos', perm: 'vendas', rota: '#/pedidos', corpo: [
     'É a planilha *Controle de Pedidos*: cada linha é um item de um pedido, com prazo. A *Situação* é calculada sozinha: *Atraso* (passou do prazo com saldo), *Hoje*, *Em dia* ou *Ok* (entregue tudo).',
     'Para lançar um pedido com vários itens use *Salvar e lançar outro item*. Na entrega, abra o item → *Registrar entrega* → quantidade e NF. Dá para desfazer uma entrega errada.',

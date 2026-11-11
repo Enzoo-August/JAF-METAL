@@ -24,6 +24,7 @@ import { documento, formOcorrencia } from './rh/Disciplina.tsx'
 import * as OFs from './fabrica/OFs.tsx'
 import * as MP from './fabrica/MP.tsx'
 import * as Pedidos from './fabrica/Pedidos.tsx'
+import { atualizarProgramacao, verRelease } from './fabrica/Release.tsx'
 import * as Produtos from './fabrica/Produtos.tsx'
 import * as Registros from './fabrica/Registros.tsx'
 import * as Manut from './fabrica/Manutencao.tsx'
@@ -81,7 +82,7 @@ export const Telas = {
   producao: { abrir: Producao.abrir, form: Producao.form },
   financeiro: { form: Financeiro.form, abrir: Financeiro.abrir, saldoHoje: Financeiro.saldoHoje },
   clientes: { form: Clientes.form, novoRapido: Clientes.novoRapido },
-  fabrica: { formOF: OFs.formOF, apontar: OFs.apontar, imprimirOF: OFs.imprimirOF, formLote: MP.formLote, etiqueta: MP.etiqueta, formVenda: Pedidos.formVenda, entregar: Pedidos.entregar,
+  fabrica: { formOF: OFs.formOF, apontar: OFs.apontar, imprimirOF: OFs.imprimirOF, formLote: MP.formLote, etiqueta: MP.etiqueta, formVenda: Pedidos.formVenda, entregar: Pedidos.entregar, atualizarProgramacao, verRelease,
     formProduto: Produtos.formProduto, formReg: Registros.formReg, defReg: Registros.defReg, preencher: Manut.preencher, imprimirOS: Manut.imprimirOS },
   nota: { lerNota },
   equipe: { form: formPessoa },

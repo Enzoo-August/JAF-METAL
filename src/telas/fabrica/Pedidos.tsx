@@ -18,18 +18,20 @@ import { ComboProduto, ComTabelas } from './comum.tsx'
 import { formOF } from './OFs.tsx'
 import { cancelarNecessidade, formNecessidade, formPedidoMP, pedidosPorFornecedor } from './Compra.tsx'
 import { Ic } from '../../ui/icones.tsx'
+import { atualizarProgramacao, diasDesde, quando, resumoRelease, ultimasReleases, verRelease } from './Release.tsx'
 
-const TABS = ['produtos', 'produto_estrutura', 'vendas', 'vendas_entregas', 'ofs', 'mp_lotes'] as const
+const TABS = ['produtos', 'produto_estrutura', 'vendas', 'vendas_entregas', 'ofs', 'mp_lotes', 'vendas_releases'] as const
 
-function LinhaVenda({ v }: { v: Venda }) {
+function LinhaVenda({ v, mudou }: { v: Venda; mudou?: boolean }) {
   const st = C.situacaoVenda(v), s = C.saldoVenda(v)
   const dias = v.prazo ? Math.round((Date.parse(v.prazo) - Date.parse(U.hoje())) / 864e5) : null
   const aberto = ['aguardando', 'atencao', 'atraso'].includes(st.cod)
-  return <div className="linha clicavel cols" data-venda={v.id} onClick={() => void detalhe(v.id)}><div className="meio"><b>{v.cliente_nome || '—'} · {v.codigo || v.descricao}</b>
+  return <div className="linha clicavel cols" data-venda={v.id} onClick={() => void detalhe(v.id)}><div className="meio"><b>{v.codigo || v.descricao} <span className="ven-cli">· {v.cliente_nome || '—'}</span></b>
     <small>{[v.codigo ? v.descricao : '', v.codigo_cliente].filter(Boolean).join(' · ')}<span className="so-estreito">{[v.pedido ? ' · pedido ' + v.pedido : '', ' · prazo ' + U.dataCurta(v.prazo)].join('')}</span></small></div>
     <Cols itens={[['Pedido', v.pedido], ['Prazo', <>{U.dataCurta(v.prazo)}{aberto && dias !== null ? <small className="col-sub">{dias < 0 ? `${-dias} d atrasado` : dias === 0 ? 'hoje' : `em ${dias} d`}</small> : null}</>, aberto && dias !== null && dias < 0 ? 'txt-vermelho' : ''],
       ['Entregue', <>{U.qtd(v.entregue || 0)} de {U.qtd(v.qtd)}<BarraProg v={Number(v.entregue) || 0} de={Number(v.qtd) || 0} /></>], ['Preço unit.', v.valor ? U.moeda(v.valor) : '']]} />
-    <div className="lado"><b>{U.qtd(Math.max(0, s))}</b><small>saldo</small><Tag s={st} /></div></div>
+    <div className="lado"><b>{U.qtd(Math.max(0, s))}</b><small>saldo</small><Tag s={st} />
+      {mudou && <small className="rel-tag" data-rel-tag="1">{v.release_de === null || v.release_de === undefined ? 'entrou agora' : `era ${U.qtd(v.release_de)}`}</small>}</div></div>
 }
 
 export function TelaPedidos({ r }: { r: Rota }) {
@@ -46,7 +48,7 @@ function Lista() {
   for (const v of todas) { const c = cod(v); cont[c] = (cont[c] || 0) + 1 }
   let l = cli ? todas.filter(v => (v.cliente_id || v.cliente_nome) === cli) : todas
   if (f === 'aberto') l = l.filter(v => ['aguardando', 'atencao', 'atraso'].includes(cod(v)))
-  else if (f !== 'todos') l = l.filter(v => cod(v) === f)
+  else if (f !== 'todos' && f !== 'mudou') l = l.filter(v => cod(v) === f)
   l = busca.trim() ? U.buscar(l, busca, v => [v.codigo || '', v.descricao || '', v.codigo_cliente || '', v.pedido || '', v.cliente_nome || ''])
     : U.ordenar(l, v => (v.prazo || '9999') + (v.cliente_nome || ''), f !== 'aberto' && f !== 'atraso' && f !== 'atencao')
   const clientes = U.ordenar([...new Map(todas.map(v => [v.cliente_id || v.cliente_nome || '', v.cliente_nome || '—'])).entries()], x => U.sem(x[1]))
@@ -55,9 +57,17 @@ function Lista() {
   const entMes = S.lista('vendas_entregas').filter(e => e.data.startsWith(mes))
   const fatMes = U.soma(entMes, e => Number(e.qtd) * Number(S.get('vendas', e.venda_id)?.valor || 0))
   const carteira = U.soma(abertas, v => C.saldoVenda(v) * Number(v.valor || 0))
+  // programação dos clientes (release): a última atualização de cada um e o que ela mudou
+  const rels = ultimasReleases()
+  const idsRel = new Set([...rels.values()].map(x => x.id))
+  const mexeu = (v: Venda) => !!v.release_id && idsRel.has(v.release_id)
+  const nMudou = todas.filter(mexeu).length
+  if (f === 'mudou') l = (cli ? todas.filter(v => (v.cliente_id || v.cliente_nome) === cli) : todas).filter(mexeu).sort((a, b) => ((a.prazo || '9') < (b.prazo || '9') ? -1 : 1))
+  const programacoes = U.ordenar([...rels.values()], x => x.criado_em, true)
   return <>
     <Cab titulo="Pedidos de clientes" sub="Controle de pedidos: o que cada cliente pediu, prazo e entregas">
       {Perm.pode('vendas_editar') && <Btn txt="Novo pedido" icone="mais" cls="pri" data-ven="novo" onClick={() => void formVenda()} />}
+      {Perm.pode('vendas_editar') && <Btn txt="Atualizar programação" icone="atualizar" cls="sec" data-ven="programacao" title="Ler o arquivo de programação (release) que o cliente mandou" onClick={() => void atualizarProgramacao({ cliente_id: S.get('clientes', cli)?.id })} />}
       {Perm.pode('necessidade') && <a className="btn sec" href="#/necessidade"><span>Necessidade</span></a>}
       <Btn txt="Excel" icone="planilha" cls="fantasma" onClick={() => exportar(l)} />
     </Cab>
@@ -67,11 +77,16 @@ function Lista() {
       {carteira > 0 && <div className="kpi"><small>Carteira (saldo × preço)</small><b>{U.moeda0(carteira)}</b><span>a entregar</span></div>}
       <div className="kpi"><small>Entregue no mês</small><b>{fatMes > 0 ? U.moeda0(fatMes) : U.qtd(U.soma(entMes, 'qtd'))}</b><span>{fatMes > 0 ? U.plural(entMes.length, 'entrega') : 'peças'}</span></div>
     </div>
+    {programacoes.length > 0 && <section className="card mt" id="venProg"><div className="card-cab"><h2>Programação dos clientes</h2><span className="sub">o último arquivo recebido de cada um</span></div>
+      <div className="lista rel-lista">{programacoes.map(x => { const dias = diasDesde(x.criado_em)
+        return <div key={x.id} className="linha clicavel" data-rel={x.id} onClick={() => void verRelease(x.id)}>
+          <div className="meio"><b>{x.cliente_nome}</b><small>Atualizada {quando(x.criado_em)}{x.criado_nome ? ' por ' + x.criado_nome : ''}</small><small>{resumoRelease(x)}</small></div>
+          <div className="lado"><Tag s={dias > 7 ? { txt: `há ${dias} dias`, cor: 'amarelo' } : { txt: dias === 0 ? 'hoje' : dias === 1 ? 'ontem' : `há ${dias} dias`, cor: 'verde' }} /><small>programação de {U.dataCurta(x.data_ref)}</small></div></div> })}</div></section>}
     <div className="barra-filtros mt"><BuscaLista id="bVen" valor={busca} placeholder="Código, pedido, código do cliente" aoMudar={setBusca} />
       <select value={cli} onChange={(e) => setCli(e.target.value)} aria-label="Cliente" data-ven-cli="1"><option value="">Todos os clientes</option>{clientes.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></div>
     <Chips atual={f} aoEscolher={setF} opcoes={[{ v: 'aberto', t: 'Em aberto', n: abertas.length }, { v: 'atraso', t: 'Atraso', n: cont.atraso || null }, { v: 'atencao', t: 'Atenção (hoje)', n: cont.atencao || null },
-      { v: 'aguardando', t: 'Aguardando' }, { v: 'ok', t: 'Entregues' }, { v: 'cancelado', t: 'Cancelados' }, { v: 'todos', t: 'Todos' }]} />
-    <div className="mt" id="lVen"><Paginado itens={l} render={v => <LinhaVenda key={v.id} v={v} />} vazio={<Vazio icone="cliente" titulo="Nenhum pedido aqui" />} /></div>
+      ...(nMudou ? [{ v: 'mudou', t: 'Mudou na programação', n: nMudou }] : []), { v: 'aguardando', t: 'Aguardando' }, { v: 'ok', t: 'Entregues' }, { v: 'cancelado', t: 'Cancelados' }, { v: 'todos', t: 'Todos' }]} />
+    <div className="mt" id="lVen"><Paginado itens={l} render={v => <LinhaVenda key={v.id} v={v} mudou={mexeu(v)} />} vazio={<Vazio icone="cliente" titulo="Nenhum pedido aqui" />} /></div>
   </>
 }
 
@@ -84,12 +99,13 @@ function exportar(l: Venda[]) {
 // ---------------------------------------------------------------- um item de pedido
 export async function detalhe(id: string): Promise<unknown> {
   // abre de qualquer lugar (Início, barra de baixo): garante as tabelas antes de montar a janela
-  await S.garantir(['produtos', 'vendas', 'vendas_entregas', 'ofs'])
+  await S.garantir(['produtos', 'vendas', 'vendas_entregas', 'ofs', 'vendas_releases'])
   const v = S.get('vendas', id); if (!v) return
   const ents = U.ordenar(S.lista('vendas_entregas').filter(e => e.venda_id === v.id), e => e.data, true)
   const ofs = S.lista('ofs').filter(o => o.venda_id === v.id)
   const prod = S.get('produtos', v.produto_id) || C.produtoPorCodigo(v.codigo)
   const ed = Perm.pode('vendas_editar'), s = C.saldoVenda(v)
+  const rel = S.get('vendas_releases', v.release_id)
   return modal({
     titulo: `${v.cliente_nome || ''} · ${v.codigo || v.descricao}`, largura: 'larga',
     corpo: <>
@@ -97,7 +113,9 @@ export async function detalhe(id: string): Promise<unknown> {
       <div className="grade g3 mt"><div className="kpi"><small>Pedido</small><b>{U.qtd(v.qtd)}</b><span>prazo {U.data(v.prazo)}</span></div>
         <div className="kpi"><small>Entregue</small><b>{U.qtd(v.entregue)}</b><span>{v.entregue_em ? 'última ' + U.dataCurta(v.entregue_em) : 'nada ainda'}</span></div>
         <div className="kpi"><small>Saldo</small><b>{U.qtd(Math.max(0, s))}</b>{prod ? <span>{U.qtd(C.emOFAberta(prod.id))} em OF aberta</span> : null}</div></div>
-      <div className="mt"><Dl pares={[['Pedido do cliente', v.pedido || ''], ['Código do cliente', v.codigo_cliente || ''], ['Preço unitário', v.valor ? U.moeda(v.valor) : ''], ['Observações', v.obs || '']]} /></div>
+      <div className="mt"><Dl pares={[['Pedido do cliente', v.pedido || ''], ['Código do cliente', v.codigo_cliente || ''], ['Preço unitário', v.valor ? U.moeda(v.valor) : ''],
+        rel ? ['Programação do cliente', <>{v.release_de === null || v.release_de === undefined ? 'Entrou' : `O saldo era ${U.qtd(v.release_de)} e mudou`} na atualização de {U.dataHora(rel.criado_em)}{rel.criado_nome ? ' (' + rel.criado_nome + ')' : ''}</>] : null,
+        ['Observações', v.obs || '']]} /></div>
       {ents.length > 0 && <><h3 className="mt">Entregas</h3><div className="lista">{ents.map(e => <div key={e.id} className="linha"><div className="meio"><b>{U.qtd(e.qtd)} pç em {U.data(e.data)}</b><small>{e.nf ? 'NF ' + e.nf : ''}{e.obs ? ' · ' + e.obs : ''}</small></div>
         {ed && <div className="lado"><button type="button" className="icone-btn mini" aria-label="Desfazer entrega" onClick={async () => {
           if (!await confirmar('Desfazer esta entrega?', { ok: 'Desfazer', perigo: true })) return

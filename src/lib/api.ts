@@ -220,10 +220,10 @@ async function lerBruto(tabela: string, filtrar: (q: Consulta) => Consulta, wher
 }
 
 // números do banco chegam como texto em alguns casos: converte; datas viram 'AAAA-MM-DD'
-const HORARIOS = new Set(['criado_em', 'atualizado_em', 'iniciada_em', 'pronta_em', 'em', 'last_sign_in_at']) // o resto é data (AAAA-MM-DD)
+const HORARIOS = new Set(['criado_em', 'atualizado_em', 'iniciada_em', 'pronta_em', 'em', 'last_sign_in_at', 'desfeito_em']) // o resto é data (AAAA-MM-DD)
 const NUMERICOS = new Set(['est_min', 'est_max', 'estoque', 'qtd', 'preco_unit', 'valor', 'recebido', 'frete', 'custo_servico', 'horas_parada',
   'produzido', 'valor_pago', 'salario', 'seq', 'numero', 'ano', 'preventiva_dias', 'prioridade', 'ordem', 'resta', 'id_hist',
-  'mp_qtd', 'pecas_mes', 'kg', 'baixa', 'entregue', 'ri'])
+  'mp_qtd', 'pecas_mes', 'kg', 'baixa', 'entregue', 'ri', 'release_de', 'saldo_antes', 'saldo_depois', 'qtd_antes'])
 function normalizar<T extends Record<string, unknown>>(linhas: T[]): T[] {
   for (const l of linhas) {
     const o = l as Record<string, unknown>
