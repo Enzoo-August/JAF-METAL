@@ -27,7 +27,7 @@ const custoPecas = (maq: Maquina, de: string) => U.soma(C.consumos(m => m.maquin
 function Cartao({ m }: { m: Maquina }) {
   const prox = C.proximaPreventiva(m), ab = C.manutAbertas(m.id)
   return <a className="card linha-card" href={'#/maquina/' + m.id} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}><div><b>{C.nomeMaquina(m)}</b><div className="sub">{[m.grupo !== 'Máquina' ? m.grupo : '', m.tipo, m.local || m.setor].filter(Boolean).join(' · ') || '—'}</div></div><Tag s={C.situacaoMaquina(m)} /></div>
+    <div className="maq-topo"><div><b>{C.nomeMaquina(m)}</b><div className="sub">{[m.grupo !== 'Máquina' ? m.grupo : '', m.tipo, m.local || m.setor].filter(Boolean).join(' · ') || '—'}</div></div><Tag s={C.situacaoMaquina(m)} /></div>
     <p className="sub mt" style={{ marginBottom: 0 }}>{ab.length ? <><Ic n="alerta" /> {ab[0].problema.slice(0, 70)}</> : prox ? <>Próxima preventiva: <b>{U.relativo(prox)}</b></> : m.preventiva_dias ? 'Registre a última preventiva' : 'Sem preventiva programada'}</p></a>
 }
 

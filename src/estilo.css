@@ -1239,3 +1239,19 @@ fieldset.secao + fieldset.secao { margin-top: 6px; }
   .rel-lista .linha .meio { flex: 1 1 100%; }
   .rel-lista .linha .lado { flex-direction: row; align-items: center; gap: 8px; text-align: left; }
 }
+
+/* v3.0.1: revisão tela a tela */
+/* cartão que é botão (contas vencidas / atrasadas): mesmo desenho dos outros cartões */
+button.kpi { display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; }
+/* negrito dentro da linha de baixo não pula de linha ("usuário operador · Produção") */
+.linha .meio small b, .linha .lado small b { display: inline; }
+/* máquinas: nome inteiro em cima, etiqueta ao lado só se couber */
+.maq-topo { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 6px 8px; }
+.maq-topo > div { flex: 1 1 130px; min-width: 0; }
+/* pedidos em colunas: "saldo" embaixo do número e a etiqueta na linha de baixo */
+.linha.cols .lado > small { display: block; }
+.linha.cols .lado > .tag { margin-top: 3px; }
+/* abas que não cabem: a ponta some aos poucos para mostrar que tem mais (dá para arrastar) */
+.subabas-lista { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 22px; }
+/* código da peça não quebra no meio nas tabelas */
+.tabela-fab td:first-child a, .tabela-fab td.mono { white-space: nowrap; }
