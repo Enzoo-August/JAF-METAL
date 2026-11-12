@@ -49,6 +49,7 @@ const rh: DefTela = { Tela: TelaRH, perm: 'rh_ver', titulo: tituloRH }
 const equipe: DefTela = { Tela: TelaRH, perm: 'pcp', titulo: tituloRH }
 const funcionario: DefTela = { Tela: TelaRH, titulo: tituloRH }
 
+import { TelaPesquisa } from './Pesquisa.tsx'
 export const ROTAS: Record<string, DefTela> = {
   '': { Tela: TelaInicio, titulo: 'Início' }, inicio: { Tela: TelaInicio, titulo: 'Início' },
   pecas, peca: pecas,
@@ -77,6 +78,7 @@ export const ROTAS: Record<string, DefTela> = {
   admin: { Tela: TelaAdmin, perm: 'config', titulo: 'Administração' },
   ajuda: { Tela: TelaAjuda, titulo: 'Ajuda' },
   conta: { Tela: TelaConta, titulo: 'Minha conta' },
+  pesquisa: { Tela: TelaPesquisa, titulo: 'Resultado da pesquisa' },
 }
 
 export const Telas = {

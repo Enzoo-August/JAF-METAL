@@ -1289,6 +1289,24 @@ window.roteiro = async function roteiro(filtro) {
     conf(!document.querySelector('[data-pesquisa]'), 'no modo teste a pesquisa fica desligada por padrão');
   });
 
+  await passo('v3.3 resultado da pesquisa só para o leitor', async () => {
+    for (const quem of ['gerente', 'helena', 'pcp']) {
+      await como(quem); await ir('#/conta'); await dorme(400);
+      conf(!document.querySelector('[data-atalho-pesquisa]'), quem + ': Minha conta não mostra o resultado da pesquisa');
+      await ir('#/pesquisa');
+      conf(await espera(() => /Sem acesso/.test(document.getElementById('view')?.textContent || '')), quem + ': abrir o endereço direto mostra “Sem acesso”');
+    }
+    await como('dono'); await ir('#/conta');
+    const at = await espera(() => document.querySelector('[data-atalho-pesquisa]'));
+    conf(!!at, 'leitor vê o atalho em Minha conta');
+    await clicar(at);
+    const tot = await espera(() => document.querySelector('[data-pesq-total]'));
+    conf(tot?.textContent === '4', 'resultado mostra o total de respostas', tot?.textContent);
+    conf(document.querySelectorAll('[data-pesq-setores] tbody tr').length === 4, 'uma linha por setor');
+    conf(document.querySelectorAll('[data-pesq-comentarios] .linha').length === 2, 'opiniões escritas aparecem, sem nome');
+    conf(/1,6 h/.test(document.querySelector('[data-pesq-horas]')?.textContent || ''), 'média de horas economizadas por semana', document.querySelector('[data-pesq-horas]')?.textContent);
+  });
+
   await passo('v3.2 atrasados somados na semana e romaneio da carga', async () => {
     await como('pcp');
     await S.garantir(['produtos', 'vendas', 'vendas_entregas', 'notas_saida', 'produto_saldos', 'ofs', 'clientes']);

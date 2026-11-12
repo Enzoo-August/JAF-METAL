@@ -1,4 +1,5 @@
 /* Administração: acessos, empresa, importar planilha, cópia dos dados, histórico — e "Minha conta" */
+import { vePesquisa } from './Pesquisa.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { App } from '../app/controle.tsx'
 import { API, ErroApp, traduzir } from '../lib/api.ts'
@@ -565,6 +566,7 @@ export function TelaConta() {
       <div><b>{s.nome}</b><div className="sub">usuário <b>{s.login}</b> · {Perm.nome(s.perfil)}</div></div></div>
       <div className="grupo-btn mt"><button type="button" className="btn sec" data-c="senha" onClick={() => void trocarSenha(s.uid, '')}><Ic n="cadeado" /><span>Trocar minha senha</span></button>
         <button type="button" className="btn fantasma" data-acao="sair" onClick={async () => { if (await confirmar('Sair do sistema neste aparelho?', { ok: 'Sair' })) await App.sair() }}><Ic n="sair" /><span>Sair</span></button></div></section>
+    <AtalhoPesquisa />
     <section className="card mt"><h2>Aparência</h2><div className="opcoes mt">{([['auto', 'Automática', 'segue o aparelho'], ['claro', 'Clara', ''], ['escuro', 'Escura', 'boa no chão de fábrica']] as const).map(([v, t, d]) =>
       <label key={v} className="opcao"><input type="radio" name="tema" value={v} checked={tema === v} onChange={() => mudarTema(v)} /><span><b>{t}</b>{d && <small>{d}</small>}</span></label>)}</div></section>
     <section className="card mt"><h2><Ic n="instalar" /> Usar como aplicativo</h2>
@@ -575,4 +577,14 @@ export function TelaConta() {
     <p className="sub mt">JAF Metal Gestão · versão {App.versao}{API.modo === 'teste' && <> · <b>modo teste</b> <button type="button" className="btn fantasma mini" data-c="zerar"
       onClick={async () => { if (await confirmar('Apagar os dados de teste e recomeçar?', { ok: 'Recomeçar', perigo: true })) { await API.zerarTeste(); location.reload() } }}>Recomeçar a demonstração</button></>}</p>
   </>
+}
+
+// atalho para o resultado da pesquisa: aparece só para quem está na lista de leitores do banco
+function AtalhoPesquisa() {
+  const [pode, setPode] = useState(false)
+  useEffect(() => { void vePesquisa().then(setPode) }, [])
+  if (!pode) return null
+  return <a className="card mt clicavel" href="#/pesquisa" data-atalho-pesquisa="1" style={{ display: 'flex', gap: 12, alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+    <span className="avatar" style={{ width: 40, height: 40 }}><Ic n="lista" /></span>
+    <span style={{ flex: 1 }}><b>Resultado da pesquisa</b><div className="sub">O que a equipe respondeu (só você vê)</div></span><Ic n="seta" /></a>
 }

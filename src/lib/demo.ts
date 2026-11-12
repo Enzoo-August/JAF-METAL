@@ -465,4 +465,9 @@ async function demoFabrica(dia: (n: number) => string): Promise<void> {
   await API.rpc('salvar_pedido', { p: { tipo: 'mp', fornecedor_id: aco.id, data: dia(-3), prazo: dia(4), documento: 'Orçamento 2031',
     itens: [{ produto_id: cod('IA07.B01.cg').id, qtd: 40, valor: 1300 }] } })
   await API.rpc('salvar_necessidade', { p: { produto_id: cod('AE01.B01.ac').id, qtd: 50, prazo: dia(7), motivo: 'Estoque de segurança do pino' } })
+  // pesquisa rápida (v3.3): o Dono de teste é o leitor do resultado, com respostas inventadas
+  if (API._pg) await API._pg.exec(`insert into public.pesquisa_leitores (user_id) select user_id from public.perfis where perfil = 'dono' on conflict do nothing;
+    insert into public.avaliacoes (setor, melhorou, tarefa, tempo, futuro, comentario) values
+      ('pcp', 9, 8, '1a3', 9, 'O romaneio automático vai poupar muito tempo (exemplo).'), ('rh', 8, 9, '3a5', 9, null),
+      ('producao', 6, 7, 'ate1', 8, 'Ainda estou aprendendo a apontar a OF (exemplo).'), ('almoxarifado', 7, 6, 'nada', 7, null)`)
 }
