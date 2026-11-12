@@ -1055,6 +1055,23 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   conf(ind2.r === 1000 && ind2.ini === null && ind2.origem === null, 'apagar os números do mês mantém a receita', ind2)
 }
 
+// ---------------------------------------------------------------- pesquisa com a equipe (v3.3)
+{
+  const resp = { setor: 'rh', nome: '  Pessoa Teste ', melhorou: 8, tarefa: 9, tempo: '1a3', futuro: 10, comentario: 'ajudou' }
+  conf(await rpc('anon', 'enviar_avaliacao', resp) === true, 'quem não entrou consegue enviar a pesquisa')
+  conf((await ver('anon', 'select * from public.avaliacoes').catch(() => [])).length === 0, 'quem não entrou não lê as respostas')
+  conf((await ver(esc, 'select * from public.avaliacoes')).length === 0, 'escritório não lê as respostas')
+  const lidas = await ver(dono, 'select * from public.avaliacoes')
+  conf(lidas.length === 1 && lidas[0].nome === 'Pessoa Teste' && lidas[0].tempo === '1a3', 'Dono lê as respostas', lidas)
+  conf((await erro('anon', 'enviar_avaliacao', { ...resp, melhorou: 11 })) !== null, 'nota acima de 10 recusada')
+  conf((await erro('anon', 'enviar_avaliacao', { ...resp, setor: 'hacker' })) !== null, 'setor fora da lista recusado')
+  conf((await erro('anon', 'enviar_avaliacao', { ...resp, tempo: 'muito' })) !== null, 'tempo fora da lista recusado')
+  conf(/permission denied/i.test(await como('anon', () => q(`insert into public.avaliacoes (setor, melhorou, tarefa, tempo, futuro) values ('rh', 1, 1, 'nada', 1)`)).then(() => '', e => e.message)), 'ninguém grava direto na tabela')
+  for (let i = 0; i < 19; i++) await rpc('anon', 'enviar_avaliacao', resp)
+  conf((await erro('anon', 'enviar_avaliacao', resp))?.includes('Tente de novo'), 'mais de 20 respostas por minuto recusadas')
+  await q('delete from public.avaliacoes')
+}
+
 // ---------------------------------------------------------------- funções liberadas
 const sb = await rpc(dono, 'saude_banco')
 conf(sb.bytes > 0 && sb.tabelas.length > 0 && sb.historico > 0, 'Dono vê o espaço usado no banco', sb)
@@ -1064,7 +1081,7 @@ const gat = await q(`select p.proname from pg_proc p join pg_namespace n on n.oi
 conf(gat.length === 0, 'funções de gatilho fechadas para quem usa o aplicativo', gat.map(r => r.proname))
 const livres = await q(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute') order by 1`)
-conf(livres.map(r => r.proname).join() === 'ha_dono,primeiro_dono', 'anônimo só chama ha_dono e primeiro_dono', livres.map(r => r.proname))
+conf(livres.map(r => r.proname).join() === 'enviar_avaliacao,ha_dono,primeiro_dono', 'anônimo só chama enviar_avaliacao, ha_dono e primeiro_dono', livres.map(r => r.proname))
 const definer = await q(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.prosecdef and not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%')`)
 conf(definer.length === 0, 'toda função "security definer" fixa o search_path', definer)
@@ -1072,7 +1089,7 @@ conf(definer.length === 0, 'toda função "security definer" fixa o search_path'
 await db.exec(sqlSchema)
 const livres2 = await q(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')`)
-conf(livres2.length === 0, 'com Dono criado, quem não entrou não chama nenhuma função', livres2.map(r => r.proname))
+conf(livres2.map(r => r.proname).join() === 'enviar_avaliacao', 'com Dono criado, quem não entrou só envia a pesquisa', livres2.map(r => r.proname))
 conf(/permission denied/i.test(await erro(dono, 'primeiro_dono', 'x2', 'senha-forte-1', 'Outro') || ''), 'primeiro acesso fechado também para quem está logado')
 conf((await q(`select count(*)::int n from public.perfis`))[0].n >= 5, 'rodar o schema de novo não apaga acessos')
 

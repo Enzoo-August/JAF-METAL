@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#2d4f86">
+<title>Pesquisa rápida · Sistema JAF Metal</title>
+<link rel="icon" href="assets/favicon.png">
+<link rel="stylesheet" href="avaliacao.css">
+</head>
+<body>
+<main class="pag">
+  <header class="cab">
+    <img src="assets/logo.png" alt="JAF Metal" class="logo">
+    <h1>Pesquisa rápida sobre o sistema</h1>
+    <p>O sistema ainda está em teste. Queremos saber quanto você acha que ele vai ajudar no seu dia a dia. São 5 perguntas, menos de 2 minutos.</p>
+  </header>
+
+  <form id="form" novalidate>
+    <section class="bloco">
+      <h2><span class="n">●</span> Qual é o seu setor?</h2>
+      <div class="chips" id="setores" role="radiogroup" aria-label="Setor"></div>
+      <label class="campo">Seu nome <small>(opcional)</small>
+        <input id="nome" maxlength="80" autocomplete="name" placeholder="Ex.: Ana">
+      </label>
+    </section>
+
+    <section class="bloco" data-q="melhorou">
+      <h2><span class="n">1</span> De 0 a 10, quanto você acha que o sistema vai melhorar o seu trabalho em relação às planilhas e ao papel?</h2>
+      <div class="nota" role="radiogroup"></div>
+      <div class="extremos"><span>0 · nada</span><span>10 · muito</span></div>
+    </section>
+
+    <section class="bloco" data-q="tarefa">
+      <h2><span class="n">2</span> De 0 a 10, quanto você acha que vai ficar mais fácil <b id="tarefa">fazer as tarefas do seu dia a dia</b> com o sistema?</h2>
+      <div class="nota" role="radiogroup"></div>
+      <div class="extremos"><span>0 · nada mais fácil</span><span>10 · muito mais fácil</span></div>
+    </section>
+
+    <section class="bloco" data-q="tempo">
+      <h2><span class="n">3</span> Quanto tempo por semana você acha que o sistema vai economizar para você?</h2>
+      <div class="chips" role="radiogroup">
+        <button type="button" data-v="nada">Quase nada</button>
+        <button type="button" data-v="ate1">Até 1 hora</button>
+        <button type="button" data-v="1a3">1 a 3 horas</button>
+        <button type="button" data-v="3a5">3 a 5 horas</button>
+        <button type="button" data-v="mais5">Mais de 5 horas</button>
+      </div>
+    </section>
+
+    <section class="bloco" data-q="futuro">
+      <h2><span class="n">4</span> De 0 a 10, quanto você acha que o sistema vai ajudar a empresa toda (menos erros, menos retrabalho, informação mais rápida)?</h2>
+      <div class="nota" role="radiogroup"></div>
+      <div class="extremos"><span>0 · nada</span><span>10 · muito</span></div>
+    </section>
+
+    <section class="bloco">
+      <h2><span class="n">5</span> Em poucas palavras: o que você acha que vai ajudar mais, ou o que ainda falta? <small>(opcional)</small></h2>
+      <textarea id="comentario" maxlength="600" rows="3" placeholder="Escreva aqui…"></textarea>
+    </section>
+
+    <p class="aviso" id="aviso" role="alert" hidden></p>
+    <button type="submit" class="enviar" id="enviar">Enviar respostas</button>
+  </form>
+
+  <section class="fim" id="fim" hidden>
+    <div class="ok">✓</div>
+    <h2>Obrigado!</h2>
+    <p>Sua resposta foi enviada.</p>
+    <button type="button" class="outra" id="outra">Responder de novo (outra pessoa neste aparelho)</button>
+  </section>
+</main>
+<script src="avaliacao.js"></script>
+</body>
+</html>
