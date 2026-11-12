@@ -15,27 +15,25 @@
     <img src="assets/logo.png" alt="JAF Metal" class="logo">
     <h1>Pesquisa rápida sobre o sistema</h1>
     <p>O sistema ainda está em teste. Queremos saber quanto você acha que ele vai ajudar no seu dia a dia. São 5 perguntas, menos de 2 minutos.</p>
+    <p class="anon"><b>Suas respostas são anônimas.</b> Não pedimos seu nome e ninguém da empresa vê o que você respondeu: usamos só a média de todas as respostas.</p>
   </header>
 
   <form id="form" novalidate>
     <section class="bloco">
       <h2><span class="n">●</span> Qual é o seu setor?</h2>
       <div class="chips" id="setores" role="radiogroup" aria-label="Setor"></div>
-      <label class="campo">Seu nome <small>(opcional)</small>
-        <input id="nome" maxlength="80" autocomplete="name" placeholder="Ex.: Ana">
-      </label>
     </section>
 
     <section class="bloco" data-q="melhorou">
       <h2><span class="n">1</span> De 0 a 10, quanto você acha que o sistema vai melhorar o seu trabalho em relação às planilhas e ao papel?</h2>
       <div class="nota" role="radiogroup"></div>
-      <div class="extremos"><span>0 · nada</span><span>10 · muito</span></div>
+      <div class="extremos">0 = nada · 5 = razoável · 10 = muito</div>
     </section>
 
     <section class="bloco" data-q="tarefa">
       <h2><span class="n">2</span> De 0 a 10, quanto você acha que vai ficar mais fácil <b id="tarefa">fazer as tarefas do seu dia a dia</b> com o sistema?</h2>
       <div class="nota" role="radiogroup"></div>
-      <div class="extremos"><span>0 · nada mais fácil</span><span>10 · muito mais fácil</span></div>
+      <div class="extremos">0 = nada · 5 = razoável · 10 = muito</div>
     </section>
 
     <section class="bloco" data-q="tempo">
@@ -52,12 +50,12 @@
     <section class="bloco" data-q="futuro">
       <h2><span class="n">4</span> De 0 a 10, quanto você acha que o sistema vai ajudar a empresa toda (menos erros, menos retrabalho, informação mais rápida)?</h2>
       <div class="nota" role="radiogroup"></div>
-      <div class="extremos"><span>0 · nada</span><span>10 · muito</span></div>
+      <div class="extremos">0 = nada · 5 = razoável · 10 = muito</div>
     </section>
 
     <section class="bloco">
-      <h2><span class="n">5</span> Em poucas palavras: o que você acha que vai ajudar mais, ou o que ainda falta? <small>(opcional)</small></h2>
-      <textarea id="comentario" maxlength="600" rows="3" placeholder="Escreva aqui…"></textarea>
+      <h2><span class="n">5</span> <span>O que você está achando do sistema até agora? Dê sua opinião sincera. <small>(opcional)</small></span></h2>
+      <textarea id="comentario" maxlength="600" rows="3" placeholder="Pode falar à vontade: o que gostou, o que não gostou, o que falta…"></textarea>
     </section>
 
     <p class="aviso" id="aviso" role="alert" hidden></p>
@@ -67,7 +65,8 @@
   <section class="fim" id="fim" hidden>
     <div class="ok">✓</div>
     <h2>Obrigado!</h2>
-    <p>Sua resposta foi enviada.</p>
+    <p>Sua resposta foi enviada. Muito obrigado pela ajuda!</p>
+    <a class="voltar" href="./">Voltar para o sistema</a>
     <button type="button" class="outra" id="outra">Responder de novo (outra pessoa neste aparelho)</button>
   </section>
 </main>

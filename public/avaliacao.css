@@ -8,16 +8,16 @@ html, body { margin: 0; background: var(--fundo); color: var(--texto); font: 16p
 .cab p { margin: 0; color: #dbe6f6; font-size: .95rem; }
 .bloco { background: var(--cartao); border: 1px solid var(--borda); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
 .bloco.falta { border-color: var(--vermelho); box-shadow: 0 0 0 2px #fbe7e5; }
-.bloco h2 { font-size: 1rem; margin: 0 0 12px; font-weight: 650; display: flex; gap: 10px; }
+.bloco h2 { font-size: 1rem; margin: 0 0 12px; font-weight: 650; position: relative; padding-left: 34px; min-height: 24px; }
 .bloco h2 small { font-weight: 400; color: var(--cinza); }
-.n { flex: none; width: 24px; height: 24px; border-radius: 7px; background: var(--marca-suave); color: var(--marca-forte); font-size: .8rem; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.n { flex: none; width: 24px; height: 24px; border-radius: 7px; background: var(--marca-suave); color: var(--marca-forte); font-size: .8rem; display: inline-flex; align-items: center; justify-content: center; position: absolute; left: 0; top: 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chips button, .nota button { font: inherit; border: 1.5px solid var(--borda); background: #fff; color: var(--texto); border-radius: 10px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .chips button { padding: 9px 13px; font-size: .95rem; }
 .chips button[aria-checked="true"], .nota button[aria-checked="true"] { background: var(--marca); border-color: var(--marca); color: #fff; font-weight: 650; }
 .nota { display: grid; grid-template-columns: repeat(11, 1fr); gap: 4px; }
 .nota button { padding: 10px 0; font-size: .95rem; min-width: 0; }
-.extremos { display: flex; justify-content: space-between; color: var(--cinza); font-size: .8rem; margin-top: 6px; }
+.extremos { color: var(--cinza); font-size: .82rem; margin-top: 8px; text-align: center; }
 .campo { display: block; margin-top: 14px; font-size: .9rem; font-weight: 600; }
 .campo small { font-weight: 400; color: var(--cinza); }
 input, textarea { width: 100%; font: inherit; border: 1.5px solid var(--borda); border-radius: 10px; padding: 10px 12px; margin-top: 6px; background: #fff; color: var(--texto); }
@@ -32,3 +32,5 @@ textarea { resize: vertical; }
 .fim p { margin: 0 0 18px; color: var(--cinza); }
 .outra { font: inherit; background: none; border: 1.5px solid var(--borda); border-radius: 10px; padding: 10px 14px; color: var(--marca-forte); cursor: pointer; }
 @media (max-width: 380px) { .nota { grid-template-columns: repeat(6, 1fr); } .nota button { padding: 11px 0; } }
+.anon { margin: 12px 0 0 !important; background: rgba(255,255,255,.14); border-radius: 10px; padding: 9px 12px; font-size: .9rem !important; color: #fff !important; }
+.voltar { display: block; margin: 0 auto 12px; width: fit-content; background: var(--marca-forte); color: #fff; text-decoration: none; font-weight: 700; padding: 11px 18px; border-radius: 10px; }

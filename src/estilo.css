@@ -1335,3 +1335,15 @@ details.mais-ind > summary::-webkit-details-marker { display: none; }
   .tabela-rom input.rom-qtd { width: 76px; }
   .tabela-rom th, .tabela-rom td { padding: 8px 6px; }
 }
+
+/* v3.3 — aviso da pesquisa rápida */
+.faixa-pesquisa { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--marca-suave); border-bottom: 1px solid var(--borda); }
+.faixa-pesquisa .fp-ic { flex: none; width: 34px; height: 34px; border-radius: 10px; background: var(--marca); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.faixa-pesquisa .fp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.faixa-pesquisa .fp-txt small { color: var(--texto-2, var(--cinza)); }
+.faixa-pesquisa .btn { flex: none; }
+@media (max-width: 640px) {
+  .faixa-pesquisa { flex-wrap: wrap; padding: 10px 14px; }
+  .faixa-pesquisa .fp-txt { flex-basis: calc(100% - 46px); }
+  .faixa-pesquisa .btn { flex: 1; }
+}

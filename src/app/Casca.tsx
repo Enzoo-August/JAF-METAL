@@ -1,7 +1,7 @@
 /* Casca do sistema: menu de ÁREAS (lateral), topo (busca e avisos), abas da área, barra de baixo no celular e a tela da rota atual */
 import { Component, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { API } from '../lib/api.ts'
-import { C, S } from '../lib/dados.ts'
+import { C, PESQUISA, S, pesquisaPendente } from '../lib/dados.ts'
 import { Perm } from '../lib/perm.ts'
 import * as U from '../lib/util.ts'
 import { aviso, erro, ocupado } from '../ui/avisos.ts'
@@ -146,6 +146,7 @@ export function Casca() {
             {x.rot}{cont[x.rota] ? <b className="cont">{cont[x.rota]}</b> : null}</a>)}</div>
           <a className="subabas-ajuda" href={'#/ajuda?q=' + encodeURIComponent(area!.rot)} title={'Ajuda sobre ' + area!.rot} aria-label={'Ajuda sobre ' + area!.rot}><Ic n="ajuda" /></a>
         </nav>}
+        <FaixaPesquisa />
         <div id="semRede" className="faixa-rede" hidden={!semRede}><Ic n="alerta" /> Sem internet. Você pode consultar, mas nada é salvo até a conexão voltar.</div>
         <main id="conteudo">
           <div id="view" className="view">
@@ -227,4 +228,16 @@ function PainelAlertas() {
   const al = C.alertas()
   if (!al.length) return <Vazio icone="ok" titulo="Nada pendente" texto="Quando algo precisar de atenção (peça para comprar, férias vencendo, exame vencido…), aparece aqui." />
   return <div className="alertas">{al.map(a => <a key={a.txt} className={`alerta n-${a.nivel}${a.pisca ? ' pisca' : ''}`} href={a.rota} onClick={() => j.fechar()}><Ic n="alerta" /><span>{a.txt}</span><Ic n="seta" /></a>)}</div>
+}
+
+// ---------------------------------------------------------------- aviso da pesquisa rápida (todo acesso, até responder)
+function FaixaPesquisa() {
+  const [depois, setDepois] = useState(() => U.lerLocal('jaf.pesquisa.depois', '') === U.hoje())
+  if (depois || !pesquisaPendente()) return null
+  return <div className="faixa-pesquisa" role="status" data-pesquisa>
+    <span className="fp-ic"><Ic n="ajuda" /></span>
+    <span className="fp-txt"><b>Pesquisa rápida sobre o sistema</b><small>5 perguntas, 2 minutos. Suas respostas são anônimas.</small></span>
+    <a className="btn pri" href={PESQUISA.url} data-pesquisa-ir>Responder agora</a>
+    <button type="button" className="btn" data-pesquisa-depois onClick={() => { U.gravarLocal('jaf.pesquisa.depois', U.hoje()); setDepois(true) }}>Depois</button>
+  </div>
 }

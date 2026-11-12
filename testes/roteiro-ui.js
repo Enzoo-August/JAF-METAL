@@ -1270,6 +1270,25 @@ window.roteiro = async function roteiro(filtro) {
     conf(!!S.get('notas_saida', ns.id)?.desfeito_em && Number(S.get('vendas', ped.id).entregue) === entAntes && Number(S.get('produto_saldos', pr.id)?.saldo) === estAntes, 'desfazer volta o pedido e o estoque');
   });
 
+  await passo('v3.3 aviso da pesquisa rápida para todo acesso', async () => {
+    const limpa = () => ['jaf.pesquisa.ok', 'jaf.pesquisa.depois'].forEach(k => localStorage.removeItem(k));
+    limpa(); localStorage.setItem('jaf.pesquisa.teste', 'true');
+    for (const quem of ['operador', 'helena', 'dono']) {
+      await como(quem); await ir('#/inicio');
+      const f = await espera(() => document.querySelector('[data-pesquisa]'));
+      conf(!!f && /anônimas/.test(f.textContent), quem + ': faixa da pesquisa aparece no topo', f?.textContent);
+      conf(f?.querySelector('[data-pesquisa-ir]')?.getAttribute('href') === './avaliacao.html', quem + ': botão abre o formulário');
+      conf(C.alertas().some(a => a.rota === './avaliacao.html'), quem + ': a pesquisa entra no sininho');
+    }
+    await clicar(document.querySelector('[data-pesquisa-depois]')); await dorme(100);
+    conf(!document.querySelector('[data-pesquisa]'), '“Depois” esconde a faixa até amanhã');
+    localStorage.setItem('jaf.pesquisa.ok', 'true');
+    conf(!C.alertas().some(a => a.rota === './avaliacao.html'), 'depois de responder, sai do sininho');
+    limpa(); localStorage.removeItem('jaf.pesquisa.teste');
+    await ir('#/estoque'); await ir('#/inicio');
+    conf(!document.querySelector('[data-pesquisa]'), 'no modo teste a pesquisa fica desligada por padrão');
+  });
+
   await passo('v3.2 atrasados somados na semana e romaneio da carga', async () => {
     await como('pcp');
     await S.garantir(['produtos', 'vendas', 'vendas_entregas', 'notas_saida', 'produto_saldos', 'ofs', 'clientes']);

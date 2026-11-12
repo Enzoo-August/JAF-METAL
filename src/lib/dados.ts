@@ -182,6 +182,14 @@ export interface Lote { mov: Movimento; resta: number; valor: number }
 export interface Consumo { mov: Movimento; qtd: number; valor: number; estorno?: Movimento }
 export interface Alerta { nivel: 'alto' | 'medio' | 'baixo'; txt: string; rota: string; n: number; pisca?: boolean }
 
+// pesquisa rápida com a equipe (v3.3): aparece para todo acesso até a pessoa responder neste aparelho (a página grava jaf.pesquisa.ok)
+export const PESQUISA = { url: './avaliacao.html', fim: '2026-12-31' }
+export function pesquisaPendente(): boolean {
+  if (API.modo === 'teste' && !U.lerLocal('jaf.pesquisa.teste', false)) return false
+  if (U.hoje() > PESQUISA.fim) return false
+  return !U.lerLocal('jaf.pesquisa.ok', false)
+}
+
 export const C = {
   // ---------------- situação da peça (mesma regra da planilha, mais "no mínimo")
   situacao(p: Peca): Situacao {
@@ -572,6 +580,7 @@ export const C = {
   alertas(): Alerta[] {
     const a: Alerta[] = []
     const add = (nivel: Alerta['nivel'], txt: string, rota: string, n: number) => a.push({ nivel, txt, rota, n })
+    if (pesquisaPendente()) add('medio', 'Pesquisa rápida: diga o que você acha do sistema (2 minutos)', PESQUISA.url, 1)
     if (Perm.pode('compras')) {
       const lc = C.listaCompras().filter(x => !x.jaPedido)
       if (lc.length) add('alto', `${U.plural(lc.length, 'peça')} abaixo do mínimo para comprar`, '#/compras/lista', lc.length)

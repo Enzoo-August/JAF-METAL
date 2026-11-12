@@ -67,7 +67,7 @@
     }
     aviso.hidden = true; enviar.disabled = true; enviar.textContent = 'Enviando…';
     var corpo = { p: {
-      setor: resp.setor, nome: $('nome').value.trim(), melhorou: +resp.melhorou, tarefa: +resp.tarefa,
+      setor: resp.setor, melhorou: +resp.melhorou, tarefa: +resp.tarefa,
       tempo: resp.tempo, futuro: +resp.futuro, comentario: $('comentario').value.trim()
     } };
     fetch(URL_RPC, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: CHAVE }, body: JSON.stringify(corpo) })
@@ -76,6 +76,7 @@
         return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j && j.message ? j.message : 'Não foi possível enviar.'); });
       })
       .then(function () {
+        try { localStorage.setItem('jaf.pesquisa.ok', 'true'); } catch (e) { /* modo privado */ }
         form.hidden = true; $('fim').hidden = false; window.scrollTo(0, 0);
       })
       .catch(function (err) {
