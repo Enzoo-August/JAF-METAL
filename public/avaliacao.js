@@ -6,6 +6,7 @@
   var URL_RPC = 'https://chsfffwivmhjrftvylbl.supabase.co/rest/v1/rpc/enviar_avaliacao';
   var CHAVE = 'sb_publishable_FRZXelaTsURBe6CMI6y1HQ_rB7dpQKp';
   var SETORES = [
+    ['direcao', 'Dono / Direção', 'acompanhar a empresa pelos relatórios, indicadores e números de cada setor'],
     ['pcp', 'PCP', 'emitir OF, acompanhar as entregas e montar o romaneio'],
     ['comercial', 'Comercial', 'lançar pedidos de clientes e comprar matéria-prima'],
     ['rh', 'RH', 'cadastrar pessoas, lançar o ponto e ver férias e banco de horas'],
@@ -14,7 +15,6 @@
     ['financeiro', 'Financeiro / Escritório', 'lançar contas e acompanhar o fluxo de caixa'],
     ['engenharia', 'Engenharia / Qualidade', 'cadastrar produtos e fazer os registros técnicos'],
     ['manutencao', 'Manutenção', 'abrir OS e acompanhar a preventiva das máquinas'],
-    ['direcao', 'Direção', 'acompanhar a empresa pelos relatórios e indicadores'],
     ['outro', 'Outro', 'fazer as tarefas do seu dia a dia']
   ];
   var resp = {};
