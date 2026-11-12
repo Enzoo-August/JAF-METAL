@@ -22,5 +22,5 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 
 // modo teste: os testes automáticos usam o sistema "por dentro" (no site publicado isto nem existe)
 if (import.meta.env.DEV || import.meta.env.MODE === 'teste') {
-  Object.assign(window, { API, App, S, C, U, Perm, Telas, UI: { aviso, confirmar, modal, fecharTodas, lerForm } })
+  Object.assign(window, { API, App, S, C, U, Perm, Telas, UI: { aviso, confirmar, modal, fecharTodas, lerForm }, XLSX: () => import('xlsx') })
 }

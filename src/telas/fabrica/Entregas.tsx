@@ -11,6 +11,7 @@ import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { ComTabelas } from './comum.tsx'
 import { baixarPelaNota, desfazerNota } from './Documentos.tsx'
 import { detalhe } from './Pedidos.tsx'
+import { Romaneio, segunda } from './Romaneio.tsx'
 
 const TABS = ['produtos', 'vendas', 'vendas_entregas', 'notas_saida', 'produto_saldos', 'ofs', 'produto_estrutura'] as const
 
@@ -18,8 +19,6 @@ export function TelaEntregas({ r }: { r: Rota }) {
   return <ComTabelas tabs={[...TABS]}>{() => <Relatorio r={r} />}</ComTabelas>
 }
 
-// segunda-feira da semana de uma data
-const segunda = (iso: string): string => { const d = U.d(iso)!; const dw = (d.getDay() + 6) % 7; return U.somaDias(iso, -dw) }
 const ddmm = (iso: string) => iso.slice(8, 10) + '/' + iso.slice(5, 7)
 
 function periodo(p: string, de: string, ate: string): [string, string] | null {
@@ -34,6 +33,16 @@ function periodo(p: string, de: string, ate: string): [string, string] | null {
 }
 
 function Relatorio({ r }: { r: Rota }) {
+  const [aba, setAba] = useLembrar('ent.aba', r.q.get('aba') === 'romaneio' ? 'romaneio' : 'relatorio')
+  const todasV = S.lista('vendas').filter(v => !v.cancelado && v.prazo)
+  return <>
+    <Cab titulo="Relatório de entregas" sub="Por data, semana, peça ou cliente — e o romaneio da carga pronto para imprimir" />
+    <Chips nome="ent-aba" atual={aba} aoEscolher={setAba} opcoes={[{ v: 'relatorio', t: 'Relatório' }, { v: 'romaneio', t: 'Romaneio' }]} />
+    {aba === 'romaneio' ? <Romaneio todas={todasV} /> : <RelatorioEntregas r={r} />}
+  </>
+}
+
+function RelatorioEntregas({ r }: { r: Rota }) {
   const [per, setPer] = useLembrar('ent.per', r.q.get('p') || 'semana')
   const [de, setDe] = useLembrar('ent.de', '')
   const [ate, setAte] = useLembrar('ent.ate', '')
@@ -41,9 +50,14 @@ function Relatorio({ r }: { r: Rota }) {
   const [sit, setSit] = useLembrar('ent.sit', 'aberto')
   const [grupo, setGrupo] = useLembrar('ent.grupo', 'dia')
   const [busca, setBusca] = useLembrar('ent.busca', '')
+  const [somar, setSomar] = useLembrar('ent.somar', true)
   const faixa = periodo(per, de, ate)
   const todas = S.lista('vendas').filter(v => !v.cancelado && v.prazo)
-  let l = todas.filter(v => !faixa || (v.prazo! >= faixa[0] && v.prazo! <= faixa[1]))
+  // atrasados somados: o que ficou em aberto antes do período entra junto (é o que vai na próxima carga)
+  const podeSomar = !!faixa && per !== 'atraso' && sit !== 'entregue'
+  const somando = podeSomar && somar
+  const antes = (v: Venda) => somando && v.prazo! < faixa![0] && C.saldoVenda(v) > 0
+  let l = todas.filter(v => !faixa || (v.prazo! >= faixa[0] && v.prazo! <= faixa[1]) || antes(v))
   if (cli) l = l.filter(v => (v.cliente_id || v.cliente_nome) === cli)
   if (sit === 'aberto' || per === 'atraso') l = l.filter(v => C.saldoVenda(v) > 0)
   else if (sit === 'entregue') l = l.filter(v => C.saldoVenda(v) <= 0)
@@ -51,6 +65,7 @@ function Relatorio({ r }: { r: Rota }) {
   l = U.ordenar(l, v => v.prazo! + (v.cliente_nome || '') + (v.codigo || ''))
   const clientes = U.ordenar([...new Map(todas.map(v => [v.cliente_id || v.cliente_nome || '', v.cliente_nome || '—'])).entries()], x => U.sem(x[1]))
   const chave = (v: Venda): [string, string] => {
+    if (antes(v) && (grupo === 'dia' || grupo === 'semana')) return ['0000', faixa![0] > U.hoje() ? 'Pendentes de antes — somados a este período' : 'Em atraso — somados a este período']
     if (grupo === 'semana') { const s = segunda(v.prazo!); return [s, `Semana de ${U.dataCurta(s)} a ${U.dataCurta(U.somaDias(s, 6))}`] }
     if (grupo === 'produto') return [v.codigo || v.codigo_cliente || v.descricao || '?', `${v.codigo || v.codigo_cliente || ''} — ${v.descricao || ''}`]
     if (grupo === 'cliente') return [U.sem(v.cliente_nome || ''), v.cliente_nome || '—']
@@ -61,9 +76,10 @@ function Relatorio({ r }: { r: Rota }) {
   const gs = U.ordenar([...grupos.entries()], x => x[0]).map(([k, g]) => ({ k, ...g }))
   const qtdT = U.soma(l, v => Number(v.qtd)), saldoT = U.soma(l, v => Math.max(0, C.saldoVenda(v))), entT = U.soma(l, v => Number(v.entregue) || 0)
   const atrasados = l.filter(v => C.situacaoVenda(v).cod === 'atraso').length
+  const somados = l.filter(antes), somadosQ = U.soma(somados, v => Math.max(0, C.saldoVenda(v)))
   const umCliente = !!cli || new Set(l.map(v => v.cliente_nome)).size <= 1
   const titulo = 'Relatório de entregas'
-  const sub = [faixa ? (per === 'atraso' ? 'Em atraso' : `${U.data(faixa[0])} a ${U.data(faixa[1])}`) : 'Todas as datas', cli ? clientes.find(c => c[0] === cli)?.[1] : 'todos os clientes',
+  const sub = [faixa ? (per === 'atraso' ? 'Em atraso' : `${U.data(faixa[0])} a ${U.data(faixa[1])}${somando ? ' + atrasados' : ''}`) : 'Todas as datas', cli ? clientes.find(c => c[0] === cli)?.[1] : 'todos os clientes',
     sit === 'aberto' ? 'em aberto' : sit === 'entregue' ? 'entregues' : 'abertos e entregues', busca.trim() ? `“${busca.trim()}”` : ''].filter(Boolean).join(' · ')
   const linha = (v: Venda) => [v.pedido || '', v.codigo || '', v.codigo_cliente || '', v.descricao || '', U.qtd(v.qtd), U.qtd(v.entregue || 0), U.qtd(Math.max(0, C.saldoVenda(v))), U.dataCurta(v.prazo), C.situacaoVenda(v).txt, ...(umCliente ? [] : [v.cliente_nome || ''])]
   const pdf = async () => {
@@ -81,16 +97,16 @@ function Relatorio({ r }: { r: Rota }) {
     X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([[titulo], [sub], [], ['Grupo', 'Itens', 'Qtde', 'Entregue', 'Saldo'],
       ...gs.map(g => [g.titulo, g.itens.length, U.soma(g.itens, v => Number(v.qtd)), U.soma(g.itens, v => Number(v.entregue) || 0), U.soma(g.itens, v => Math.max(0, C.saldoVenda(v)))]),
       ['Total', l.length, qtdT, entT, saldoT]]), nomeAba('Resumo'))
-    for (const g of gs) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([cab, ...g.itens.map(lin)]), nomeAba(grupo === 'dia' ? ddmm(g.k).replace('/', '-') : grupo === 'semana' ? 'Sem ' + ddmm(g.k).replace('/', '-') : g.titulo))
+    for (const g of gs) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([cab, ...g.itens.map(lin)]), nomeAba(g.k === '0000' ? 'Atrasados' : grupo === 'dia' ? ddmm(g.k).replace('/', '-') : grupo === 'semana' ? 'Sem ' + ddmm(g.k).replace('/', '-') : g.titulo))
     await entregar(new Blob([X.write(wb, { bookType: 'xlsx', type: 'array' })], { type: TIPO_XLSX }), `Entregas ${U.hoje()}.xlsx`)
   }
   const notas = U.ordenar(S.lista('notas_saida'), n => n.criado_em, true).slice(0, 30)
   const podeNota = Perm.pode('vendas_editar')
   return <>
-    <Cab titulo={titulo} sub="Por data, semana, peça ou cliente — com PDF e Excel (uma aba por dia de entrega)">
+    <div className="acoes ent-acoes mt">
       <Btn txt="PDF" icone="imprimir" cls="sec" data-ent="pdf" disabled={!l.length} onClick={pdf} />
       <Btn txt="Excel" icone="planilha" cls="sec" data-ent="excel" disabled={!l.length} onClick={planilha} />
-    </Cab>
+    </div>
     <Chips nome="per" atual={per} aoEscolher={setPer} opcoes={[{ v: 'semana', t: 'Esta semana' }, { v: 'prox', t: 'Próxima semana' }, { v: 'mes', t: 'Este mês' }, { v: '30', t: 'Próximos 30 dias' },
       { v: 'atraso', t: 'Em atraso', n: todas.filter(v => C.situacaoVenda(v).cod === 'atraso').length || null }, { v: 'livre', t: 'Escolher datas' }, { v: 'todas', t: 'Todas' }]} />
     {per === 'livre' && <div className="barra-filtros"><label className="sub" htmlFor="entDe">De</label><input id="entDe" type="date" value={de} onChange={(e) => setDe(e.target.value)} />
@@ -99,14 +115,16 @@ function Relatorio({ r }: { r: Rota }) {
       <select value={cli} onChange={(e) => setCli(e.target.value)} aria-label="Cliente" data-ent-cli="1"><option value="">Todos os clientes</option>{clientes.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
       <select value={sit} onChange={(e) => setSit(e.target.value)} aria-label="Situação" data-ent-sit="1"><option value="aberto">Em aberto</option><option value="entregue">Entregues</option><option value="todos">Abertos e entregues</option></select>
       <select value={grupo} onChange={(e) => setGrupo(e.target.value)} aria-label="Agrupar por" data-ent-grupo="1"><option value="dia">Por dia de entrega</option><option value="semana">Por semana</option><option value="produto">Por peça</option><option value="cliente">Por cliente</option></select></div>
+    {podeSomar && <label className="check"><input type="checkbox" checked={somar} onChange={(e) => setSomar(e.target.checked)} data-ent-somar="1" />
+      <span>Somar os atrasados {somados.length ? <b>({U.plural(somados.length, 'item', 'itens')}, {U.qtd(somadosQ)} pç)</b> : <small className="sub">(nenhum agora)</small>}</span></label>}
     <div className="grade g4 mt">
       <div className="kpi"><small>Itens</small><b>{l.length}</b><span>{U.plural(gs.length, grupo === 'dia' ? 'dia' : grupo === 'semana' ? 'semana' : grupo === 'produto' ? 'peça' : 'cliente')}</span></div>
       <div className="kpi"><small>Quantidade</small><b>{U.qtd(qtdT)}</b><span>peças pedidas</span></div>
       <div className="kpi"><small>Falta entregar</small><b>{U.qtd(saldoT)}</b><span>{U.qtd(entT)} já entregues</span></div>
-      <div className="kpi"><small>Em atraso</small><b style={{ color: atrasados ? 'var(--vermelho)' : undefined }}>{atrasados}</b><span>itens</span></div>
+      <div className="kpi"><small>Em atraso</small><b style={{ color: atrasados ? 'var(--vermelho)' : undefined }}>{atrasados}</b><span>{somando && somados.length ? `${U.qtd(somadosQ)} pç somadas` : 'itens'}</span></div>
     </div>
     <div id="lEnt">{gs.map(g => <section key={g.k} className="card mt" data-ent-grupo-k={g.k}>
-      <div className="card-cab"><h2>{g.titulo}</h2><span className="sub">{U.plural(g.itens.length, 'item', 'itens')} · {U.qtd(U.soma(g.itens, v => Math.max(0, C.saldoVenda(v))))} a entregar</span></div>
+      <div className="card-cab"><h2>{g.titulo}</h2><span className="sub">{U.plural(g.itens.length, 'item', 'itens')} · {U.qtd(U.soma(g.itens, v => Math.max(0, C.saldoVenda(v))))} a entregar{grupo !== 'dia' && grupo !== 'semana' && g.itens.some(antes) ? ` (${U.qtd(U.soma(g.itens.filter(antes), v => Math.max(0, C.saldoVenda(v))))} de atraso somado)` : ''}</span></div>
       <div className="rolagem-x"><table className="tabela-fab"><thead><tr><th>Pedido</th><th>Cód. JAF</th><th className="so-largo">Cód. cliente</th><th className="so-largo">Descrição</th><th className="n">Qtde</th><th className="n">Saldo</th>
         {grupo !== 'dia' && <th>Entrega</th>}{!umCliente && grupo !== 'cliente' && <th className="so-largo">Cliente</th>}<th>Situação</th></tr></thead>
         <tbody>{g.itens.map(v => <tr key={v.id} className="clicavel" onClick={() => void detalhe(v.id)} data-ent-venda={v.id}><td>{v.pedido || '—'}</td><td className="mono">{v.codigo || v.codigo_cliente || '—'}</td>

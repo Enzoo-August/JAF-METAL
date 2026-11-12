@@ -60,14 +60,21 @@ export async function lerGrade(arq: File): Promise<Grade> {
   if (arq.size > 15 * 1024 * 1024) throw new ErroRelease('Arquivo grande demais (o limite é 15 MB).')
   const buf = await arq.arrayBuffer()
   let linhas: string[][]
-  if (/\.(xlsx|xlsm|xls)$/i.test(arq.name)) {
+  if (/\.(xlsx|xlsm|xlsb|xls)$/i.test(arq.name)) {
     const X = await import('xlsx')
     const wb = X.read(buf, { cellDates: true })
-    // a aba com mais linhas
-    let melhor: unknown[][] = []
-    for (const n of wb.SheetNames) {
-      const l = X.utils.sheet_to_json<unknown[]>(wb.Sheets[n], { header: 1, raw: true, defval: '' })
-      if (l.length > melhor.length) melhor = l
+    // a aba com mais linhas preenchidas (linha vazia formatada não conta); abas com nome padrão ("Planilha1", "Sheet2")
+    // costumam ser rascunho: só entram se não houver outra. Empate fica com a primeira aba (a da semana atual).
+    let melhor: unknown[][] = [], melhorN = -1
+    const padrao = (n: string) => /^(planilha|plan|sheet|folha)\s*\d*$/i.test(n.trim())
+    for (const rodada of [false, true]) {
+      for (const n of wb.SheetNames) {
+        if (padrao(n) !== rodada) continue
+        const l = X.utils.sheet_to_json<unknown[]>(wb.Sheets[n], { header: 1, raw: true, defval: '', blankrows: false })
+        const cheias = l.filter(x => (x as unknown[]).filter(c => c !== '' && c !== null).length >= 3)
+        if (cheias.length > melhorN) { melhor = l; melhorN = cheias.length }
+      }
+      if (melhorN >= 5) break
     }
     linhas = melhor.map(l => (l as unknown[]).map(c => {
       if (c instanceof Date) return `${String(c.getDate()).padStart(2, '0')}/${String(c.getMonth() + 1).padStart(2, '0')}/${c.getFullYear()}`

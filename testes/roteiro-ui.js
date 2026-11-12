@@ -1270,6 +1270,67 @@ window.roteiro = async function roteiro(filtro) {
     conf(!!S.get('notas_saida', ns.id)?.desfeito_em && Number(S.get('vendas', ped.id).entregue) === entAntes && Number(S.get('produto_saldos', pr.id)?.saldo) === estAntes, 'desfazer volta o pedido e o estoque');
   });
 
+  await passo('v3.2 atrasados somados na semana e romaneio da carga', async () => {
+    await como('pcp');
+    await S.garantir(['produtos', 'vendas', 'vendas_entregas', 'notas_saida', 'produto_saldos', 'ofs', 'clientes']);
+    const hoje = U.hoje(), d = U.d(hoje), seg = U.somaDias(hoje, -((d.getDay() + 6) % 7)), dom = U.somaDias(seg, 6);
+    const abertas = S.lista('vendas').filter(v => !v.cancelado && v.prazo && C.saldoVenda(v) > 0);
+    const antes = abertas.filter(v => v.prazo < seg);
+    await ir('#/entregas'); await clicar(await espera(() => document.querySelector('[data-ent-aba=relatorio]')));
+    await clicar(await espera(() => document.querySelector('[data-per=semana]')));
+    digitar(document.querySelector('[data-ent-sit]'), 'aberto'); digitar(document.querySelector('[data-ent-grupo]'), 'dia'); digitar(document.querySelector('[data-ent-cli]'), '');
+    const ck = await espera(() => document.querySelector('[data-ent-somar]'));
+    if (!ck.checked) { ck.click(); await dorme(150); }
+    const nAtr = () => document.querySelectorAll('[data-ent-grupo-k="0000"] [data-ent-venda]').length;
+    conf(nAtr() === antes.length, 'esta semana: os atrasados entram somados num grupo próprio', [nAtr(), antes.length]);
+    conf(!antes.length || /Em atraso — somados/.test(document.querySelector('[data-ent-grupo-k="0000"]')?.textContent || ''), 'grupo dos atrasados com nome claro');
+    ck.click(); await dorme(150);
+    conf(nAtr() === 0, 'desmarcar “Somar os atrasados” tira os de antes');
+    ck.click(); await dorme(100);
+    // romaneio
+    await clicar(document.querySelector('[data-ent-aba=romaneio]'));
+    await espera(() => document.querySelector('#romaneio')); await clicar(await espera(() => document.querySelector('[data-rom-semana]')));
+    const sel = await espera(() => document.querySelector('[data-rom-cli]'));
+    const cli = sel.value, doCli = abertas.filter(v => (v.cliente_id || v.cliente_nome || '') === cli && v.prazo <= dom);
+    const esperado = U.soma(doCli, v => Math.max(0, C.saldoVenda(v)));
+    const pecasTela = () => Number((document.querySelector('[data-rom-pecas]')?.textContent || '0').replace(/\./g, '').replace(',', '.'));
+    conf(doCli.length > 0 && pecasTela() === esperado, 'romaneio: soma os atrasados e as entregas até domingo do cliente', [pecasTela(), esperado, doCli.length]);
+    const nLinhas = new Set(doCli.map(v => (v.codigo || v.codigo_cliente || v.descricao) + '|' + (v.pedido || ''))).size;
+    conf(document.querySelectorAll('[data-rom-linha]').length === nLinhas, 'uma linha por peça e pedido', [document.querySelectorAll('[data-rom-linha]').length, nLinhas]);
+    const l1 = document.querySelector('[data-rom-linha]'), k1 = l1.dataset.romLinha;
+    const q1 = l1.querySelector('[data-rom-qtd]'), saldo1 = Number(q1.value);
+    digitar(q1, '1'); await dorme(120);
+    conf(pecasTela() === U.r4(esperado - saldo1 + 1), 'quantidade digitada muda o total', [pecasTela(), esperado, saldo1]);
+    l1.querySelector('[data-rom-ck]').click(); await dorme(120);
+    conf(pecasTela() === U.r4(esperado - saldo1) && l1.classList.contains('rom-fora'), 'desmarcar a linha tira do romaneio');
+    l1.querySelector('[data-rom-ck]').click(); await dorme(80);
+    digitar(document.querySelector('[data-rom-peso]'), '1250,5'); digitar(document.querySelector('[data-rom-resp]'), 'Paula (teste)'); await dorme(120);
+    conf(/1\.250,5 kg/.test(document.querySelector('#romaneio').textContent), 'peso total da carga aparece no resumo');
+    // o que foi digitado fica guardado (sai da tela e volta)
+    await ir('#/inicio'); await ir('#/entregas'); await espera(() => document.querySelector('#romaneio [data-rom-peso]'));
+    conf(document.querySelector('[data-rom-peso]').value === '1250,5' && document.querySelector(`[data-rom-qtd="${k1}"]`)?.value === '1', 'o que foi digitado continua lá');
+    await clicar(document.querySelector('[data-rom=pdf]'));
+    const pv = await espera(() => document.querySelector('.previa-pdf[data-previa=ok], .previa-pdf[data-previa=erro]'), 10000);
+    conf(!!pv, 'romaneio em PDF abre a prévia', pv?.dataset.previa);
+    UI.fecharTodas(); await dorme(150);
+    let blob = null; const oPick = window.showSaveFilePicker, oUrl = URL.createObjectURL;
+    window.showSaveFilePicker = async () => ({ createWritable: async () => ({ write: async (b) => { blob = b; }, close: async () => {} }) });
+    URL.createObjectURL = (b) => { blob = b; return 'blob:teste'; };
+    Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true });
+    try { await clicar(document.querySelector('[data-rom=excel]')); await espera(() => blob, 8000); } finally { window.showSaveFilePicker = oPick; URL.createObjectURL = oUrl; delete navigator.canShare; }
+    conf(blob && blob.size > 1000, 'romaneio em Excel gerado', blob?.size);
+    if (blob) {
+      const X = await window.XLSX(); const wb = X.read(new Uint8Array(await blob.arrayBuffer()), { type: 'array' }); const ws = wb.Sheets[wb.SheetNames[0]];
+      const a = X.utils.sheet_to_json(ws, { header: 1 });
+      conf(a[0][0] === 'Romaneio para Faturamento' && a[2].join('|') === 'Código JAF|Cód. Cliente|Pedido|RI|OF|Quantidade|Embalagem', 'Excel no modelo do formulário do PCP', a.slice(0, 3));
+      conf(a.some(r => r[0] === 'Peso total da carga (kg)' && r[5] === 1250.5), 'Excel com o peso total da carga');
+      conf(wb.SheetNames.includes('Detalhe'), 'Excel com a aba de detalhe (datas e situação)');
+    }
+    await clicar(document.querySelector('[data-rom=limpar]')); await dorme(120);
+    conf(document.querySelector('[data-rom-peso]').value === '' && pecasTela() === esperado, 'limpar volta para o sugerido');
+    await clicar(document.querySelector('[data-ent-aba=relatorio]'));
+  });
+
   await passo('v3.1 exportação para a contabilidade e eventos', async () => {
     await como('helena');
     const m = U.somaMeses(U.hoje(), -1).slice(0, 7);

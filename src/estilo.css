@@ -1309,3 +1309,29 @@ details.mais-ind > summary::-webkit-details-marker { display: none; }
   .tabela-ind th, .tabela-ind td { padding: 9px 8px; }
   .tabela-ind td small.col-sub { white-space: nowrap; }
 }
+
+/* v3.2 — romaneio da carga */
+.ent-acoes { justify-content: flex-end; margin-bottom: 4px; }
+.tabela-rom input.rom-in { width: 92px; min-height: 36px; padding: 6px 8px; border: 1px solid var(--borda-forte); border-radius: var(--raio-p); background: var(--cartao); color: var(--texto); font: inherit; font-size: 15px; }
+.tabela-rom input.rom-qtd { width: 96px; text-align: right; font-weight: 650; }
+.tabela-rom td { vertical-align: top; }
+.tabela-rom input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--marca); margin-top: 8px; }
+.tabela-rom tr.rom-fora td { opacity: .45; }
+.tabela-rom tr.rom-fora td:first-child { opacity: 1; }
+.tabela-rom .col-sub { display: block; color: var(--texto-3); font-size: .78rem; max-width: 260px; white-space: normal; }
+.tabela-rom .rom-atraso { display: block; margin-top: 4px; }
+.rom-ate, .rom-atalhos { display: inline-flex; align-items: center; gap: 8px; }
+.tabela-rom td.rom-ped { white-space: nowrap; }
+.tabela-rom tr.rom-extra { display: none; }
+.rom-extra-campos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.rom-extra-campos label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rom-extra-campos small { font-size: .74rem; color: var(--texto-3); font-weight: 650; }
+.rom-extra-campos input { width: 100%; min-width: 0; min-height: 36px; padding: 5px 7px; border: 1px solid var(--borda-forte); border-radius: var(--raio-p); background: var(--cartao); color: var(--texto); font: inherit; font-size: 15px; }
+@media (max-width: 640px) {
+  .rom-filtros select { flex: 1 1 100%; max-width: none; }
+  .rom-ate input { flex: 1; }
+  .tabela-rom tr.rom-extra { display: table-row; }
+  .tabela-rom tr:has(+ tr.rom-extra) td { border-bottom: 0; padding-bottom: 2px; }
+  .tabela-rom input.rom-qtd { width: 76px; }
+  .tabela-rom th, .tabela-rom td { padding: 8px 6px; }
+}

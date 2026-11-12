@@ -105,7 +105,13 @@ export const ARTIGOS: Artigo[] = [
     'A mesma nota não baixa duas vezes. Errou? Em *Relatório de entregas*, no fim da tela, *Desfazer* volta tudo.'] },
   { id: 'entregasRel', area: 'pcp', titulo: 'Relatório de entregas por data ou por produto', palavras: 'entregas relatório data produto semana mês pdf excel aba programação cliente atraso', perm: 'vendas', rota: '#/entregas', corpo: [
     'Em *Relatório de entregas* escolha o período (esta semana, próxima, mês, 30 dias, atrasadas ou datas livres), o cliente e como agrupar: *por dia*, *semana*, *produto* ou *cliente*.',
+    'Com *Somar os atrasados* marcado (já vem marcado), o que ficou em aberto de antes entra junto no período, num grupo próprio no topo: é o que vai na próxima carga.',
     '*PDF* sai deitado, um bloco por grupo. *Excel* sai com uma aba de resumo e *uma aba por data* (como o arquivo do PCP).'] },
+  { id: 'romaneio', area: 'pcp', titulo: 'Romaneio para faturamento (com o peso da carga)', palavras: 'romaneio carga faturamento peso embalagem ri of expedição entrega semana atraso', perm: 'vendas', rota: '#/entregas?aba=romaneio', corpo: [
+    'Em *Relatório de entregas*, toque na aba *Romaneio*. Escolha o cliente e até que data: o sistema junta *os atrasados + as entregas até a data*, uma linha por peça e pedido.',
+    'A quantidade já vem com o saldo; mude se a carga for menor e desmarque o que não vai. A OF e o R.I. vêm sugeridos (a OF do pedido ou a última OF encerrada da peça); a embalagem você digita.',
+    'Embaixo preencha o *peso total da carga*, o responsável e a data. *Romaneio em PDF* sai no modelo do formulário; *Excel* sai no mesmo desenho da planilha, com uma aba de detalhe.',
+    'O que você digitou fica guardado neste aparelho até tocar em *Limpar o que digitei*.'] },
   { id: 'pronto', area: 'pcp', titulo: 'Estoque de peça pronta e estoque mínimo', palavras: 'estoque peça pronta componente conjunto mínimo contagem inventário saldo negativo', perm: 'of_ver', rota: '#/pronto', corpo: [
     'Em *PCP → Peça pronta* o sistema acompanha sozinho: a OF apontada *soma*, o conjunto produzido *usa* os componentes da estrutura e a entrega ao cliente *tira*.',
     { passos: ['Comece pela contagem: toque em *Contar uma peça*, escolha o código e digite a quantidade da prateleira.', 'No mesmo lugar, informe o *estoque mínimo* do código.', 'Toque numa peça para ver cada movimento (OF, conjunto, entrega, contagem).'] },

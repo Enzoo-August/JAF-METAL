@@ -137,7 +137,7 @@ function Arquivo({ est, cliIni }: { est: Est; cliIni: Cliente | null }) {
   return <>
     <p>O cliente manda a programação (release) num arquivo e manda de novo quando muda. Escolha o arquivo: o sistema <b>compara com os pedidos em aberto</b> dele e mostra o que mudou <b>antes de gravar</b>.</p>
     <label className={'btn grande arquivo-nota ' + (g ? 'sec' : 'pri') + (lendo ? ' ocupado' : '')} data-rel="arquivo">
-      <input type="file" accept=".txt,.csv,.xlsx,.xlsm,.xls,text/plain,text/csv" hidden onChange={(e) => { void ler(e.currentTarget.files?.[0]); e.currentTarget.value = '' }} />
+      <input type="file" accept=".txt,.csv,.xlsx,.xlsm,.xlsb,.xls,text/plain,text/csv" hidden onChange={(e) => { void ler(e.currentTarget.files?.[0]); e.currentTarget.value = '' }} />
       <Ic n="planilha" /><span>{lendo ? 'Lendo o arquivo…' : g ? 'Trocar o arquivo' : 'Escolher o arquivo do cliente'}</span>
     </label>
     {!g && <ul className="dicas mt">
