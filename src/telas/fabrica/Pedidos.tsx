@@ -13,14 +13,15 @@ import { aviso } from '../../ui/avisos.ts'
 import { BarraProg, BuscaLista, Btn, Cab, Campo, Chips, Cols, Dl, Paginado, Tag, Vazio } from '../../ui/base.tsx'
 import { ComboCliente } from '../../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
-import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
+import { confirmar, lerForm, modal, useJanela } from '../../ui/janelas.tsx'
 import { ComboProduto, ComTabelas } from './comum.tsx'
 import { formOF } from './OFs.tsx'
 import { cancelarNecessidade, formNecessidade, formPedidoMP, pedidosPorFornecedor } from './Compra.tsx'
 import { Ic } from '../../ui/icones.tsx'
 import { atualizarProgramacao, diasDesde, quando, resumoRelease, ultimasReleases, verRelease } from './Release.tsx'
+import { baixarPelaNota, lerPedidoPdf } from './Documentos.tsx'
 
-const TABS = ['produtos', 'produto_estrutura', 'vendas', 'vendas_entregas', 'ofs', 'mp_lotes', 'vendas_releases'] as const
+const TABS = ['produtos', 'produto_estrutura', 'vendas', 'vendas_entregas', 'ofs', 'mp_lotes', 'vendas_releases', 'produto_saldos', 'notas_saida'] as const
 
 function LinhaVenda({ v, mudou }: { v: Venda; mudou?: boolean }) {
   const st = C.situacaoVenda(v), s = C.saldoVenda(v)
@@ -68,6 +69,7 @@ function Lista() {
     <Cab titulo="Pedidos de clientes" sub="Controle de pedidos: o que cada cliente pediu, prazo e entregas">
       {Perm.pode('vendas_editar') && <Btn txt="Novo pedido" icone="mais" cls="pri" data-ven="novo" onClick={() => void formVenda()} />}
       {Perm.pode('vendas_editar') && <Btn txt="Atualizar programação" icone="atualizar" cls="sec" data-ven="programacao" title="Ler o arquivo de programação (release) que o cliente mandou" onClick={() => void atualizarProgramacao({ cliente_id: S.get('clientes', cli)?.id })} />}
+      {Perm.pode('vendas_editar') && <Btn txt="Pedido PDF / NF-e" icone="nota" cls="sec" data-ven="arquivo" title="Ler o pedido do cliente em PDF ou baixar a entrega pela nota fiscal emitida (XML)" onClick={() => void escolherArquivo()} />}
       {Perm.pode('necessidade') && <a className="btn sec" href="#/necessidade"><span>Necessidade</span></a>}
       <Btn txt="Excel" icone="planilha" cls="fantasma" onClick={() => exportar(l)} />
     </Cab>
@@ -88,6 +90,24 @@ function Lista() {
       ...(nMudou ? [{ v: 'mudou', t: 'Mudou na programação', n: nMudou }] : []), { v: 'aguardando', t: 'Aguardando' }, { v: 'ok', t: 'Entregues' }, { v: 'cancelado', t: 'Cancelados' }, { v: 'todos', t: 'Todos' }]} />
     <div className="mt" id="lVen"><Paginado itens={l} render={v => <LinhaVenda key={v.id} v={v} mudou={mexeu(v)} />} vazio={<Vazio icone="cliente" titulo="Nenhum pedido aqui" />} /></div>
   </>
+}
+
+// o que o cliente mandou: pedido em PDF, a nota que a JAF emitiu (XML) ou a programação
+const OPCOES_DOC = [
+  { v: 'pdf', ic: 'imprimir', t: 'Pedido do cliente (PDF)', d: 'A ordem de compra em PDF: lança os itens no Controle de Pedidos.' },
+  { v: 'xml', ic: 'nota', t: 'Nota fiscal emitida (XML)', d: 'A NF-e que a JAF emitiu: baixa a entrega nos pedidos em aberto e tira do estoque.' },
+  { v: 'rel', ic: 'atualizar', t: 'Programação do cliente (release)', d: 'O arquivo com tudo o que o cliente ainda quer receber.' },
+] as const
+function EscolhaDoc() {
+  const j = useJanela()
+  return <div className="escolhas-doc">{OPCOES_DOC.map(o => <button key={o.v} type="button" className="escolha-doc" data-escolha={o.v} onClick={() => j.fechar(o.v)}>
+    <Ic n={o.ic} /><span><b>{o.t}</b><small>{o.d}</small></span></button>)}</div>
+}
+async function escolherArquivo(): Promise<void> {
+  const r = await modal<string>({ titulo: 'Qual arquivo o cliente mandou?', corpo: <EscolhaDoc /> })
+  if (r === 'pdf') void lerPedidoPdf()
+  else if (r === 'xml') void baixarPelaNota()
+  else if (r === 'rel') void atualizarProgramacao({})
 }
 
 function exportar(l: Venda[]) {
@@ -116,10 +136,10 @@ export async function detalhe(id: string): Promise<unknown> {
       <div className="mt"><Dl pares={[['Pedido do cliente', v.pedido || ''], ['Código do cliente', v.codigo_cliente || ''], ['Preço unitário', v.valor ? U.moeda(v.valor) : ''],
         rel ? ['Programação do cliente', <>{v.release_de === null || v.release_de === undefined ? 'Entrou' : `O saldo era ${U.qtd(v.release_de)} e mudou`} na atualização de {U.dataHora(rel.criado_em)}{rel.criado_nome ? ' (' + rel.criado_nome + ')' : ''}</>] : null,
         ['Observações', v.obs || '']]} /></div>
-      {ents.length > 0 && <><h3 className="mt">Entregas</h3><div className="lista">{ents.map(e => <div key={e.id} className="linha"><div className="meio"><b>{U.qtd(e.qtd)} pç em {U.data(e.data)}</b><small>{e.nf ? 'NF ' + e.nf : ''}{e.obs ? ' · ' + e.obs : ''}</small></div>
+      {ents.length > 0 && <><h3 className="mt">Entregas</h3><div className="lista">{ents.map(e => <div key={e.id} className="linha"><div className="meio"><b>{U.qtd(e.qtd)} pç em {U.data(e.data)}</b><small>{e.nf ? 'NF ' + e.nf : ''}{e.obs ? ' · ' + e.obs : ''}{e.nota_saida_id ? ' · baixada pelo XML' : ''}</small></div>
         {ed && <div className="lado"><button type="button" className="icone-btn mini" aria-label="Desfazer entrega" onClick={async () => {
           if (!await confirmar('Desfazer esta entrega?', { ok: 'Desfazer', perigo: true })) return
-          await API.rpc('excluir_entrega', { p_id: e.id }); await App.gravou(['vendas', 'vendas_entregas'], { inteira: ['vendas_entregas'] }); aviso('Entrega desfeita.')
+          await API.rpc('excluir_entrega', { p_id: e.id }); await App.gravou(['vendas', 'vendas_entregas', 'produto_saldos'], { inteira: ['vendas_entregas'] }); aviso('Entrega desfeita.')
         }}>✕</button></div>}</div>)}</div></>}
       {ofs.length > 0 && <p className="sub mt">OFs deste pedido: {ofs.map(o => <a key={o.id} href={'#/of/' + o.id} style={{ marginRight: 8 }}>{o.numero}</a>)}</p>}
     </>,
@@ -178,7 +198,7 @@ export async function entregar(v: Venda): Promise<unknown> {
       <Campo nome="obs" rotulo="Observação" /></>,
     botoes: [{ txt: 'Registrar', acao: async (f) => {
       if (!f.dataset.envio) f.dataset.envio = U.uuid()
-      await API.rpc('entregar_venda', { p: { ...lerForm(f), venda_id: v.id } }); await App.gravou(['vendas', 'vendas_entregas'], { inteira: ['vendas_entregas'] }); aviso('Entrega registrada.'); return true
+      await API.rpc('entregar_venda', { p: { ...lerForm(f), venda_id: v.id } }); await App.gravou(['vendas', 'vendas_entregas', 'produto_saldos'], { inteira: ['vendas_entregas'] }); aviso('Entrega registrada.'); return true
     } }],
   })
 }
@@ -188,11 +208,33 @@ function Necessidade({ r }: { r: Rota }) {
   const [ate, setAte] = useLembrar('nec.ate', '')
   const [aba, setAba] = useState(() => r.q.get('aba') || (r.nome === 'comprar' || API.sessao?.perfil === 'comercial' ? 'mp' : 'pecas'))
   const [sel, setSel] = useState<Set<string>>(new Set())
+  const [selOF, setSelOF] = useState<Set<string>>(new Set())
+  const [soOF, setSoOF] = useState(() => r.q.get('f') === 'of')
   const comprar = Perm.pode('compras_mp'), verPed = Perm.pode('compras_ver'), lancar = Perm.pode('necessidade_criar')
   const vendas = S.lista('vendas').filter(v => !v.cancelado && C.saldoVenda(v) > 0 && (!ate || (v.prazo || '') <= ate))
   const n = C.necessidade(vendas)
   const est = C.estoqueMP()
-  const pecas = U.ordenar([...n.pecas].map(([id, q]) => { const p = S.get('produtos', id)!; const em = C.emOFAberta(id); return { p, q, em, falta: Math.max(0, U.r4(q - em)) } }).filter(x => x.p), x => -x.falta)
+  // peças e componentes: necessário − estoque de peça pronta − em OF aberta (e o estoque mínimo de cada código)
+  const todasPecas = C.precisaOF(ate)
+  const pecas = soOF ? todasPecas.filter(x => x.falta > 0) : todasPecas
+  const emiteOF = Perm.pode('of_emitir')
+  const marcarOF = (id: string, on: boolean) => setSelOF(x => { const y = new Set(x); if (on) y.add(id); else y.delete(id); return y })
+  const prazoDe = (id: string) => vendas.filter(v => (v.produto_id || C.produtoPorCodigo(v.codigo)?.id) === id).map(v => v.prazo || '').filter(Boolean).sort()[0] || null
+  const emitirMarcadas = async () => {
+    const l = todasPecas.filter(x => selOF.has(x.p.id) && x.falta > 0)
+    if (!l.length) { aviso('Marque pelo menos uma peça.', 'erro'); return }
+    if (!await confirmar(`Emitir ${U.plural(l.length, 'OF')}?`, { detalhe: l.map(x => `${x.p.codigo}: ${U.qtd(Math.ceil(x.falta))}`).join(' · '), ok: 'Emitir' })) return
+    const nums: number[] = []
+    try {
+      for (const x of l) {
+        const r = await API.rpc<{ numero: number }>('emitir_of', { p: { id: U.uuid(), produto_id: x.p.id, qtd: Math.ceil(x.falta), prazo: prazoDe(x.p.id) } })
+        nums.push(r.numero)
+      }
+    } finally {
+      if (nums.length) { await App.gravou(['ofs']); aviso(`${U.plural(nums.length, 'OF emitida', 'OFs emitidas')}: ${nums.join(', ')}. Imprima em Ordens de fabricação.`) }
+      setSelOF(new Set())
+    }
+  }
   // matéria-prima: o que falta comprar = necessário − estoque − o que já está em pedido de compra
   const mps = U.ordenar([...n.mp].map(([id, q]) => { const p = S.get('produtos', id)!; const e = est.get(id) || 0; const ped = verPed ? C.pendenteMP(id) : 0
     return { p, q, e, ped, falta: Math.max(0, U.r4(q - e - ped)) } }).filter(x => x.p), x => -x.falta)
@@ -217,21 +259,30 @@ function Necessidade({ r }: { r: Rota }) {
       {lancar && (!comprar || r.nome !== 'comprar') && <Btn txt="Pedir compra" icone="mais" cls={comprar ? 'sec' : 'pri'} data-n="lancar" onClick={() => formNecessidade()} />}
       {comprar && r.nome === 'comprar' && <Btn txt="Novo pedido de material" icone="mais" cls="sec" data-n="novoMP" onClick={() => void formPedidoMP({})} />}
       <Btn txt="Excel" icone="planilha" cls="fantasma" onClick={() => excel('Necessidade.xlsx', [
-        ['Peças', pecas.map(x => ({ Código: x.p.codigo, Descrição: x.p.descricao, Necessário: x.q, 'Em OF aberta': x.em, 'Falta emitir OF': x.falta }))],
+        ['Peças', pecas.map(x => ({ Código: x.p.codigo, Descrição: x.p.descricao, Necessário: x.q, 'Estoque pronto': x.est, 'Em OF aberta': x.em, 'Estoque mínimo': x.min, 'Falta emitir OF': x.falta }))],
         ['Matéria-prima', mps.map(x => ({ Material: x.p.codigo, Descrição: x.p.descricao, Necessário: x.q, 'Saldo em estoque': x.e, ...(verPed ? { 'Em pedido de compra': x.ped } : {}), 'Falta comprar': x.falta }))],
         ['Pedidos do PCP', manuais.map(x => ({ Material: S.get('produtos', x.produto_id)?.codigo || '', Quantidade: x.qtd, Unidade: un(x.produto_id), 'Precisa até': x.prazo ? U.data(x.prazo) : '', 'Pedido por': x.criado_nome || '', Motivo: x.motivo || '' }))]])} />
     </Cab>
     <div className="barra-filtros"><label className="sub" htmlFor="necAte">Pedidos com prazo até</label>
       <input id="necAte" type="date" value={ate} onChange={(e) => setAte(e.target.value)} />{ate && <button type="button" className="btn fantasma" onClick={() => setAte('')}>Todos</button>}</div>
-    <Chips atual={aba} aoEscolher={(v) => { setAba(v); setSel(new Set()) }} opcoes={[{ v: 'pecas', t: 'Peças e conjuntos', n: pecas.filter(x => x.falta > 0).length }, { v: 'mp', t: 'Matéria-prima', n: nMp }]} />
+    <Chips atual={aba} aoEscolher={(v) => { setAba(v); setSel(new Set()); setSelOF(new Set()) }} opcoes={[{ v: 'pecas', t: 'Peças e conjuntos', n: todasPecas.filter(x => x.falta > 0).length }, { v: 'mp', t: 'Matéria-prima', n: nMp }]} />
     {aba === 'pecas'
       ? <>
-        <p className="sub">{U.plural(vendas.length, 'item', 'itens')} de pedido em aberto. A conta usa a estrutura de cada conjunto e o consumo de material de cada peça (cadastro em Produtos).</p>
-        <section className="card mt"><div className="rolagem-x"><table className="tabela-fab" id="tNecP"><thead><tr><th>Código</th><th className="so-largo">Descrição</th><th className="n">Necessário</th><th className="n">Em OF</th><th className="n">Falta</th><th /></tr></thead>
-        <tbody>{pecas.map(x => <tr key={x.p.id}><td><a href={'#/produto/' + x.p.id}>{x.p.codigo}</a></td><td className="so-largo">{x.p.descricao}</td><td className="n">{U.qtd(x.q)}</td><td className="n">{U.qtd(x.em)}</td>
-          <td className="n"><b style={{ color: x.falta ? 'var(--vermelho)' : undefined }}>{U.qtd(x.falta)}</b></td>
-          <td>{x.falta > 0 && Perm.pode('of_emitir') && (x.p.mp_codigo || C.componentes(x.p.id).length > 0) ? <button type="button" className="btn fantasma mini" onClick={() => void formOF({ produto_id: x.p.id, qtd: x.falta })}>Emitir OF</button> : null}</td></tr>)}</tbody></table></div>
-        {!pecas.length && <p className="sub">Nada a fabricar para os pedidos em aberto.</p>}</section></>
+        <p className="sub">{U.plural(vendas.length, 'item', 'itens')} de pedido em aberto. A conta usa a estrutura de cada conjunto e desconta o <a href="#/pronto">estoque de peça pronta</a> e o que já está em OF aberta.</p>
+        <label className="check mt"><input type="checkbox" checked={soOF} onChange={(e) => setSoOF(e.target.checked)} data-n="soOF" /> <span>Só o que precisa de OF</span></label>
+        <section className="card mt"><div className="rolagem-x"><table className="tabela-fab" id="tNecP"><thead><tr>{emiteOF && <th />}<th>Código</th><th className="so-largo">Descrição</th><th className="n">Necessário</th>
+          <th className="n">Estoque</th><th className="n">Em OF</th><th className="n so-largo">Mín.</th><th className="n">Falta</th><th /></tr></thead>
+        <tbody>{pecas.map(x => <tr key={x.p.id} className={selOF.has(x.p.id) ? 'marcada' : ''} data-nec-peca={x.p.codigo}>
+          {emiteOF && <td>{x.falta > 0 && (x.p.mp_codigo || C.componentes(x.p.id).length > 0) ? <input type="checkbox" checked={selOF.has(x.p.id)} onChange={(e) => marcarOF(x.p.id, e.target.checked)} aria-label={'Emitir OF de ' + x.p.codigo} data-sel-of={x.p.id} /> : null}</td>}
+          <td><a href={'#/produto/' + x.p.id}>{x.p.codigo}</a></td><td className="so-largo">{x.p.descricao}</td><td className="n">{U.qtd(x.q)}</td>
+          <td className="n" style={{ color: x.est < 0 ? 'var(--vermelho)' : undefined }}>{U.qtd(x.est)}</td><td className="n">{U.qtd(x.em)}</td><td className="n so-largo">{x.min ? U.qtd(x.min) : '—'}</td>
+          <td className="n"><b style={{ color: x.falta ? 'var(--vermelho)' : undefined }}>{U.qtd(x.falta)}</b>{x.motivo === 'minimo' && <small className="col-sub">mínimo</small>}</td>
+          <td>{x.falta > 0 && emiteOF && (x.p.mp_codigo || C.componentes(x.p.id).length > 0) ? <button type="button" className="btn fantasma mini" onClick={() => void formOF({ produto_id: x.p.id, qtd: Math.ceil(x.falta), prazo: prazoDe(x.p.id) })}>Emitir OF</button> : null}</td></tr>)}</tbody></table></div>
+        {!pecas.length && <p className="sub">{soOF ? 'Nenhuma peça precisa de OF agora: estoque e OFs abertas cobrem os pedidos.' : 'Nada a fabricar para os pedidos em aberto.'}</p>}</section>
+        {emiteOF && todasPecas.some(x => x.falta > 0) && <div className="barra-acao" id="necBarraOF">
+          <span>{selOF.size ? U.plural(selOF.size, 'peça marcada', 'peças marcadas') : 'Marque as peças para emitir as OFs de uma vez'}</span>
+          <Btn txt="Emitir OFs marcadas" icone="producao" cls="pri" data-n="emitirOFs" disabled={!selOF.size} onClick={emitirMarcadas} />
+        </div>}</>
       : <>
         <section className="card mt" id="necPcp"><div className="card-cab"><h2>Pedidos do PCP</h2>{manuais.length > 0 && <span className="sub">{U.plural(manuais.length, 'pedido')}</span>}</div>
           {manuais.length ? <div className="lista nec-lista" id="tNecPcp">{manuais.map(x => { const p = S.get('produtos', x.produto_id)

@@ -940,6 +940,121 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   conf(r3.n_alterados === 1 && d5[vC].q === 600 && d5[vC].e === 180 && r3.iguais === 2, 'quantidade como total do pedido: desconta o que já foi entregue; acha a peça também pelo código JAF', { r3: { a: r3.n_alterados, i: r3.iguais }, vC: d5[vC] })
 }
 
+// ---------------------------------------------------------------- v3.1: estoque de peça pronta, nota de saída, pedido em PDF, folha e benefícios — dados inventados
+{
+  const pcp = (await q(`select user_id from public.perfis where login = 'paula.pcp'`))[0].user_id
+  const rh = (await q(`select user_id from public.perfis where login = 'rita.rh'`))[0].user_id
+  const ger = (await q(`select user_id from public.perfis where login = 'gil.ger'`))[0].user_id
+  const beto = (await q(`select user_id from public.perfis where login = 'beto'`))[0].user_id
+  const cli = await rpc(dono, 'salvar_cliente', { nome: 'Ônibus Teste', razao: 'Ônibus Teste Ltda', cnpj: '11.444.777/0001-61' })
+  const np = (p) => rpc(dono, 'salvar_produto', p)
+  const haste = await np({ codigo: 'OT 10.0002', descricao: 'Haste teste', cliente_id: cli, mp_codigo: 'TB-INOX-T', mp_qtd: 0.3, mp_unidade: 'Kg', operacao: 'Cortar' })
+  const pega = await np({ codigo: 'OT 10.0001', descricao: 'Pega-mão teste', cliente_id: cli, codigo_cliente: '9900111BR', mp_codigo: 'Conforme Componentes', operacao: 'Montar',
+    estrutura: [{ codigo: 'OT 10.0002', qtd: 2 }] })
+  const saldo = async (id) => Number((await q(`select saldo from public.produto_saldos where produto_id = $1`, [id]))[0]?.saldo ?? 0)
+
+  // estoque de peça pronta: OF soma, conjunto consome, entrega tira
+  const ofH = await rpc(pcp, 'emitir_of', { produto_id: haste, qtd: 50 })
+  await rpc(beto, 'apontar_of', { id: ofH.id, produzido: 30 })
+  await rpc(beto, 'apontar_of', { id: ofH.id, produzido: 50, status: 'encerrada' })
+  conf(await saldo(haste) === 50, 'OF apontada entra no estoque de peça pronta (só a diferença)', await saldo(haste))
+  const ofP = await rpc(pcp, 'emitir_of', { produto_id: pega, qtd: 20 })
+  await rpc(beto, 'apontar_of', { id: ofP.id, produzido: 20, status: 'encerrada' })
+  conf(await saldo(pega) === 20 && await saldo(haste) === 10, 'conjunto produzido consome os componentes da estrutura', { pega: await saldo(pega), haste: await saldo(haste) })
+  await rpc(pcp, 'apontar_of', { id: ofP.id, status: 'aberta' })
+  await rpc(pcp, 'apontar_of', { id: ofP.id, produzido: 15 })
+  conf(await saldo(pega) === 15 && await saldo(haste) === 20, 'corrigir o apontamento acerta o estoque dos dois', { pega: await saldo(pega), haste: await saldo(haste) })
+  const c1 = await rpc(pcp, 'contar_produto', { produto_id: pega, saldo: 18, minimo: 10 })
+  const ps = (await q(`select saldo::float s, minimo::float m, contado_em, contado_por from public.produto_saldos where produto_id = $1`, [pega]))[0]
+  conf(Number(c1) === 18 && ps.m === 10 && !!ps.contado_em && ps.contado_por === 'Paula PCP', 'contagem acerta o saldo e grava o mínimo', ps)
+  conf((await erro(beto, 'contar_produto', { produto_id: pega, saldo: 1 }))?.includes('perfil não pode'), 'produção não faz a contagem')
+  conf((await erro(pcp, 'contar_produto', { produto_id: pega, saldo: -1 }))?.includes('negativa'), 'contagem negativa recusada')
+  conf((await ver(ger, 'select * from public.produto_saldos')).length > 0 && (await ver(rh, 'select * from public.produto_saldos')).length === 0, 'estoque de peça pronta: gerente vê, RH não')
+
+  // pedido do cliente pelo PDF (itens prontos): lança, não repete
+  const itens = [{ codigo: '9900111BR', descricao: 'PEGA MAO TESTE', prazo: '2026-12-04', qtd: 5, valor: 237.57 },
+    { codigo: '9900111BR', descricao: 'PEGA MAO TESTE', prazo: '2026-12-11', qtd: 8, valor: 237.57 },
+    { codigo: '7700999BR', descricao: 'PECA SEM CADASTRO', prazo: '2026-12-04', qtd: 3, valor: 10 }]
+  const sim = await rpc(pcp, 'lancar_pedido_cliente', { cliente_id: cli, pedido: '30009999', itens, simular: true })
+  conf(sim.novos === 3 && sim.itens[0].produto === 'OT 10.0001' && sim.itens[2].status === 'sem_cadastro'
+    && (await q(`select count(*)::int n from public.vendas where pedido = '30009999'`))[0].n === 0, 'pedido em PDF: simular não grava e acha a peça pelo código do cliente', sim)
+  const lp = await rpc(pcp, 'lancar_pedido_cliente', { cliente_id: cli, pedido: '30009999', itens })
+  const lp2 = await rpc(pcp, 'lancar_pedido_cliente', { cliente_id: cli, pedido: '30009999', itens })
+  const vs = await q(`select id, produto_id, qtd::float q, valor::float v, prazo::text p from public.vendas where pedido = '30009999' order by prazo, codigo_cliente`)
+  conf(lp.novos === 3 && lp2.novos === 0 && lp2.ja_lancados === 3 && vs.length === 3 && vs.find(x => x.q === 5)?.produto_id === pega && vs.find(x => x.q === 5)?.v === 237.57, 'pedido em PDF lançado uma vez só (mandar de novo não duplica)', { lp, lp2, vs })
+  conf((await erro(pcp, 'lancar_pedido_cliente', { cliente_id: cli, pedido: 'X', itens: [{ codigo: 'A', qtd: 1 }] }))?.includes('sem data'), 'item sem data de entrega recusado')
+  conf((await erro(ger, 'lancar_pedido_cliente', { cliente_id: cli, pedido: 'X', itens }))?.includes('perfil não pode'), 'gerente não lança pedido')
+
+  // baixa pela nota emitida (XML de saída)
+  const chave = '35261111444777000161550010000123451123456789'
+  const nota = { chave, numero: '12345', serie: '1', emissao: '2026-11-25', cnpj: '11444777000161', cliente_nome: 'ÔNIBUS TESTE LTDA', valor: 3088.41,
+    itens: [{ n: 1, codigo: 'OT 10.0001', descricao: 'PEGA MAO', qtd: 10, pedido: '30009999' }, { n: 2, codigo: 'ZZZ', descricao: 'OUTRA', qtd: 2 }] }
+  const s1 = await rpc(pcp, 'baixar_nota_saida', { ...nota, simular: true })
+  conf(s1.cliente === 'Ônibus Teste' && Number(s1.baixado) === 10 && Number(s1.sobra) === 2 && s1.itens[0].baixas.length === 2 && Number(s1.itens[0].baixas[0].qtd) === 5 && Number(s1.itens[0].baixas[1].qtd) === 5,
+    'nota de saída: acha o cliente pelo CNPJ e divide pelos pedidos (prazo mais antigo primeiro)', s1)
+  const idN = '6f1c2a54-0000-4000-8000-000000000031'
+  const b1 = await rpc(pcp, 'baixar_nota_saida', { ...nota, id: idN })
+  const ve = await q(`select v.prazo::text p, v.entregue::float e, v.entregue_em::text d from public.vendas v where pedido = '30009999' and produto_id = $1 order by prazo`, [pega])
+  conf(b1.entregas === 2 && ve[0].e === 5 && ve[1].e === 5 && ve[0].d === '2026-11-25' && await saldo(pega) === 8, 'baixa grava as entregas na data da nota e tira do estoque', { b1, ve, s: await saldo(pega) })
+  const b2 = await rpc(pcp, 'baixar_nota_saida', { ...nota, id: idN })
+  conf(b2.repetido === true && (await q(`select count(*)::int n from public.vendas_entregas where nota_saida_id = $1`, [idN]))[0].n === 2, 'mesmo envio de novo não repete a baixa')
+  conf((await erro(pcp, 'baixar_nota_saida', nota))?.includes('já foi baixada'), 'a mesma nota não baixa duas vezes')
+  conf((await erro(pcp, 'baixar_nota_saida', { ...nota, chave: chave.replace('12345', '12346'), cnpj: '99999999000199', cliente_nome: 'Outro' }))?.includes('não está no cadastro'), 'cliente sem cadastro: avisa o CNPJ')
+  conf((await erro(pcp, 'baixar_nota_saida', { ...nota, chave: chave.replace('12345', '12347'), itens: [{ n: 1, codigo: 'ZZZ', qtd: 1 }] }))?.includes('nada foi baixado'), 'nota sem nenhum item em pedido: não grava')
+  conf((await erro(ger, 'baixar_nota_saida', nota))?.includes('perfil não pode'), 'gerente não baixa nota')
+  const d1 = await rpc(pcp, 'desfazer_nota_saida', idN)
+  const ve2 = await q(`select entregue::float e from public.vendas where pedido = '30009999' and produto_id = $1`, [pega])
+  conf(d1 === 2 && ve2.every(x => x.e === 0) && await saldo(pega) === 18, 'desfazer a baixa devolve o saldo dos pedidos e o estoque', { d1, ve2, s: await saldo(pega) })
+  const b3 = await rpc(pcp, 'baixar_nota_saida', nota)
+  conf(b3.entregas === 2, 'nota desfeita pode ser baixada de novo')
+  const vsolto = await rpc(pcp, 'salvar_venda', { cliente_id: cli, produto_id: haste, pedido: 'P1', prazo: '2026-12-01', qtd: 4 })
+  const ent = await rpc(pcp, 'entregar_venda', { venda_id: vsolto, qtd: 4 })
+  const h1 = await saldo(haste)
+  await rpc(pcp, 'excluir_entrega', ent)
+  conf(h1 === 16 && await saldo(haste) === 20, 'entrega à mão também tira do estoque; desfazer devolve', { h1, h2: await saldo(haste) })
+  const movs = await q(`select tipo, count(*)::int n from public.produto_movs where produto_id = $1 group by 1 order by 1`, [pega])
+  conf(movs.some(m => m.tipo === 'contagem') && movs.some(m => m.tipo === 'entrega') && movs.some(m => m.tipo === 'of'), 'cada movimento do estoque fica guardado', movs)
+
+  // eventos da folha: os 10 da contabilidade, código não repete nem muda
+  const ev = await q(`select codigo, origem, padrao from public.rh_eventos_folha order by ordem`)
+  conf(ev.map(e => e.codigo).join() === '17,39,82,103,104,109,150,194,969,1126' && ev.every(e => e.padrao), 'eventos da contabilidade cadastrados na ordem dos arquivos', ev.map(e => e.codigo))
+  const ne = await rpc(rh, 'rh_salvar_evento', { codigo: 250, descricao: 'Adicional noturno', origem: 'manual' })
+  conf(!!ne, 'RH cadastra evento novo')
+  conf((await erro(rh, 'rh_salvar_evento', { codigo: 17, descricao: 'Outra coisa' }))?.includes('Horas Extras 50%'), 'código que já existe não é sobrescrito (mostra qual é)')
+  conf((await erro(rh, 'rh_salvar_evento', { id: ne, codigo: 251, descricao: 'Adicional noturno' }))?.includes('não muda'), 'código de evento não muda')
+  const e17 = (await q(`select id from public.rh_eventos_folha where codigo = 17`))[0].id
+  await rpc(rh, 'rh_salvar_evento', { id: e17, codigo: 17, descricao: 'Trocar nome', origem: 'he50', ativo: false })
+  const e17b = (await q(`select descricao, ativo from public.rh_eventos_folha where codigo = 17`))[0]
+  conf(e17b.descricao === 'Horas Extras 50%' && e17b.ativo === false, 'evento da contabilidade não muda de nome (só ativa/desativa)', e17b)
+  await rpc(rh, 'rh_salvar_evento', { id: e17, codigo: 17, origem: 'he50', ativo: true })
+  conf((await erro(ger, 'rh_salvar_evento', { codigo: 300, descricao: 'X' }))?.includes('perfil não pode') && (await ver(ger, 'select * from public.rh_eventos_folha')).length === 0, 'eventos da folha só para RH, Escritório e Dono')
+
+  // benefícios
+  const bens = await q(`select nome, desconto_pct::float pct, desconto_base from public.rh_beneficios order by nome`)
+  conf(bens.length === 4 && bens.find(b => b.nome === 'VT').desconto_base === 'salario' && bens.find(b => b.nome === 'VR').pct === 20, 'benefícios da JAF já cadastrados', bens)
+  const vr = (await q(`select id from public.rh_beneficios where nome = 'VR'`))[0].id
+  await rpc(rh, 'rh_salvar_beneficio', { id: vr, nome: 'VR', categoria: 'Alimentação', fornecedor: 'Operadora Exemplo', valor: '500,00', desconto_pct: 20 })
+  conf((await erro(rh, 'rh_salvar_beneficio', { nome: 'vr' }))?.includes('Já existe'), 'benefício com nome repetido recusado')
+  conf((await erro(rh, 'rh_salvar_beneficio', { nome: 'Plano X', desconto_pct: 120 }))?.includes('0 a 100'), 'desconto acima de 100% recusado')
+  const fid = (await q(`select id from public.funcionarios where nome = 'Beto Silva'`))[0].id
+  const vin = await rpc(rh, 'rh_salvar_vinculo', { funcionario_id: fid, beneficio_id: vr, inicio: '2026-01-01' })
+  conf(!!vin && (await erro(rh, 'rh_salvar_vinculo', { funcionario_id: fid, beneficio_id: vr }))?.includes('já recebe'), 'a mesma pessoa não recebe o mesmo benefício duas vezes')
+  conf((await ver(ger, 'select * from public.rh_beneficio_vinculos')).length === 0 && (await ver(rh, 'select * from public.rh_beneficio_vinculos')).length === 1, 'quem recebe benefício: só RH, Escritório e Dono')
+  const nb = await rpc(rh, 'rh_salvar_beneficio', { nome: 'Plano odontológico', categoria: 'Saúde / Bem-estar', valor: 30 })
+  await rpc(rh, 'rh_salvar_vinculo', { funcionario_id: fid, beneficio_id: nb })
+  conf(await rpc(rh, 'rh_excluir_beneficio', nb) === 1 && (await q(`select count(*)::int n from public.rh_beneficio_vinculos where beneficio_id = $1`, [nb]))[0].n === 0, 'excluir benefício tira de quem recebia')
+  await rpc(rh, 'rh_excluir_vinculo', vin)
+
+  // indicadores: números do mês (planilha antiga) sem apagar o que já estava
+  await rpc(rh, 'rh_salvar_indicadores', { ano: 2025, meses: [{ mes: 1, receita: 1000 }] })
+  await rpc(rh, 'rh_salvar_indicadores', { ano: 2025, meses: [{ mes: 1, ini: 59, fim: 57, adm: 2, dem: 3, prev_h: 10701, injust_h: 42, just_h: 417, he_h: 228, origem: 'planilha' }] })
+  const ind = (await q(`select receita::float r, ini, fim, adm, dem, prev_h::float p, injust_h::float i, origem from public.rh_indicadores where competencia = '2025-01-01'`))[0]
+  conf(ind.r === 1000 && ind.ini === 59 && ind.p === 10701 && ind.origem === 'planilha', 'números do mês gravados sem apagar a receita', ind)
+  await rpc(rh, 'rh_salvar_indicadores', { ano: 2025, meses: [{ mes: 1, ini: null, fim: null, adm: null, dem: null, prev_h: null, injust_h: null, just_h: null, he_h: null }] })
+  const ind2 = (await q(`select receita::float r, ini, origem from public.rh_indicadores where competencia = '2025-01-01'`))[0]
+  conf(ind2.r === 1000 && ind2.ini === null && ind2.origem === null, 'apagar os números do mês mantém a receita', ind2)
+}
+
 // ---------------------------------------------------------------- funções liberadas
 const sb = await rpc(dono, 'saude_banco')
 conf(sb.bytes > 0 && sb.tabelas.length > 0 && sb.historico > 0, 'Dono vê o espaço usado no banco', sb)

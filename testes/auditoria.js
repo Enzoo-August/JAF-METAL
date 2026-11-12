@@ -48,7 +48,7 @@ window.auditar = async function auditar(opt = {}) {
     }
   }
   async function janelaAberta(nome) {
-    await dorme(120);
+    await dorme(260);   // a janela sobe 8 px em 0,16 s: mede depois da animação
     const j = [...document.querySelectorAll('.janela-fundo')].at(-1);
     if (!j) { A.problemas.push(nome + ': janela não abriu'); return; }
     const pe = j.querySelector('.janela-pe').getBoundingClientRect(), cab = j.querySelector('.janela-cab').getBoundingClientRect();

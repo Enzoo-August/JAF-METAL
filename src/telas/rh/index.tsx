@@ -3,6 +3,7 @@ import { Perm } from '../../lib/perm.ts'
 import { Vazio } from '../../ui/base.tsx'
 import type { Rota } from '../../ui/ganchos.ts'
 import { TelaAjustesRH } from './Ajustes.tsx'
+import { TelaBeneficios } from './Beneficios.tsx'
 import { TelaDisciplina } from './Disciplina.tsx'
 import { TelaFerias } from './Ferias.tsx'
 import { TelaIndicadores } from './Indicadores.tsx'
@@ -15,7 +16,7 @@ import { TelaSeguranca } from './Seguranca.tsx'
 import { TelaTreinamentos } from './Treinamentos.tsx'
 
 const TITULOS: Record<string, string> = { ponto: 'Ponto e horas extras', ferias: 'Férias e ausências', treinamentos: 'Treinamentos', seguranca: 'EPI e exames',
-  disciplina: 'Advertências', processos: 'Processos trabalhistas', organograma: 'Organograma', relatorios: 'Relatórios do RH', indicadores: 'Indicadores de RH', ajustes: 'Ajustes do RH' }
+  disciplina: 'Advertências', processos: 'Processos trabalhistas', organograma: 'Organograma', relatorios: 'Relatórios do RH', indicadores: 'Indicadores de RH', ajustes: 'Ajustes do RH', beneficios: 'Benefícios' }
 
 export function TelaRH({ r }: { r: Rota }) {
   if (r.nome === 'funcionario') return <TelaFicha r={r} />
@@ -28,6 +29,7 @@ export function TelaRH({ r }: { r: Rota }) {
     case 'organograma': return <TelaOrganograma />
     case 'processos': return Perm.pode('rh_sensivel') ? <TelaProcessos /> : <Vazio icone="cadeado" titulo="Sem acesso" texto="Seu perfil não abre esta tela." />
     case 'relatorios': return <TelaRelatoriosRH />
+    case 'beneficios': return Perm.pode('rh_sensivel') ? <TelaBeneficios /> : <Vazio icone="cadeado" titulo="Sem acesso" texto="Seu perfil não abre esta tela." />
     case 'indicadores': return Perm.pode('rh_sensivel') ? <TelaIndicadores /> : <Vazio icone="cadeado" titulo="Sem acesso" texto="Seu perfil não abre esta tela." />
     case 'ajustes': return Perm.pode('rh_editar') ? <TelaAjustesRH r={r} /> : <Vazio icone="cadeado" titulo="Sem acesso" texto="Seu perfil não abre esta tela." />
     default: return <TelaPessoas r={r} />

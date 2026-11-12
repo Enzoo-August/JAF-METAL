@@ -15,6 +15,7 @@ import { ir, useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { Ic } from '../../ui/icones.tsx'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
 import { ativos, jornada, pode, razaoEmpresa, salarioHE, sensivel } from './comum.tsx'
+import { exportarContabilidade } from './Folha.tsx'
 
 const JUST: [Justificativa | '', string][] = [['', '—'], ['atestado', 'Atestado'], ['declaracao', 'Declaração'], ['licenca', 'Licença'], ['folga', 'Folga'],
   ['bh_pos', 'BH+ Banco de horas (crédito)'], ['bh_neg', 'BH− Banco de horas (débito)'], ['compensado', 'Compensado'], ['abonado', 'Abonado'], ['falta', 'Falta']]
@@ -41,7 +42,7 @@ export function resumoDe(f: Funcionario, m: string, pontos?: RhPonto[], feriados
   }, j)
 }
 // quem aparece no mês: ativos + quem saiu durante o mês
-const pessoasDoMes = (m: string) => U.ordenar(S.lista('funcionarios').filter(f => (f.ativo || (f.demissao && f.demissao.slice(0, 7) >= m)) && (!f.admissao || f.admissao.slice(0, 7) <= m)), f => U.sem(f.nome))
+export const pessoasDoMes = (m: string) => U.ordenar(S.lista('funcionarios').filter(f => (f.ativo || (f.demissao && f.demissao.slice(0, 7) >= m)) && (!f.admissao || f.admissao.slice(0, 7) <= m)), f => U.sem(f.nome))
 
 export function TelaPonto({ r }: { r: Rota }) {
   const fid = r.q.get('f')
@@ -70,7 +71,7 @@ function Fechamento({ m, setM }: { m: string; setM: (m: string) => void }) {
   return <>
     <Cab titulo="Ponto e horas extras" sub="Escolha a pessoa para lançar o cartão de ponto do mês.">
       {pode() && <Btn txt="Lançar para várias pessoas" icone="equipe" data-ponto="varios" onClick={() => void lancarVarios(m)} />}
-      {sens && <Btn txt="Exportar para a contabilidade" icone="planilha" cls="pri" data-ponto="exportar" onClick={() => exportarFechamento(m, linhas)} />}
+      {sens && <Btn txt="Exportar para a contabilidade" icone="planilha" cls="pri" data-ponto="exportar" onClick={() => void exportarContabilidade(m)} />}
     </Cab>
     <SeletorMes m={m} setM={setM} />
     <div className="grade g3 mt">
@@ -100,7 +101,7 @@ function Fechamento({ m, setM }: { m: string; setM: (m: string) => void }) {
   </>
 }
 
-async function exportarFechamento(m: string, linhas: { f: Funcionario; r: R.ResumoMes }[]) {
+export async function exportarFechamento(m: string, linhas: { f: Funcionario; r: R.ResumoMes }[]) {
   const fech = linhas.map(({ f, r }) => ({
     ID: f.matricula || '', Nome: f.nome, Cargo: f.funcao || '', Registro: f.registro || '', 'Salário no mês': salarioHE(f, m) || null,
     'HE 50% (h)': U.r2(r.faixas.p50), 'HE 60% (h)': U.r2(r.faixas.p60), 'HE 80% (h)': U.r2(r.faixas.p80), 'HE 100% (h)': U.r2(r.faixas.p100),

@@ -1255,3 +1255,57 @@ button.kpi { display: block; width: 100%; text-align: left; font: inherit; curso
 .subabas-lista { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 22px; }
 /* código da peça não quebra no meio nas tabelas */
 .tabela-fab td:first-child a, .tabela-fab td.mono { white-space: nowrap; }
+/* v3.1 — arquivo do cliente (PDF / XML), peça pronta, benefícios, indicadores */
+.txt-amarelo { color: var(--amarelo); }
+.tabela-fab tr.marcada td { background: var(--marca-suave); }
+.escolhas-doc { display: grid; gap: 10px; }
+.escolha-doc { display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 14px; border: 1px solid var(--borda-forte); border-radius: var(--raio-p); background: var(--cartao); color: var(--texto); cursor: pointer; font: inherit; }
+.escolha-doc:hover, .escolha-doc:focus-visible { border-color: var(--acento); background: var(--marca-suave); }
+.escolha-doc svg { flex: none; width: 26px; height: 26px; color: var(--acento); margin-top: 2px; }
+.escolha-doc b { display: block; font-size: 1rem; }
+.escolha-doc small { display: block; color: var(--texto-2); margin-top: 2px; }
+.ns-baixa { color: var(--verde) !important; }
+.ind-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ind-card { text-align: left; font: inherit; color: var(--texto); background: var(--cartao); border: 1px solid var(--borda); border-left: 6px solid var(--verde); border-radius: var(--raio); padding: 16px 18px; box-shadow: var(--sombra); cursor: pointer; }
+.ind-card.ruim { border-left-color: var(--vermelho); }
+.ind-card.sem { border-left-color: var(--borda-forte); }
+.ind-card.on { outline: 2px solid var(--acento); outline-offset: 1px; }
+.ind-card small { display: block; color: var(--texto-2); font-size: .82rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.ind-card .ind-valor { display: block; font-size: 2.3rem; font-weight: 780; letter-spacing: -.03em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.ind-card.ruim .ind-valor { color: var(--vermelho); }
+.ind-card .ind-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--texto-3); font-size: .86rem; margin-top: 4px; flex-wrap: wrap; }
+.ind-graf { display: flex; align-items: flex-end; gap: 4px; height: 150px; padding: 18px 0 0; position: relative; }
+.ind-graf .col-g { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+.ind-graf .col-g i { display: block; width: 72%; max-width: 36px; background: var(--verde); border-radius: 4px 4px 0 0; min-height: 2px; }
+.ind-graf .col-g.ruim i { background: var(--vermelho); }
+.ind-graf .col-g.vazio i { background: var(--borda); }
+.ind-graf .col-g em { font-style: normal; font-size: .7rem; color: var(--texto-2); margin-bottom: 2px; white-space: nowrap; }
+.ind-graf .col-g span { font-size: .72rem; color: var(--texto-3); margin-top: 4px; }
+.ind-graf .meta-linha { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--amarelo); pointer-events: none; }
+.ind-graf .meta-linha b { position: absolute; right: 0; top: -16px; font-size: .7rem; color: var(--amarelo); }
+.tabela-fab td.ruim { color: var(--vermelho); font-weight: 700; }
+@media (max-width: 640px) {
+  .ind-cards { grid-template-columns: 1fr; gap: 10px; }
+  .ind-card .ind-valor { font-size: 2rem; }
+  .ind-graf { height: 120px; gap: 2px; }
+  .ind-graf .col-g em { display: none; }
+}
+.txt-verde { color: var(--verde); }
+.tabela td.ruim, .tabela td.ruim b { color: var(--vermelho); }
+.tabela tr.clicavel:hover td { background: var(--fundo-2, rgba(0,0,0,.03)); }
+details.mais-ind > summary { cursor: pointer; padding: 4px 0; list-style: none; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+details.mais-ind > summary::before { content: '▸'; color: var(--texto-3); }
+details.mais-ind[open] > summary::before { content: '▾'; }
+details.mais-ind > summary::-webkit-details-marker { display: none; }
+.tabela-fab .col-sub, .tabela .col-sub { display: block; font-size: .74rem; font-weight: 500; color: var(--texto-3); margin-top: 1px; }
+
+/* v3.1 — no celular a situação do item vai embaixo do código (a coluna some para não rolar de lado) */
+.tabela-fab .so-estreito, .tabela .so-estreito, .tabela .so-estreito-cel { display: none; }
+@media (max-width: 640px) {
+  .tabela-fab .so-estreito, .tabela .so-estreito { display: block; margin-top: 4px; font-family: var(--fonte, inherit); }
+  .tabela th .so-estreito { margin-top: 0; }
+  .tabela .so-largo { display: none; }
+  .tabela .so-estreito-cel { display: table-cell; white-space: nowrap; }
+  .tabela-ind th, .tabela-ind td { padding: 9px 8px; }
+  .tabela-ind td small.col-sub { white-space: nowrap; }
+}

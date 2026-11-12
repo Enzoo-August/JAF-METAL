@@ -325,6 +325,32 @@ async function demoRH(ids: Record<string, string>, cargo: Record<string, string>
   await rpc('rh_salvar_ocorrencia', { funcionario_id: ids['Caio Souza'], tipo: 'escrita', data_ocorrencia: dia(-3), status: 'pendente', categoria: 'Desídia (atrasos, faltas sem justificativa, baixa produção)', assunto: 'Atrasos repetidos',
     descricao: 'Chegou atrasado 3 vezes no mês sem justificativa (exemplo).', aplicador: 'Helena Costa', aplicador_cargo: 'Assistente de RH' })
   await rpc('rh_salvar_processo', { autor: 'Paulo Gomes', funcionario_id: ids['Paulo Gomes'], numero: '0000000-00.2026.5.02.0000 (exemplo)', data_autuacao: dia(-5), advogado: 'Escritório Exemplo' })
+  // benefícios com valores de exemplo e quem recebe (o desconto do funcionário sai sozinho)
+  await S.carregar(); await S.garantir(['rh_beneficios', 'rh_beneficio_vinculos', 'rh_eventos_folha'])
+  const valorBen: Record<string, number> = { 'Vale alimentação': 300, VR: 660, VT: 352, Wellhub: 119.9 }
+  const ben: Record<string, string> = {}
+  for (const b of S.lista('rh_beneficios')) {
+    ben[b.nome] = b.id
+    if (valorBen[b.nome] != null) await rpc('rh_salvar_beneficio', { ...b, fornecedor: 'Operadora (exemplo)', valor: valorBen[b.nome] })
+  }
+  const inicioBen = U.somaMeses(hoje.slice(0, 8) + '01', -3)
+  for (const [k, nome] of Object.keys(ids).entries()) {
+    if (nome === 'Paulo Gomes') continue
+    if (ben['Vale alimentação']) await rpc('rh_salvar_vinculo', { funcionario_id: ids[nome], beneficio_id: ben['Vale alimentação'], inicio: inicioBen })
+    if (ben.VR) await rpc('rh_salvar_vinculo', { funcionario_id: ids[nome], beneficio_id: ben.VR, inicio: inicioBen })
+    if (ben.VT && k % 3 !== 0) await rpc('rh_salvar_vinculo', { funcionario_id: ids[nome], beneficio_id: ben.VT, inicio: inicioBen, valor: k % 2 ? 352 : 264 })
+    if (ben.Wellhub && k % 4 === 1) await rpc('rh_salvar_vinculo', { funcionario_id: ids[nome], beneficio_id: ben.Wellhub, inicio: U.somaMeses(inicioBen, 1) })
+  }
+  // um evento novo da contabilidade (exemplo) e as empresas da folha (dados inventados), metas dos indicadores
+  if (ben.VR) await rpc('rh_salvar_evento', { codigo: 4501, descricao: 'Desc. Vale Refeição (exemplo)', origem: 'beneficio_desconto', beneficio_id: ben.VR })
+  await S.carregar()
+  await API.rpc('salvar_config', { p_chave: 'rh', p_valor: { ...S.cfg<Record<string, unknown>>('rh', {}), metas: { turnover: 2, absenteismo: 1.5 }, empresas_folha: [
+    { registro: 'Matriz', razao: 'METALURGICA EXEMPLO LTDA', cnpj: '00.000.000/0001-91', prefixo: 'JAF' },
+    { registro: 'Filial', razao: 'METALURGICA EXEMPLO LTDA', cnpj: '00.000.000/0002-72', prefixo: 'JAFII' },
+    { registro: 'Upgrade', razao: 'BARRAS EXEMPLO LTDA', cnpj: '11.111.111/0001-91', prefixo: 'UPGRADE' }] } })
+  // histórico dos indicadores do ano passado, como se viesse da planilha antiga do RH (números inventados)
+  await rpc('rh_salvar_indicadores', { ano: ano - 1, meses: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, origem: 'planilha',
+    fim: 12 + (i > 5 ? 1 : 0), adm: i === 3 || i === 6 ? 1 : 0, dem: i === 3 ? 1 : 0, prev_h: 2050 + (i % 3) * 40, injust_h: [8, 0, 16, 4, 0, 24, 8, 0, 12, 40, 8, 4][i], just_h: [16, 24, 8, 30, 12, 8, 40, 16, 8, 24, 16, 8][i], he_h: 150 + (i * 37) % 90 })) })
   // um desligado
   const p = S.get('funcionarios', ids['Paulo Gomes'])!
   await rpc('salvar_funcionario', { ...p, situacao: 'desligado', demissao: dia(-20), privado: { ...(S.get('funcionarios_privado', p.id) || {}), motivo_demissao: 'Pedido de demissão' } })
@@ -418,13 +444,19 @@ async function demoFabrica(dia: (n: number) => string): Promise<void> {
   ])
   await imp('fim', { demo: true })
   // e o que se faz pelo sistema: uma OF nova, uma entrega e um check-list
-  await S.carregar(); await S.garantir(['produtos', 'vendas', 'ofs'])
-  const pr = S.lista('produtos').find(p => p.codigo === 'CF 02.0001')!
+  await S.carregar(); await S.garantir(['produtos', 'vendas', 'ofs', 'clientes'])
+  const cod = (c: string) => S.lista('produtos').find(p => p.codigo === c)!
+  const pr = cod('CF 02.0001')
   await API.rpc('emitir_of', { p: { produto_id: pr.id, qtd: 200, ri: 1001, prazo: dia(3), emitido_por: 'Paula' } })
   const v = S.lista('vendas').find(x => x.pedido === 'PC 018/26')!
   await API.rpc('entregar_venda', { p: { venda_id: v.id, qtd: 10, data: dia(-1), nf: '7001' } })
+  // estoque de peça pronta: a primeira contagem e o mínimo de cada código; e uma NF-e de saída que baixou a entrega pelo XML
+  for (const [c, saldo, minimo] of [['CF 02.0001', 1800, 300], ['CF 02.0002', 40, 150], ['UP 01.0002', 12, 20], ['UP 01.0004', 25, 0]] as [string, number, number][])
+    await API.rpc('contar_produto', { p: { produto_id: cod(c).id, saldo, minimo, obs: 'Inventário (exemplo)' } })
+  const up = S.lista('clientes').find(c => c.nome.startsWith('Upgrade'))
+  if (up) await API.rpc('baixar_nota_saida', { p: { chave: '35261100000000000191550010000070021000070024', numero: '7002', serie: '1', emissao: dia(-1), cliente_id: up.id,
+    cliente_nome: up.nome, valor: 520, itens: [{ n: 1, codigo: 'UP 01.0004', descricao: 'Barra reta 800 mm inox', qtd: 10, pedido: 'PC 019/26' }] } })
   // passo a passo conferido de uma peça (com máquina), um pedido de compra de material e uma necessidade do PCP
-  const cod = (c: string) => S.lista('produtos').find(p => p.codigo === c)!
   const curv = S.lista('maquinas').find(m => m.nome === 'Curvadora')
   await API.rpc('salvar_processo', { p: { produto_id: cod('CF 02.0003').id, passos: [
     { operacao: 'Serrar no comprimento (400 mm)', peca: null, maquina_id: null }, { operacao: 'Amassar a ponta', peca: null, maquina_id: null },

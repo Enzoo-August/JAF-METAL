@@ -21,10 +21,14 @@ import { TelaRH, tituloRH } from './rh/index.tsx'
 import { avisoFerias, formAusencia, programarFerias } from './rh/Ferias.tsx'
 import { fichaEpi, formAso, formCatalogo, formEpi, termoEpi } from './rh/Seguranca.tsx'
 import { documento, formOcorrencia } from './rh/Disciplina.tsx'
+import { exportarContabilidade, montarFolha } from './rh/Folha.tsx'
 import * as OFs from './fabrica/OFs.tsx'
 import * as MP from './fabrica/MP.tsx'
 import * as Pedidos from './fabrica/Pedidos.tsx'
 import { atualizarProgramacao, verRelease } from './fabrica/Release.tsx'
+import { baixarPelaNota, lerPedidoPdf } from './fabrica/Documentos.tsx'
+import { TelaEntregas } from './fabrica/Entregas.tsx'
+import { contar as contarPronto, TelaPronto } from './fabrica/Pronto.tsx'
 import * as Produtos from './fabrica/Produtos.tsx'
 import * as Registros from './fabrica/Registros.tsx'
 import * as Manut from './fabrica/Manutencao.tsx'
@@ -60,6 +64,8 @@ export const ROTAS: Record<string, DefTela> = {
   pedidos: { Tela: Pedidos.TelaPedidos, perm: 'vendas', titulo: 'Pedidos de clientes' },
   necessidade: { Tela: Pedidos.TelaPedidos, perm: 'necessidade', titulo: () => API.sessao?.perfil === 'comercial' ? 'O que comprar' : 'Necessidade' },
   comprar: { Tela: Pedidos.TelaPedidos, perm: 'necessidade', titulo: 'O que comprar' },
+  entregas: { Tela: TelaEntregas, perm: 'vendas', titulo: 'Relatório de entregas' },
+  pronto: { Tela: TelaPronto, perm: 'of_ver', titulo: 'Estoque de peça pronta' },
   produtos, produto: produtos,
   reg: { Tela: Registros.TelaRegistros, titulo: Registros.tituloRegistros },
   tecnico: { Tela: TelaTecnico, perm: 'tecnico_ver', titulo: 'Engenharia' },
@@ -82,11 +88,11 @@ export const Telas = {
   producao: { abrir: Producao.abrir, form: Producao.form },
   financeiro: { form: Financeiro.form, abrir: Financeiro.abrir, saldoHoje: Financeiro.saldoHoje },
   clientes: { form: Clientes.form, novoRapido: Clientes.novoRapido },
-  fabrica: { formOF: OFs.formOF, apontar: OFs.apontar, imprimirOF: OFs.imprimirOF, formLote: MP.formLote, etiqueta: MP.etiqueta, formVenda: Pedidos.formVenda, entregar: Pedidos.entregar, atualizarProgramacao, verRelease,
+  fabrica: { formOF: OFs.formOF, apontar: OFs.apontar, imprimirOF: OFs.imprimirOF, formLote: MP.formLote, etiqueta: MP.etiqueta, formVenda: Pedidos.formVenda, entregar: Pedidos.entregar, atualizarProgramacao, verRelease, lerPedidoPdf, baixarPelaNota, contarPronto,
     formProduto: Produtos.formProduto, formReg: Registros.formReg, defReg: Registros.defReg, preencher: Manut.preencher, imprimirOS: Manut.imprimirOS },
   nota: { lerNota },
   equipe: { form: formPessoa },
-  rh: { formPessoa, programarFerias, avisoFerias, formAusencia, formAso, formEpi, fichaEpi, termoEpi, formCatalogo, formOcorrencia, documento },
+  rh: { formPessoa, programarFerias, avisoFerias, formAusencia, formAso, formEpi, fichaEpi, termoEpi, formCatalogo, formOcorrencia, documento, exportarContabilidade, montarFolha },
   admin: { trocarSenha },
   inicio: { personalizar },
   ajuda: { boasVindas },

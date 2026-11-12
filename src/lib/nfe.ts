@@ -26,6 +26,8 @@ export interface Nota {
   natureza: string
   emitente: { nome: string; razao: string; cnpj: string; ie: string; endereco: string; bairro: string; cidade: string; uf: string; cep: string; telefone: string }
   destCnpj: string
+  destNome: string          // destinatário (na nota de saída da JAF é o cliente)
+  saida: boolean            // tpNF = 1 (nota de saída)
   valorProdutos: number
   frete: number
   ipi: number
@@ -139,6 +141,8 @@ export function lerNotaXml(texto: string): Nota {
       cep: formatarCep(tx(end, 'CEP')), telefone: formatarFone(tx(end, 'fone')),
     },
     destCnpj: dig(tx(el(inf, 'dest'), 'CNPJ')),
+    destNome: nomeBonito(tx(el(inf, 'dest'), 'xNome')),
+    saida: tx(ide, 'tpNF') === '1',
     valorProdutos: n(tx(tot, 'vProd')), frete: n(tx(tot, 'vFrete')), ipi: n(tx(tot, 'vIPI')), desconto: n(tx(tot, 'vDesc')),
     valor: n(tx(tot, 'vNF')),
     itens,

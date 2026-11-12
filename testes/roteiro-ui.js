@@ -577,7 +577,7 @@ window.roteiro = async function roteiro(filtro) {
   await passo('perfil PCP', async () => {
     await como('pcp');
     const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
-    conf(menu.join('|') === 'Início|Ordens de fabricação|Matéria-prima|Pedidos de clientes|Necessidade|Serviço externo|Requisições|Equipe|Clientes|Produtos|Peças|Ajuda', 'menu do PCP: as telas dele direto, OFs primeiro, pedidos de clientes no PCP', menu);
+    conf(menu.join('|') === 'Início|Ordens de fabricação|Matéria-prima|Pedidos de clientes|Relatório de entregas|Necessidade|Peça pronta (estoque)|Serviço externo|Requisições|Equipe|Clientes|Produtos|Peças|Ajuda', 'menu do PCP: as telas dele direto, OFs primeiro, pedidos de clientes no PCP', menu);
     conf(!document.querySelector('.lateral [data-acao=retirar]') && !!document.querySelector('.lateral [data-acao=novaOF]'), 'PCP tem "Nova OF" e não "Retirar peça"');
     conf(S.lista('movimentos').length === 0 && S.lista('lancamentos').length === 0 && S.lista('clientes').length > 0, 'banco manda ordens e clientes, sem movimentações nem financeiro');
     for (const r of ['#/maquinas', '#/movimentos', '#/compras', '#/financeiro', '#/rh']) { await ir(r); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'PCP sem ' + r); }
@@ -813,7 +813,7 @@ window.roteiro = async function roteiro(filtro) {
 
     await como('comercial');
     const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
-    conf(menu.join('|') === 'Início|Pedidos de clientes|O que comprar|Pedidos de compra|Fornecedores|Estoque de material|Clientes|Ajuda', 'menu do Comercial', menu);
+    conf(menu.join('|') === 'Início|Pedidos de clientes|Relatório de entregas|O que comprar|Pedidos de compra|Fornecedores|Estoque de material|Clientes|Ajuda', 'menu do Comercial', menu);
     for (const r of ['#/financeiro', '#/rh', '#/movimentos']) { await ir(r); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'Comercial sem ' + r); }
     await ir('#/compras/lista'); conf(document.getElementById('view').textContent.includes('Sem acesso'), 'lista de peças do almoxarifado fica com o almoxarifado');
     conf(S.lista('lancamentos').length === 0 && S.lista('funcionarios_privado').length === 0, 'banco não manda financeiro nem dados pessoais para o Comercial');
@@ -857,7 +857,7 @@ window.roteiro = async function roteiro(filtro) {
   await passo('perfil RH', async () => {
     await como('helena');
     const menu = [...document.querySelectorAll('.lateral-menu a span')].map(a => a.textContent.trim());
-    conf(menu.join('|') === 'Início|Pessoas|Ponto|Férias|Treinamentos|EPI e exames|Advertências|Processos|Organograma|Relatórios|Indicadores|Ajustes|Ajuda', 'menu do RH: as abas do RH direto no menu da esquerda', menu);
+    conf(menu.join('|') === 'Início|Pessoas|Ponto|Férias|Treinamentos|EPI e exames|Advertências|Benefícios|Processos|Organograma|Relatórios|Indicadores|Ajustes|Ajuda', 'menu do RH: as abas do RH direto no menu da esquerda', menu);
     conf([...document.querySelectorAll('.lateral-menu .grupo')].map(g => g.textContent).join('|') === 'Dia a dia|Gestão|Sistema', 'menu do RH separado em Dia a dia, Gestão e Sistema');
     await ir('#/rh/ponto'); conf(!document.querySelector('.subabas') && !!document.querySelector('.lateral-menu a.on[data-rota="rh/ponto"]'), 'RH sem abas em cima; a tela aberta fica marcada no menu');
     await ir('#/inicio');
@@ -950,15 +950,54 @@ window.roteiro = async function roteiro(filtro) {
 
   await passo('indicadores de RH', async () => {
     await como('helena');
-    await ir('#/rh/indicadores'); await dorme(250);
+    await ir('#/rh/indicadores'); await espera(() => document.querySelector('#indCards'));
     const v = document.getElementById('view');
-    conf(/Indicadores de RH/.test(v.textContent) && !!document.getElementById('tRot') && !!document.getElementById('tCustos'), 'tela de indicadores com rotatividade e custos');
-    conf(/Turnover do ano/.test(v.textContent) && /Faixa etária/.test(v.textContent) && /Tipo de cargo/.test(v.textContent), 'indicadores de equipe');
-    conf(document.querySelectorAll('#alertasInd .nota').length > 0 || /Sem comparação/.test(v.textContent), 'alertas e dicas do mês');
+    conf(document.querySelectorAll('#indCards .ind-card').length === 2 && /Turnover/.test(v.textContent) && /Absenteísmo/.test(v.textContent) && /Meta: até 2,00%/.test(v.textContent), 'os dois indicadores principais com a meta', v.textContent.slice(0, 200));
+    conf(!document.querySelector('#indDetalhe'), 'sem poluição: o detalhe só aparece ao tocar');
+    await clicar(document.querySelector('[data-ind-card=turnover]')); await espera(() => document.querySelector('#tTurn'));
+    conf(!!document.querySelector('#indDetalhe .ind-graf') && document.querySelectorAll('#indDetalhe .ind-graf .col-g').length === 12 && !!document.querySelector('.meta-linha'), 'turnover: gráfico de 12 meses com a linha da meta');
+    // histórico do ano passado (como veio da planilha antiga)
+    const ano = Number(U.hoje().slice(0, 4)) - 1;
+    digitar(document.querySelector('[data-ind=ano]'), String(ano)); await dorme(250);
+    const linha = (m) => document.querySelector(`[data-ind-mes="${ano}-${m}"]`);
+    conf(linha('04')?.textContent.includes('8,33%') && linha('04')?.textContent.includes('Planilha antiga'), 'abril da planilha: [(1+1)/2] ÷ 12 = 8,33%', linha('04')?.textContent);
+    await clicar(document.querySelector('[data-ind-card=absent]')); await espera(() => document.querySelector('#tAbs'));
+    conf(linha('01')?.textContent.includes('1,17%'), 'absenteísmo de janeiro: (8 + 16) ÷ 2050 = 1,17%', linha('01')?.textContent);
+    conf(!!document.querySelector('#tAbs tfoot') && /soma das horas/.test(document.querySelector('#tAbs tfoot').textContent), 'ano do absenteísmo = soma das horas');
+    // visão do ano e Matriz/Filial
+    await clicar(document.querySelector('[data-vis=ano]')); await dorme(150);
+    conf(/ano inteiro/.test(document.querySelector('#indCards').textContent), 'visão do ano (12 meses fechados)', document.querySelector('#indCards').textContent.slice(0, 200));
+    await clicar(document.querySelector('[data-reg=Matriz]')); await dorme(200);
+    conf(/Matriz/.test(v.querySelector('.cab').textContent) && !document.querySelector('#tAbs .clicavel'), 'filtro Matriz (calculado pelo sistema, sem editar o mês)');
+    await clicar(document.querySelector('[data-reg=todas]')); await clicar(document.querySelector('[data-vis=mes]')); await dorme(150);
+    // corrigir um mês à mão e voltar ao cálculo
+    await clicar(document.querySelector('[data-ind-card=turnover]')); await espera(() => document.querySelector('#tTurn'));
+    await clicar(linha('04')); const jm = await espera(janela);
+    conf(U.num(jm.querySelector('[name=adm]').value) === 1 && /veio da planilha/.test(jm.textContent), 'o mês abre com os números da planilha', jm.querySelector('[name=adm]').value);
+    digitar(jm.querySelector('[name=adm]'), '3');
+    await okJanela('Salvar'); conf(!erroJanela(jm), 'mês corrigido', erroJanela(jm));
+    await espera(() => linha('04')?.textContent.includes('16,67%'), 4000);
+    conf(linha('04')?.textContent.includes('16,67%') && linha('04')?.textContent.includes('Digitado pelo RH'), 'o número digitado vale: [(3+1)/2] ÷ 12 = 16,67%', linha('04')?.textContent);
+    await clicar(linha('04')); const jv = await espera(janela);
+    await clicar('Voltar ao cálculo', jv.querySelector('.janela-pe')); await espera(() => !document.body.contains(jv), 4000); await dorme(200);
+    conf(!S.lista('rh_indicadores').some(x => x.competencia === `${ano}-04-01`), 'voltar ao cálculo apaga o que foi digitado');
+    // metas
+    const rhAntes = S.cfg('rh', {});
+    await clicar(document.querySelector('[data-ind=metas]')); const jt = await espera(janela);
+    digitar(jt.querySelector('[name=turnover]'), '10'); await okJanela('Salvar');
+    await espera(() => S.cfg('rh', {}).metas?.turnover === 10, 4000);
+    conf(S.cfg('rh', {}).metas?.turnover === 10 && /Meta: até 10,00%/.test(v.textContent), 'meta do turnover mudada pelo RH');
+    conf(JSON.stringify(S.cfg('rh', {}).empresas_folha) === JSON.stringify(rhAntes.empresas_folha) && JSON.stringify(Object.keys(S.cfg('rh', {})).filter(k => k !== 'metas').sort()) === JSON.stringify(Object.keys(rhAntes).filter(k => k !== 'metas').sort()), 'mudar a meta não apaga as outras regras do RH');
+    await clicar(document.querySelector('[data-ind=metas]')); const jt2 = await espera(janela); digitar(jt2.querySelector('[name=turnover]'), '2'); await okJanela('Salvar');
+    // mais indicadores: receitas e custos
+    digitar(document.querySelector('[data-ind=ano]'), String(ano + 1)); await dorme(200);
+    document.querySelector('#maisInd').open = true; await dorme(100);
+    conf(!!document.getElementById('tCustos') && /Faixa etária/.test(v.textContent) && /Tipo de cargo/.test(v.textContent), 'mais indicadores: equipe, custos');
+    conf(document.querySelectorAll('#alertasInd .nota').length > 0 || /Sem comparação/.test(v.textContent), 'dicas do mês');
     await clicar(document.querySelector('[data-ind=lancar]')); const j = await espera(janela);
     digitar(j.querySelector('[name=receita_1]'), '123.456,78');
     await okJanela('Salvar'); conf(!erroJanela(j), 'lança a receita do mês', erroJanela(j));
-    conf(S.lista('rh_indicadores').some(x => x.competencia.endsWith('-01-01') && Number(x.receita) === 123456.78), 'receita gravada');
+    conf(S.lista('rh_indicadores').some(x => x.competencia.endsWith('-01-01') && x.competencia.startsWith(String(ano + 1)) && Number(x.receita) === 123456.78), 'receita gravada');
     await como('gerente'); await ir('#/rh/indicadores'); conf(/Sem acesso/.test(document.getElementById('view').textContent), 'gerente não abre os indicadores (têm receita e salários)');
   });
 
@@ -1113,6 +1152,187 @@ window.roteiro = async function roteiro(filtro) {
     await ir('#/pedidos'); await espera(() => document.querySelector('#lVen'));
     conf(!document.querySelector('[data-ven=programacao]'), 'gerente consulta os pedidos mas não atualiza a programação');
   });
+  // ================================================================ v3.1: PCP (peça pronta, necessidade com OF, PDF do pedido, XML de saída, entregas) e RH (contabilidade, eventos, benefícios)
+  await passo('v3.1 peça pronta e necessidade com aviso de OF', async () => {
+    await como('pcp');
+    await S.garantir(['produtos', 'produto_saldos', 'ofs', 'vendas', 'produto_estrutura']);
+    const cod = (c) => S.lista('produtos').find(p => p.codigo === c);
+    await ir('#/pronto'); await espera(() => document.querySelector('#lPronto'));
+    const l2 = document.querySelector('[data-pronto-peca="CF 02.0002"]');
+    conf(l2 && /Abaixo do mínimo|Mínimo coberto|Ok|Conferir/.test(l2.textContent) && /pronto/.test(l2.textContent), 'peça com saldo, mínimo e situação', l2?.textContent);
+    await clicar(document.querySelector('[data-pronto=contar]')); const j = await espera(janela);
+    await combo(j.querySelector('#prontoProd'), 'CF 02.0003');
+    digitar(j.querySelector('[name=saldo]'), '10'); digitar(j.querySelector('[name=minimo]'), '500');
+    await okJanela('Gravar'); conf(!erroJanela(j), 'contagem gravada', erroJanela(j));
+    const s3 = await espera(() => S.get('produto_saldos', cod('CF 02.0003').id));
+    conf(s3 && Number(s3.saldo) === 10 && Number(s3.minimo) === 500, 'saldo e mínimo gravados', s3);
+    await espera(() => document.querySelector('[data-pronto-peca="CF 02.0003"]'));
+    await clicar(document.querySelector('[data-pronto-peca="CF 02.0003"]'));
+    const jd = await espera(() => janela()?.querySelector('#lMovPronto') && janela(), 6000);
+    conf(jd && /Contagem/.test(jd.textContent), 'o detalhe mostra os movimentos da peça', jd?.textContent.slice(0, 120));
+    UI.fecharTodas(); await dorme(100);
+    // necessidade: só o que precisa de OF, e emitir várias de uma vez
+    await ir('#/necessidade?f=of'); await espera(() => document.querySelector('#tNecP'));
+    conf(document.querySelector('[data-n=soOF]')?.checked, 'abre filtrando o que precisa de OF');
+    const ck = await espera(() => document.querySelector(`[data-sel-of="${cod('CF 02.0003').id}"]`));
+    conf(!!ck && /mínimo/.test(document.querySelector('[data-nec-peca="CF 02.0003"]')?.textContent || ''), 'abaixo do mínimo pede OF (10 + em OF < 500)', document.querySelector('[data-nec-peca="CF 02.0003"]')?.textContent);
+    const nOf = S.lista('ofs').length;
+    ck.click(); await dorme(80);
+    await clicar(document.querySelector('[data-n=emitirOFs]')); await confirmar(true);
+    await espera(() => S.lista('ofs').length > nOf, 6000);
+    conf(S.lista('ofs').length === nOf + 1, 'OF emitida pela necessidade', S.lista('ofs').length - nOf);
+  });
+
+  await passo('v3.1 pedido do cliente pelo PDF', async () => {
+    await como('pcp');
+    await S.garantir(['produtos', 'vendas', 'clientes']);
+    // PDF de texto montado aqui (tudo inventado), como o que sai do sistema de compras do cliente
+    const d = (n) => U.somaDias(U.hoje(), n).split('-').reverse().join('/');
+    const linhas = ['ORDEM DE COMPRA 778899', 'Data: ' + d(0), 'Fornecedor: METALURGICA EXEMPLO', 'Pos Artigo Descricao Entrega Quantidade Un Preco',
+      '1 CX-1001 PINO 6 X 40 ' + d(30) + ' 1.500 PC 0,90', 'PADRAO', '2 CX-7777 PECA NOVA TESTE ' + d(45) + ' 20 PC 5,00', 'Total 1.450,00'];
+    const fazerPdf = () => {
+      let corpo = 'BT /F1 10 Tf 40 800 Td 14 TL\n' + linhas.map(t => `(${t}) Tj T*`).join('\n') + '\nET';
+      const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', `<< /Length ${corpo.length} >>\nstream\n${corpo}\nendstream`];
+      let s = '%PDF-1.4\n'; const off = [];
+      objs.forEach((o, i) => { off.push(s.length); s += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+      const x = s.length;
+      s += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + off.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('') + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF`;
+      return new File([s], 'OC 778899.pdf', { type: 'application/pdf' });
+    };
+    const abrir = async () => {
+      await ir('#/pedidos'); await clicar(await espera(() => document.querySelector('[data-ven=arquivo]')));
+      const je = await espera(() => janela()?.querySelector('[data-escolha=pdf]') && janela());
+      conf(!!je && je.querySelectorAll('.escolha-doc').length === 3, 'escolher: pedido PDF, nota XML ou programação');
+      await clicar(je.querySelector('[data-escolha=pdf]'));
+      const j = await espera(() => janela()?.querySelector('[data-doc=pdf] input') && janela());
+      const inp = j.querySelector('[data-doc=pdf] input'), dt = new DataTransfer(); dt.items.add(fazerPdf()); inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+      return espera(() => janela()?.querySelector('#tPdfItens') && janela(), 15000);
+    };
+    const j = await abrir();
+    conf(!!j, 'o PDF foi lido', erroJanela(janela()));
+    if (!j) return;
+    conf(j.querySelectorAll('[data-pdf-item]').length === 2 && j.querySelector('[name=pedido]').value === '778899', 'achou o pedido e os 2 itens', [j.querySelectorAll('[data-pdf-item]').length, j.querySelector('[name=pedido]').value]);
+    conf(/PINO 6 X 40 — PADRAO/.test(j.textContent) || /PADRAO/.test(j.textContent), 'linha de continuação entra na descrição');
+    await combo(j.querySelector('#pdfCli'), 'Cliente Exemplo');
+    await espera(() => j.querySelector('#pdfResumo'), 6000);
+    const st = (i) => j.querySelector(`[data-pdf-item="${i}"]`).textContent;
+    conf(/Novo/.test(st(0)) && /CF 02.0001/.test(st(0)) && /sem cadastro/.test(st(1)), 'item com cadastro acha a peça; o outro entra sem cadastro', [st(0), st(1)]);
+    await okJanela('Lançar os itens marcados'); conf(!erroJanela(j), 'itens lançados', erroJanela(j));
+    const novos = await espera(() => { const l = S.lista('vendas').filter(v => v.pedido === '778899'); return l.length === 2 && l }, 6000);
+    conf(novos && novos.some(v => v.qtd === 1500 && Number(v.valor) === 0.9 && S.get('produtos', v.produto_id)?.codigo === 'CF 02.0001'), 'pedido no Controle de Pedidos com quantidade e preço', novos && novos.map(v => [v.codigo, v.qtd, v.valor]));
+    UI.fecharTodas(); await dorme(200);
+    const j2 = await abrir(); await combo(j2.querySelector('#pdfCli'), 'Cliente Exemplo'); await espera(() => j2.querySelector('#pdfResumo'), 6000);
+    conf(/Todos os itens já estão lançados/.test(j2.querySelector('#pdfResumo').textContent) && !j2.querySelector('[name=it0]').checked, 'o mesmo PDF de novo não duplica');
+  });
+
+  await passo('v3.1 baixa da entrega pelo XML da nota emitida', async () => {
+    await como('pcp');
+    await S.garantir(['produtos', 'vendas', 'vendas_entregas', 'notas_saida', 'produto_saldos', 'clientes']);
+    const base = '35' + '2611' + '00000000000191' + '55' + '001' + '000008001' + '1' + '87654321';
+    let soma = 0, peso = 2; for (let i = base.length - 1; i >= 0; i--) { soma += Number(base[i]) * peso; peso = peso === 9 ? 2 : peso + 1; }
+    const chave = base + ((soma % 11) < 2 ? 0 : 11 - (soma % 11));
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><NFe><infNFe Id="NFe${chave}" versao="4.00">
+      <ide><natOp>VENDA</natOp><mod>55</mod><serie>1</serie><nNF>8001</nNF><dhEmi>${U.hoje()}T10:00:00-03:00</dhEmi><tpNF>1</tpNF></ide>
+      <emit><CNPJ>00000000000191</CNPJ><xNome>METALURGICA EXEMPLO LTDA</xNome><enderEmit><xMun>SAO PAULO</xMun><UF>SP</UF></enderEmit></emit>
+      <dest><CNPJ>99888777000166</CNPJ><xNome>CLIENTE EXEMPLO LTDA</xNome></dest>
+      <det nItem="1"><prod><cProd>CF 02.0001</cProd><xProd>PINO 6 X 40</xProd><CFOP>5101</CFOP><uCom>PC</uCom><qCom>100</qCom><vUnCom>0.90</vUnCom><vProd>90.00</vProd><xPed>4500-77</xPed></prod></det>
+      <total><ICMSTot><vProd>90.00</vProd><vNF>90.00</vNF></ICMSTot></total></infNFe></NFe><protNFe><infProt><chNFe>${chave}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>`;
+    const ped = S.lista('vendas').find(v => v.pedido === '4500-77'), entAntes = Number(ped.entregue) || 0;
+    const pr = S.lista('produtos').find(p => p.codigo === 'CF 02.0001'), estAntes = Number(S.get('produto_saldos', pr.id)?.saldo) || 0;
+    const escolher = async () => {
+      Telas.fabrica.baixarPelaNota(); const j = await espera(() => janela()?.querySelector('[data-doc=xml] input') && janela());
+      const inp = j.querySelector('[data-doc=xml] input'), dt = new DataTransfer(); dt.items.add(new File([xml], 'nfe-saida.xml', { type: 'text/xml' })); inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    await escolher();
+    const jc = await espera(() => janela()?.querySelector('#nsCli') && janela(), 6000);
+    conf(!!jc && /99\.888\.777\/0001-66/.test(jc.textContent), 'cliente sem CNPJ no cadastro: pede para escolher', jc?.textContent.slice(0, 120));
+    await combo(jc.querySelector('#nsCli'), 'Cliente Exemplo'); await okJanela('Continuar');
+    const js = await espera(() => janela()?.querySelector('#nsItens') && janela(), 6000);
+    conf(js && /pedido 4500-77/.test(js.textContent) && /100/.test(js.textContent), 'prévia: baixa no pedido que está na nota', js?.textContent.slice(0, 200));
+    await okJanela('Confirmar a baixa'); conf(!erroJanela(js), 'baixa confirmada', erroJanela(js));
+    const ns = await espera(() => S.lista('notas_saida').find(n => n.chave === chave && !n.desfeito_em), 6000);
+    conf(ns && ns.entregas === 1 && Number(ns.baixado) === 100, 'nota gravada com a entrega', ns);
+    await dorme(300);
+    conf(Number(S.get('vendas', ped.id).entregue) === entAntes + 100, 'entregue do pedido subiu 100', [entAntes, S.get('vendas', ped.id).entregue]);
+    conf(Number(S.get('produto_saldos', pr.id)?.saldo) === estAntes - 100, 'peça pronta saiu do estoque', [estAntes, S.get('produto_saldos', pr.id)?.saldo]);
+    await escolher(); await dorme(1200);
+    conf(/já foi baixada/.test(aviso()?.textContent || '') || /já foi baixada/.test(erroJanela(janela()) || ''), 'a mesma nota não baixa duas vezes', aviso()?.textContent);
+    UI.fecharTodas(); await dorme(100);
+    // relatório de entregas e desfazer pela tela
+    await ir('#/entregas'); await espera(() => document.querySelector('#entNotas'));
+    conf(!!document.querySelector('[data-ent=pdf]') && !!document.querySelector('[data-ent=excel]') && !!document.querySelector('[data-ent-grupo]'), 'entregas: período, agrupamento, PDF e Excel');
+    digitar(document.querySelector('[data-ent-grupo]'), 'produto'); await dorme(150);
+    conf(document.querySelectorAll('[data-ent-grupo-k]').length > 0 || /Nenhuma entrega/.test(document.getElementById('view').textContent), 'agrupa por peça');
+    await clicar(await espera(() => document.querySelector(`[data-ns-desfazer="${ns.id}"]`))); await confirmar(true);
+    await espera(() => S.get('notas_saida', ns.id)?.desfeito_em, 6000); await dorme(300);
+    conf(!!S.get('notas_saida', ns.id)?.desfeito_em && Number(S.get('vendas', ped.id).entregue) === entAntes && Number(S.get('produto_saldos', pr.id)?.saldo) === estAntes, 'desfazer volta o pedido e o estoque');
+  });
+
+  await passo('v3.1 exportação para a contabilidade e eventos', async () => {
+    await como('helena');
+    const m = U.somaMeses(U.hoje(), -1).slice(0, 7);
+    await S.garantir(['funcionarios', 'funcionarios_privado', 'rh_ponto', 'rh_ausencias', 'rh_feriados', 'rh_eventos_folha', 'rh_beneficios', 'rh_beneficio_vinculos']);
+    const x = Telas.rh.montarFolha(m);
+    const mat = x.arquivos.find(a => a.emp.registro === 'Matriz');
+    conf(x.arquivos.length === 3 && mat.emp.prefixo === 'JAF' && mat.emp.cnpj === '00.000.000/0001-91', 'três arquivos: JAF, JAFII e UPGRADE');
+    conf(mat.linhas.length === mat.pessoas.length * x.eventos.length && mat.linhas.every(l => l.length === 8 && l[7] === 'Funcionário' && typeof l[0] === 'number'), 'uma linha por pessoa e evento, com as 8 colunas do modelo', mat.linhas[0]);
+    conf(JSON.stringify(x.eventos.slice(0, 10).map(e => e.codigo)) === JSON.stringify([17, 39, 82, 103, 104, 109, 150, 194, 969, 1126]), 'eventos da contabilidade na ordem do arquivo', x.eventos.map(e => e.codigo));
+    const beto = mat.linhas.filter(l => l[1] === 'BETO SILVA');
+    conf(beto.find(l => l[4] === 17)?.[6] > 0, 'horas extras 50% do Beto saem no evento 17', beto.find(l => l[4] === 17));
+    conf(beto.find(l => l[4] === 969)?.[6] === null, 'evento manual sai em branco');
+    const vt = mat.linhas.find(l => l[4] === 109 && l[6] !== null);
+    conf(!!vt, 'desconto do VT calculado pelo cadastro de benefícios (evento 109)', mat.linhas.filter(l => l[4] === 109).map(l => l[6]));
+    // a tela
+    await ir('#/rh/ponto'); await clicar(await espera(() => document.querySelector('[data-ponto=exportar]')));
+    const j = await espera(() => janela()?.querySelector('#folhaArqs') && janela(), 8000);
+    conf(j && j.querySelectorAll('[data-folha]').length >= 3 && /JAF\.ORIGEM_\d{2}\.\d{6}\.xls/.test(j.textContent) && !!j.querySelector('#folhaConf'), 'exportação: conferência e um arquivo por empresa', j?.textContent.slice(0, 200));
+    let blob = null; const oPick = window.showSaveFilePicker, oUrl = URL.createObjectURL;
+    window.showSaveFilePicker = async () => ({ createWritable: async () => ({ write: async (b) => { blob = b; }, close: async () => {} }) });
+    URL.createObjectURL = (b) => { blob = b; return 'blob:teste'; };
+    Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true });
+    try { await clicar(botao('Baixar .xls', j.querySelector('[data-folha=Matriz]'))); await espera(() => blob, 8000); } finally { window.showSaveFilePicker = oPick; URL.createObjectURL = oUrl; delete navigator.canShare; }
+    conf(blob && blob.size > 1000, 'arquivo .xls gerado', blob?.size);
+    if (blob) { const b = new Uint8Array(await blob.slice(0, 8).arrayBuffer()); conf(b[0] === 0xD0 && b[1] === 0xCF && b[2] === 0x11 && b[3] === 0xE0, 'formato Excel 97-2003 (.xls), como o da contabilidade'); }
+    UI.fecharTodas(); await dorme(100);
+    // eventos: o código que já existe não é sobrescrito; um novo entra
+    await ir('#/rh/ajustes?aba=eventos'); await espera(() => document.querySelector('#lEventos'));
+    conf(document.querySelectorAll('#lEventos [data-evento]').length >= 11, 'lista dos eventos', document.querySelectorAll('#lEventos [data-evento]').length);
+    await clicar(document.querySelector('[data-aj=evento]')); const je = await espera(janela);
+    digitar(je.querySelector('[name=codigo]'), '17'); await dorme(80);
+    conf(/já existe/.test(je.textContent), 'avisa na hora que o código 17 já existe');
+    digitar(je.querySelector('[name=descricao]'), 'Tentando sobrescrever'); await okJanela('Cadastrar');
+    conf(/já existe/.test(erroJanela(je) || ''), 'o banco recusa sobrescrever o 17', erroJanela(je));
+    conf(S.lista('rh_eventos_folha').find(e => e.codigo === 17)?.descricao === 'Horas Extras 50%', 'o 17 continua igual');
+    digitar(je.querySelector('[name=codigo]'), '777'); await okJanela('Cadastrar');
+    conf(S.lista('rh_eventos_folha').some(e => e.codigo === 777 && e.descricao === 'Tentando sobrescrever'), 'evento novo cadastrado', erroJanela(je));
+    await clicar(await espera(() => document.querySelector('[data-evento="17"]'))); const j17 = await espera(janela);
+    conf([...j17.querySelectorAll('input[readonly]')].length === 2, 'evento da contabilidade: código e nome travados');
+    UI.fecharTodas(); await dorme(100);
+    await ir('#/rh/ajustes?aba=empresas'); await espera(() => document.querySelector('#lEmpFolha'));
+    conf(document.querySelectorAll('#lEmpFolha [data-emp]').length === 3, 'empresas da folha: Matriz, Filial e Upgrade');
+  });
+
+  await passo('v3.1 benefícios com desconto automático', async () => {
+    await como('helena');
+    await ir('#/rh/beneficios'); await espera(() => document.querySelector('[data-ben=novo]'));
+    const v = document.getElementById('view');
+    conf(/VR/.test(v.textContent) && /Wellhub/.test(v.textContent), 'painel com os benefícios');
+    await clicar(document.querySelector('[data-ben=novo]')); const j = await espera(janela);
+    digitar(j.querySelector('[name=nome]'), 'Plano odontológico (teste)'); digitar(j.querySelector('[name=valor]'), '50'); digitar(j.querySelector('[name=desconto_pct]'), '50');
+    await okJanela('Cadastrar'); conf(!erroJanela(j), 'benefício cadastrado', erroJanela(j));
+    const b = await espera(() => S.lista('rh_beneficios').find(x => x.nome === 'Plano odontológico (teste)'));
+    conf(b && Number(b.valor) === 50 && Number(b.desconto_pct) === 50, 'valor e desconto gravados', b);
+    const f = S.lista('funcionarios').find(x => x.nome === 'Beto Silva');
+    await ir('#/funcionario/' + f.id + '?aba=cargo'); await clicar(await espera(() => document.querySelector('[data-rh=beneficio]'), 6000));
+    const jv = await espera(janela);
+    const sel = jv.querySelector('select[name=beneficio_id]');
+    if (sel) digitar(sel, b.id);
+    await okJanela('Salvar'); conf(!erroJanela(jv), 'benefício dado ao Beto', erroJanela(jv));
+    conf(S.lista('rh_beneficio_vinculos').some(x => x.funcionario_id === f.id && x.beneficio_id === b.id), 'vínculo gravado');
+  });
+
   R.fim = true;
   console.log(`${R.ok} OK, ${R.falhas.length} falha(s)`, R.falhas);
   return R;

@@ -21,17 +21,19 @@ const INCR: Record<NomeTabela, string | null> = {
   produtos: 'atualizado_em', produto_estrutura: 'atualizado_em', mp_lotes: 'atualizado_em', vendas: 'atualizado_em', vendas_entregas: null,
   ofs: 'atualizado_em', preventivas: 'atualizado_em', registros: 'atualizado_em', necessidades: 'atualizado_em',
   vendas_releases: 'atualizado_em', vendas_release_itens: null,   // os itens de cada atualização só são lidos quando alguém abre (API.lerOnde)
+  produto_saldos: 'atualizado_em', produto_movs: null, notas_saida: 'atualizado_em',   // movimentos do estoque de peça pronta: só quando alguém abre a peça
+  rh_beneficios: 'atualizado_em', rh_beneficio_vinculos: 'atualizado_em', rh_eventos_folha: 'atualizado_em',
 }
 // tabelas grandes da fábrica: só são lidas quando alguém abre uma tela que precisa delas (o sistema abre rápido no celular)
-export const FABRICA: NomeTabela[] = ['produtos', 'produto_estrutura', 'mp_lotes', 'vendas', 'vendas_entregas', 'ofs', 'preventivas', 'registros', 'necessidades', 'vendas_releases']
+export const FABRICA: NomeTabela[] = ['produtos', 'produto_estrutura', 'mp_lotes', 'vendas', 'vendas_entregas', 'ofs', 'preventivas', 'registros', 'necessidades', 'vendas_releases', 'produto_saldos', 'notas_saida']
 const SOB_DEMANDA = new Set<NomeTabela>(FABRICA)
 const carregadas = new Set<NomeTabela>()
 const lendo = new Map<NomeTabela, Promise<void>>()
 // tabelas do RH por perfil
 const RH_BASE: NomeTabela[] = ['rh_setores', 'rh_cargos', 'rh_ausencias', 'rh_ponto', 'rh_ponto_meses', 'rh_feriados', 'rh_matrizes', 'rh_matriz_itens',
   'rh_matriz_niveis', 'rh_plano_treinos', 'rh_metas', 'rh_epis', 'rh_asos', 'rh_ocorrencias', 'rh_epi_catalogo']
-const RH_SENSIVEL: NomeTabela[] = ['funcionarios_privado', 'rh_historico', 'rh_anexos', 'rh_processos', 'rh_cargos_salarios', 'rh_indicadores']
-const CHAVE: Partial<Record<NomeTabela, string>> = { config: 'chave', funcionarios_privado: 'funcionario_id', perfis: 'user_id' }
+const RH_SENSIVEL: NomeTabela[] = ['funcionarios_privado', 'rh_historico', 'rh_anexos', 'rh_processos', 'rh_cargos_salarios', 'rh_indicadores', 'rh_beneficios', 'rh_beneficio_vinculos', 'rh_eventos_folha']
+const CHAVE: Partial<Record<NomeTabela, string>> = { config: 'chave', funcionarios_privado: 'funcionario_id', perfis: 'user_id', produto_saldos: 'produto_id' }
 const TODAS = Object.keys(INCR) as NomeTabela[]
 
 type Listas = { [K in NomeTabela]: Tabelas[K][] }
@@ -428,27 +430,58 @@ export const C = {
     if (v.prazo === hoje()) return { cod: 'atencao', txt: 'Atenção', cor: 'amarelo' }
     return { cod: 'atraso', txt: 'Atraso', cor: 'vermelho' }
   },
-  // necessidade (MRP): o saldo dos pedidos abertos "explodido" pela estrutura do produto
+  // estoque de peça pronta (OF soma, conjunto consome, entrega tira) — pode ficar negativo se faltou apontar
+  estoquePeca(produtoId: string): number { return Number(S.get('produto_saldos', produtoId)?.saldo) || 0 },
+  // necessidade (MRP): o saldo dos pedidos abertos "explodido" pela estrutura do produto.
+  // O estoque de peça pronta de cada nível é descontado antes de explodir para os componentes
+  // (conjunto pronto na prateleira não precisa de componente). Cada código aparece uma vez, com a necessidade bruta.
   necessidade(vendas: Venda[], margem = 0): { pecas: Map<string, number>; mp: Map<string, number> } {
-    const pecas = new Map<string, number>(), mp = new Map<string, number>()
-    const somar = (prodId: string, q: number, nivel: number) => {
-      if (nivel > 12 || q <= 0) return
-      pecas.set(prodId, (pecas.get(prodId) || 0) + q)
-      for (const e of C.componentes(prodId)) somar(e.filho_id, q * Number(e.qtd), nivel + 1)
-    }
+    const bruto = new Map<string, number>(), mp = new Map<string, number>()
     for (const v of vendas) {
       const pr = v.produto_id ? S.get('produtos', v.produto_id) : C.produtoPorCodigo(v.codigo)
       const s = C.saldoVenda(v)
-      if (pr && s > 0 && !v.cancelado) somar(pr.id, s + margem, 0)
+      if (pr && s > 0 && !v.cancelado) bruto.set(pr.id, (bruto.get(pr.id) || 0) + s + margem)
     }
-    // matéria-prima: só do que ainda falta fabricar (desconta o que já está em OF aberta)
+    // nível de cada código (o mais fundo em que aparece), para descontar o estoque uma vez só e na ordem certa
+    const nivel = new Map<string, number>()
+    const marcar = (id: string, n: number) => {
+      if (n > 12 || (nivel.get(id) ?? -1) >= n) return
+      nivel.set(id, n)
+      for (const e of C.componentes(id)) marcar(e.filho_id, n + 1)
+    }
+    for (const id of [...bruto.keys()]) marcar(id, 0)
+    for (const [id] of [...nivel].sort((a, b) => a[1] - b[1])) {
+      const q = bruto.get(id) || 0; if (q <= 0) continue
+      const liquido = Math.max(0, q - Math.max(0, C.estoquePeca(id)))
+      if (liquido > 0) for (const e of C.componentes(id)) bruto.set(e.filho_id, (bruto.get(e.filho_id) || 0) + liquido * Number(e.qtd))
+    }
+    const pecas = new Map([...bruto].filter(([, q]) => q > 0))
+    // matéria-prima: só do que ainda falta fabricar (desconta o estoque de peça pronta e o que já está em OF aberta)
     for (const [id, q] of pecas) {
       const pr = S.get('produtos', id); if (!pr?.mp_codigo || !pr.mp_qtd) continue
-      const falta = Math.max(0, q - C.emOFAberta(id))
+      const falta = Math.max(0, q - Math.max(0, C.estoquePeca(id)) - C.emOFAberta(id))
       const m = C.produtoPorCodigo(pr.mp_codigo); if (!m || !falta) continue
       mp.set(m.id, (mp.get(m.id) || 0) + falta * Number(pr.mp_qtd))
     }
     return { pecas, mp }
+  },
+  // o que precisa de OF: falta para os pedidos em aberto (necessário − estoque − em OF) ou abaixo do estoque mínimo
+  precisaOF(ate = ''): { p: Produto; q: number; est: number; em: number; min: number; falta: number; motivo: 'pedido' | 'minimo' | '' }[] {
+    limparCache()
+    if (!ate && cache.precisaOF) return cache.precisaOF
+    const vendas = S.lista('vendas').filter(v => !v.cancelado && C.saldoVenda(v) > 0 && (!ate || (v.prazo || '') <= ate))
+    const n = C.necessidade(vendas)
+    const ids = new Set([...n.pecas.keys(), ...S.lista('produto_saldos').filter(x => Number(x.minimo) > 0).map(x => x.produto_id)])
+    const l = [...ids].map(id => {
+      const p = S.get('produtos', id); if (!p || p.classe !== 'peca') return null
+      const q = n.pecas.get(id) || 0, est = C.estoquePeca(id), em = C.emOFAberta(id), min = Number(S.get('produto_saldos', id)?.minimo) || 0
+      const fPed = Math.max(0, U.r4(q - Math.max(0, est) - em)), fMin = Math.max(0, U.r4(q + min - Math.max(0, est) - em))
+      const falta = Math.max(fPed, fMin)
+      return { p, q, est, em, min, falta, motivo: (fPed > 0 ? 'pedido' : fMin > 0 ? 'minimo' : '') as 'pedido' | 'minimo' | '' }
+    }).filter((x): x is NonNullable<typeof x> => !!x)
+    const r = U.ordenar(l, x => -x.falta)
+    if (!ate) cache.precisaOF = r
+    return r
   },
 
   // ---------------- produção
@@ -578,6 +611,12 @@ export const C = {
       const atr = S.lista('ofs').filter(o => o.status === 'aberta' && o.prazo && o.prazo < hoje()).length
       if (atr) add('alto', `${U.plural(atr, 'OF')} com prazo vencido`, '#/ofs', atr)
     }
+    // peça e componente sem estoque para os pedidos (ou abaixo do mínimo) e sem OF aberta que cubra: abrir OF
+    if (Perm.pode('of_emitir') && S.lista('vendas').length) {
+      const l = C.precisaOF(), ped = l.filter(x => x.motivo === 'pedido').length, min = l.filter(x => x.motivo === 'minimo').length
+      if (ped) add('alto', `${U.plural(ped, 'peça', 'peças')} sem estoque para os pedidos: abrir OF`, '#/necessidade?f=of', ped)
+      if (min) add('medio', `${U.plural(min, 'peça', 'peças')} abaixo do estoque mínimo: abrir OF`, '#/necessidade?f=of', min)
+    }
     if (Perm.pode('vendas')) {
       const v = S.lista('vendas'), atr = v.filter(x => C.situacaoVenda(x).cod === 'atraso').length, hj = v.filter(x => C.situacaoVenda(x).cod === 'atencao').length
       if (atr) add('alto', `${U.plural(atr, 'item', 'itens')} de pedido de cliente em atraso`, '#/pedidos', atr)
@@ -610,7 +649,8 @@ export const C = {
 
 // contas que dependem de listas grandes ficam guardadas até os dados mudarem
 const cache: { v: number; consumo?: Map<number, number>; porRI?: Map<number, LoteMP>; estoqueMP?: Map<string, number>; porCod?: Map<string, Produto>
-  filhos?: Map<string, Estrutura[]>; pais?: Map<string, Estrutura[]>; emOF?: Map<string, number> } = { v: -1 }
+  filhos?: Map<string, Estrutura[]>; pais?: Map<string, Estrutura[]>; emOF?: Map<string, number>
+  precisaOF?: ReturnType<typeof C.precisaOF> } = { v: -1 }
 function limparCache(): void {
   if (cache.v === S.versao) return
   for (const k of Object.keys(cache)) if (k !== 'v') delete (cache as Record<string, unknown>)[k]

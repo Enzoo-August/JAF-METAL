@@ -185,7 +185,7 @@ async function chamarTabela<T>(fn: string): Promise<T[]> {
 }
 
 type Consulta = ReturnType<ReturnType<SupabaseClient['from']>['select']>
-const ORDEM: Partial<Record<string, string>> = { movimentos: 'seq', historico: 'id', perfis: 'criado_em', config: 'chave', funcionarios_privado: 'funcionario_id' }
+const ORDEM: Partial<Record<string, string>> = { movimentos: 'seq', historico: 'id', perfis: 'criado_em', config: 'chave', funcionarios_privado: 'funcionario_id', produto_saldos: 'produto_id' }
 
 async function lerBruto(tabela: string, filtrar: (q: Consulta) => Consulta, where?: { sql: string; vals: unknown[] }, uidForcado?: string): Promise<Record<string, unknown>[]> {
   const ord = ORDEM[tabela] || 'id'
@@ -212,7 +212,7 @@ async function lerBruto(tabela: string, filtrar: (q: Consulta) => Consulta, wher
       while (todos.length >= prox) { const p = await pagina(prox); todos.push(...p.linhas); prox += passo; if (p.linhas.length < passo) break }
     }
     // linha nova no meio da leitura pode empurrar outra para a página seguinte: não deixa repetir
-    const k = ord === 'id' || ord === 'seq' ? ord : 'id'
+    const k = ['id', 'seq', 'produto_id', 'funcionario_id', 'chave'].includes(ord) ? ord : 'id'
     if (todos.length > passo && todos[0] && k in todos[0]) { const vistos = new Set<unknown>(); return normalizar(todos.filter(x => !vistos.has(x[k]) && !!vistos.add(x[k]))) }
     return normalizar(todos)
   }

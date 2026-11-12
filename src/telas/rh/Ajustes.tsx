@@ -11,6 +11,7 @@ import { BuscaLista, Btn, Cab, Campo, Vazio } from '../../ui/base.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { Ic } from '../../ui/icones.tsx'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
+import { EmpresasFolha, EventosFolha } from './Folha.tsx'
 import { jornada, nomeF, opcoesPessoas, opcoesSetores, salarioCargo, sensivel } from './comum.tsx'
 
 // tipos de cargo (os da planilha "Cargo e salário" + os já usados)
@@ -23,9 +24,9 @@ export function TelaAjustesRH({ r }: { r: Rota }) {
   useEffect(() => { const q = r.q.get('aba'); if (q) setAba(q) }, [r.hash, r.q, setAba])
   return <>
     <Cab titulo="Ajustes do RH" sub="Cadastros de apoio e as regras usadas nas contas." />
-    <nav className="abas-tela">{([['cargos', 'Cargos'], ['setores', 'Setores'], ['feriados', 'Feriados'], ['jornada', 'Regras do ponto']] as const).map(([k, t]) =>
+    <nav className="abas-tela">{([['cargos', 'Cargos'], ['setores', 'Setores'], ['feriados', 'Feriados'], ['jornada', 'Regras do ponto'], ...(sensivel() ? [['eventos', 'Eventos da folha'], ['empresas', 'Empresas da folha']] : [])] as [string, string][]).map(([k, t]) =>
       <button key={k} type="button" data-aba={k} className={aba === k ? 'on' : ''} onClick={() => setAba(k)}>{t}</button>)}</nav>
-    {aba === 'cargos' ? <Cargos /> : aba === 'setores' ? <Setores /> : aba === 'feriados' ? <Feriados /> : <Jornada />}
+    {aba === 'cargos' ? <Cargos /> : aba === 'setores' ? <Setores /> : aba === 'feriados' ? <Feriados /> : aba === 'eventos' && sensivel() ? <EventosFolha /> : aba === 'empresas' && sensivel() ? <EmpresasFolha /> : <Jornada />}
   </>
 }
 

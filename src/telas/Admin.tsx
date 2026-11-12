@@ -461,6 +461,11 @@ function Copia() {
         ['RH - Plano treinos', S.lista('rh_plano_treinos') as unknown as Record<string, unknown>[]], ['RH - Cargos', S.lista('rh_cargos') as unknown as Record<string, unknown>[]],
         ['RH - Setores', S.lista('rh_setores') as unknown as Record<string, unknown>[]], ['RH - Feriados', S.lista('rh_feriados') as unknown as Record<string, unknown>[]]]
       if (sal) pares.push(['RH - Cargo e salário', S.lista('rh_historico') as unknown as Record<string, unknown>[]])
+      if (sal) {
+        abas.push(['RH - Benefícios', S.lista('rh_beneficios').map(({ id: _i, atualizado_em: _a, criado_em: _c, ...x }) => x)])
+        pares.push(['RH - Quem recebe benefício', S.lista('rh_beneficio_vinculos').map(v => ({ ...v, beneficio_id: S.get('rh_beneficios', v.beneficio_id)?.nome || '' })) as unknown as Record<string, unknown>[]])
+        abas.push(['RH - Eventos da folha', S.lista('rh_eventos_folha').map(e => ({ codigo: e.codigo, descricao: e.descricao, origem: e.origem, ativo: e.ativo }))])
+      }
       for (const [n, l] of pares) abas.push([n, lim(l)])
       abas.push(['RH - Matrizes', S.lista('rh_matriz_niveis').map(n => { const it = S.get('rh_matriz_itens', n.item_id)
         return { matriz: S.get('rh_matrizes', it?.matriz_id)?.nome || '', item: it?.nome || '', pessoa: nf(n.funcionario_id), nivel: n.nivel, data: d(n.data), obs: n.obs } })])
@@ -479,6 +484,8 @@ function Copia() {
       ['Pedidos de clientes', S.lista('vendas'), { cliente_id: (v) => S.get('clientes', v)?.nome || '', produto_id: np }],
       ['Entregas', S.lista('vendas_entregas'), { venda_id: (v) => { const x = S.get('vendas', v); return x ? `${x.cliente_nome} ${x.codigo || ''} ${x.pedido || ''}` : '' } }],
       ['Programações de clientes', S.lista('vendas_releases').map(({ layout: _l, ultimas_nf: _u, ...x }) => x), { cliente_id: (v) => S.get('clientes', v)?.nome || '' }],
+      ['Estoque de peça pronta', S.lista('produto_saldos').map(x => ({ id: x.produto_id, produto: np(x.produto_id), saldo: x.saldo, minimo: x.minimo, contado_em: x.contado_em, contado_por: x.contado_por }))],
+      ['Notas de saída', S.lista('notas_saida').map(({ itens: _i, ...x }) => x), { cliente_id: (v) => S.get('clientes', v)?.nome || '' }],
       ['Check-lists preventiva', S.lista('preventivas'), { maquina_id: (v) => S.get('maquinas', v)?.nome || '' }],
       ['Registros', S.lista('registros'), { maquina_id: (v) => S.get('maquinas', v)?.nome || '', cliente_id: (v) => S.get('clientes', v)?.nome || '', fornecedor_id: fn }],
     ]
@@ -499,7 +506,7 @@ function Copia() {
 interface SaudeBanco { bytes: number; anexos: number; historico: number; tabelas: { nome: string; bytes: number; linhas: number }[] }
 const NOME_TAB: Record<string, string> = { rh_anexos_conteudo: 'Arquivos anexados (RH)', registros: 'Registros (técnico, PCP, manutenção)', vendas: 'Pedidos de clientes', historico: 'Histórico de alterações',
   rh_ponto: 'Ponto', mp_lotes: 'Matéria-prima (R.I.)', ofs: 'Ordens de fabricação', produtos: 'Produtos', movimentos: 'Movimentações do almoxarifado', manutencoes: 'Ordens de serviço',
-  vendas_release_itens: 'Programações de clientes (mudanças)', vendas_entregas: 'Entregas a clientes', produto_estrutura: 'Estrutura de produtos',
+  vendas_release_itens: 'Programações de clientes (mudanças)', produto_movs: 'Estoque de peça pronta (movimentos)', vendas_entregas: 'Entregas a clientes', produto_estrutura: 'Estrutura de produtos',
   pecas: 'Peças do almoxarifado', pedido_itens: 'Itens de pedidos de compra', pedidos_compra: 'Pedidos de compra', funcionarios: 'Pessoas', lancamentos: 'Contas', preventivas: 'Check-lists de preventiva', rh_anexos: 'Anexos do RH (lista)' }
 function Saude() {
   const [s, setS] = useState<SaudeBanco | null>(null)

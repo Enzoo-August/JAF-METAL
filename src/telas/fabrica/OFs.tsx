@@ -199,7 +199,7 @@ export async function apontar(o: OF): Promise<unknown> {
     const d = lerForm(f)
     if (encerrar && (d.produzido === null || d.produzido === undefined)) throw new Error('Informe quantas peças foram produzidas')
     await API.rpc('apontar_of', { p: { ...d, id: o.id, status: encerrar ? 'encerrada' : 'aberta' } })
-    await App.gravou(['ofs']); aviso(encerrar ? `OF ${o.numero} encerrada.` : 'Apontamento salvo.'); return true
+    await App.gravou(['ofs', 'produto_saldos']); aviso(encerrar ? `OF ${o.numero} encerrada.` : 'Apontamento salvo.'); return true
   }
   return modal({
     titulo: `Apontar OF ${o.numero}`,

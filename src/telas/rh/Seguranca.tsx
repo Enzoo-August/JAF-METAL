@@ -19,7 +19,7 @@ const TIPOS_ASO = ['Admissional', 'Periódico', 'Retorno ao trabalho', 'Mudança
 const EPIS_COMUNS = ['Óculos de proteção', 'Protetor auricular tipo plug', 'Protetor auricular tipo concha', 'Luva de vaqueta', 'Luva nitrílica', 'Luva anticorte', 'Botina de segurança',
   'Avental de raspa', 'Manga de raspa', 'Máscara PFF2', 'Máscara de solda', 'Capacete', 'Protetor facial', 'Uniforme (calça e camisa)', 'Creme de proteção']
 const MOTIVOS_EPI = ['Admissional', 'Troca por desgaste', 'Danificado/Perdido', 'Alteração de função']
-const TXT_ASSIN: Record<string, string> = { facial: 'Assinado por foto (facial)', tela: 'Assinado na tela', papel: 'Assinar no papel' }
+const TXT_ASSIN: Record<string, string> = { facial: 'Assinado biometricamente', tela: 'Assinado na tela', papel: 'Assinar no papel' }
 
 // última entrega de cada EPI de cada pessoa (para saber o que precisa trocar)
 export function ultimasEntregas(): RhEpi[] {
@@ -326,6 +326,7 @@ function EscolhaAssinatura({ epis, marcar }: { epis: RhEpi[]; marcar: string[] }
       <label key={v} className="opcao"><input type="radio" name="modo" value={v} checked={modo === v} onChange={() => { setModo(v); setImg('') }} /><span><b>{t}</b><small>{d}</small></span></label>)}</div></div>
     <input type="hidden" name="assin" value={img} />
     {modo === 'facial' ? <FotoRosto key="f" aoMudar={setImg} /> : modo === 'tela' ? <AssinaturaTela key="t" aoMudar={setImg} /> : null}
+    <label className="check mt"><input type="checkbox" name="com_foto" data-epi="comFoto" /> <span>Incluir a foto do rosto no PDF <small className="fraco">— só para controle interno ou pedido da justiça. Sem marcar, o termo sai com o carimbo “assinado biometricamente” e a foto fica guardada no sistema.</small></span></label>
   </>
 }
 
@@ -340,7 +341,7 @@ export async function termoEpi(f: Funcionario, marcar: string[] = []): Promise<v
     botoes: [{ txt: 'Só gerar o PDF', cls: 'sec', validar: false, acao: async (frm: HTMLFormElement) => {
       const ids = [...frm.querySelectorAll<HTMLInputElement>('input[name^="e_"]:checked')].map(x => x.name.slice(2))
       if (!ids.length) throw new ErroApp('Marque pelo menos um EPI.')
-      await pdfTermo(f, ids)
+      await pdfTermo(f, ids, null, !!lerForm(frm).com_foto)
     } }, { txt: pode() ? 'Assinar e gerar o termo' : 'Gerar o termo', acao: async (frm: HTMLFormElement) => {
       const d = lerForm(frm)
       const ids = [...frm.querySelectorAll<HTMLInputElement>('input[name^="e_"]:checked')].map(x => x.name.slice(2))
@@ -350,24 +351,50 @@ export async function termoEpi(f: Funcionario, marcar: string[] = []): Promise<v
         await API.rpc('rh_assinar_epis', { p: { ids, modo: d.modo, conteudo: d.modo === 'papel' ? null : d.assin, tipo: d.modo === 'tela' ? 'image/png' : 'image/jpeg' } })
         await App.gravou(['rh_epis', 'rh_anexos'], { inteira: ['rh_anexos'] })
       }
-      await pdfTermo(f, ids, d.modo === 'papel' ? null : { modo: d.modo as 'facial' | 'tela', b64: d.assin })
+      await pdfTermo(f, ids, d.modo === 'papel' ? null : { modo: d.modo as 'facial' | 'tela', b64: d.assin, em: new Date().toISOString() }, !!d.com_foto)
       aviso(d.modo === 'papel' ? 'Termo pronto para imprimir e assinar.' : 'Termo assinado.')
     } }],
   })
 }
 // a imagem mais recente de assinatura dos EPIs escolhidos (para pôr no PDF)
-async function ultimaAssinatura(ids: string[]): Promise<{ modo: 'facial' | 'tela'; b64: string } | null> {
+interface Assin { modo: 'facial' | 'tela'; b64: string; em: string | null }
+async function ultimaAssinatura(ids: string[]): Promise<Assin | null> {
   const es = S.lista('rh_epis').filter(e => ids.includes(e.id) && (e.assinatura === 'facial' || e.assinatura === 'tela')).sort((a, b) => (a.assinado_em || '') < (b.assinado_em || '') ? 1 : -1)
   for (const e of es) {
     const a = anexosDe('rh_epis', e.id).filter(x => x.tipo.startsWith('image/') && /^Assinatura/.test(x.nome)).sort((x, y) => x.criado_em < y.criado_em ? 1 : -1)[0]
     if (!a) continue
-    try { const r = await API.rpc<{ conteudo: string }>('rh_baixar_anexo', { p_id: a.id }); return { modo: e.assinatura as 'facial' | 'tela', b64: r.conteudo } } catch { /* sem acesso: fica só o texto */ }
+    try { const r = await API.rpc<{ conteudo: string }>('rh_baixar_anexo', { p_id: a.id }); return { modo: e.assinatura as 'facial' | 'tela', b64: r.conteudo, em: e.assinado_em } } catch { /* sem acesso: fica só o texto */ }
   }
   return null
 }
-async function pdfTermo(f: Funcionario, ids: string[], nova: { modo: 'facial' | 'tela'; b64: string } | null = null) {
+// código de conferência da assinatura facial: começo do SHA-256 da foto guardada (a foto não vai no papel)
+async function codigoFoto(b64: string): Promise<string> {
+  try {
+    const h = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(b64)))
+    return [...h.slice(0, 6)].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase().replace(/(.{4})(?=.)/g, '$1-')
+  } catch { return '' }
+}
+// carimbo "assinado biometricamente": o desenho de leitura facial (cantos + rosto), sem a foto da pessoa
+function carimboBiometrico(doc: import('../../ui/arquivos.tsx').Doc, cx: number, y: number, quando: string, codigo: string): number {
+  const w = 22, h = 22, x = cx - w / 2, k = 5
+  doc.setDrawColor(40, 60, 90); doc.setLineWidth(0.7)
+  for (const [px, py, dx, dy] of [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]] as const) { doc.line(px, py, px + dx * k, py); doc.line(px, py, px, py + dy * k) }
+  doc.setLineWidth(0.6)
+  doc.ellipse(cx, y + h / 2, 6.2, 7.6, 'S')
+  doc.line(cx - 3, y + h / 2 - 2.2, cx - 1.6, y + h / 2 - 2.2); doc.line(cx + 1.6, y + h / 2 - 2.2, cx + 3, y + h / 2 - 2.2)
+  doc.line(cx, y + h / 2 - 1.2, cx - 0.8, y + h / 2 + 1.4); doc.line(cx - 0.8, y + h / 2 + 1.4, cx + 0.4, y + h / 2 + 1.4)
+  doc.line(cx - 2.6, y + h / 2 + 3.4, cx - 1, y + h / 2 + 4.4); doc.line(cx - 1, y + h / 2 + 4.4, cx + 1, y + h / 2 + 4.4); doc.line(cx + 1, y + h / 2 + 4.4, cx + 2.6, y + h / 2 + 3.4)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(40, 60, 90)
+  doc.text('ASSINADO BIOMETRICAMENTE', cx, y + h + 4.5, { align: 'center' })
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(90)
+  doc.text([quando ? 'em ' + quando : '', codigo ? 'código de conferência ' + codigo : ''].filter(Boolean).join(' · '), cx, y + h + 8, { align: 'center' })
+  doc.setTextColor(20); doc.setDrawColor(0); doc.setLineWidth(0.2)
+  return h + 10
+}
+async function pdfTermo(f: Funcionario, ids: string[], nova: Assin | null = null, comFoto = false) {
   const l = U.ordenar(S.lista('rh_epis').filter(e => ids.includes(e.id)), e => e.entrega)
   const assin = nova || await ultimaAssinatura(ids)
+  const codigo = assin?.modo === 'facial' ? await codigoFoto(assin.b64) : ''
   const emp = empresaDe() as Record<string, string>
   const p = S.get('funcionarios_privado', f.id)
   const empresa = razaoEmpresa().toUpperCase()
@@ -392,17 +419,19 @@ async function pdfTermo(f: Funcionario, ids: string[], nova: { modo: 'facial' | 
     // assinatura: foto do rosto / desenho, ou a linha para assinar à mão
     if (y > c.H - 95) { c.doc.addPage(); y = 20 }
     const x0 = c.W / 2 - 40
-    if (assin) {
+    if (assin?.modo === 'facial' && !comFoto) {
+      y += carimboBiometrico(c.doc as import('../../ui/arquivos.tsx').Doc, c.W / 2, y, assin.em ? U.dataHora(assin.em) : '', codigo)
+    } else if (assin) {
       const tipo = assin.modo === 'tela' ? 'PNG' : 'JPEG'
       const alt = assin.modo === 'facial' ? 30 : 18, larg = assin.modo === 'facial' ? 24 : 60
       try { c.doc.addImage('data:image/' + tipo.toLowerCase() + ';base64,' + assin.b64, tipo, c.W / 2 - larg / 2, y, larg, alt) } catch { /* imagem ruim: fica a linha */ }
       y += alt + 2
     } else y += 14
-    c.assinatura(f.nome.toUpperCase(), assin ? (assin.modo === 'facial' ? 'Assinatura facial (foto do rosto)' : 'Assinatura na tela') : 'Assinatura do funcionário', x0, y, 80)
+    c.assinatura(f.nome.toUpperCase(), assin ? (assin.modo === 'facial' ? (comFoto ? 'Assinatura facial (foto do rosto — uso interno)' : 'Assinatura biométrica (reconhecimento facial)') : 'Assinatura na tela') : 'Assinatura do funcionário', x0, y, 80)
     y += 14
     c.tabela({ ...c.estilo, startY: y, head: [['Data de entrega', 'Qtd.', 'EPI', 'CA', 'Tamanho', 'Assinatura', 'Ativo']],
       body: l.map(e => [U.data(e.entrega), U.qtd(e.quantidade), [e.epi, e.fabricante].filter(Boolean).join('\n'), e.ca || '', e.tamanho || 'N/A',
-        e.assinatura === 'facial' ? 'Assinado por foto (facial)' : e.assinatura === 'tela' ? 'Assinado na tela' : (nova && ids.includes(e.id) ? TXT_ASSIN[nova.modo] : ''),
+        e.assinatura === 'facial' ? 'Assinado biometricamente' : e.assinatura === 'tela' ? 'Assinado na tela' : (nova && ids.includes(e.id) ? TXT_ASSIN[nova.modo] : ''),
         S.get('funcionarios', e.funcionario_id)?.ativo ? 'Sim' : 'Não']),
       columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 11, halign: 'center' }, 3: { cellWidth: 16 }, 4: { cellWidth: 18, halign: 'center' }, 5: { cellWidth: 40 }, 6: { cellWidth: 12, halign: 'center' } } })
   })

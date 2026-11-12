@@ -25,6 +25,26 @@ const pdfjs = (): Promise<PdfJs> => carregando ||= (async () => {
   m.GlobalWorkerOptions.workerSrc = w.default
   return m
 })().catch((e) => { carregando = null; throw e })
+// texto de um PDF, linha por linha (pedido do cliente): junta os pedaços que estão na mesma altura da folha
+export async function linhasDoPdf(dados: ArrayBuffer): Promise<string[]> {
+  const m = await pdfjs()
+  const tarefa = m.getDocument({ data: new Uint8Array(dados), useWasm: false })
+  const doc = await tarefa.promise
+  const linhas: string[] = []
+  try {
+    for (let p = 1; p <= Math.min(doc.numPages, 30); p++) {
+      const tc = await (await doc.getPage(p)).getTextContent()
+      const g = new Map<number, { x: number; s: string }[]>()
+      for (const it of tc.items) {
+        if (!('str' in it) || !it.str.trim()) continue
+        const y = Math.round(it.transform[5] / 2), l = g.get(y) || []
+        l.push({ x: it.transform[4], s: it.str.trim() }); g.set(y, l)
+      }
+      for (const y of [...g.keys()].sort((a, b) => b - a)) linhas.push(g.get(y)!.sort((a, b) => a.x - b.x).map(i => i.s).join(' '))
+    }
+  } finally { void tarefa.destroy() }
+  return linhas
+}
 // deixa a biblioteca a caminho (chamado ao abrir telas que imprimem)
 export const prepararPrevia = (): void => { void pdfjs().catch(() => null) }
 

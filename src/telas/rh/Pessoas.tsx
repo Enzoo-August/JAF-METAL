@@ -1,4 +1,5 @@
 /* RH — Pessoas: lista (como a "Relação de funcionários"), ficha completa (como a "Consulta rápida") e cadastro (como o "Banco de dados") */
+import { BeneficiosDaPessoa } from './Beneficios.tsx'
 import { useEffect, useState, type ReactNode } from 'react'
 import { App } from '../../app/controle.tsx'
 import { API, ErroApp } from '../../lib/api.ts'
@@ -242,6 +243,7 @@ function CargoSalario({ f }: { f: Funcionario }) {
             try { await API.rpc('rh_excluir_historico', { p_id: x.id }); await App.gravou(['rh_historico'], { inteira: ['rh_historico'] }); aviso('Linha apagada.') } catch (e) { erro(e) }
           }}><Ic n="lixo" /></button>}</li>
       })}</ol> : <p className="sub">Nada registrado. A admissão e cada promoção, dissídio ou aumento aparecem aqui.</p>}</section>
+    <BeneficiosDaPessoa f={f} />
   </>
 }
 

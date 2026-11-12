@@ -58,7 +58,19 @@ export interface RhMeta { id: string; funcionario_id: string; objetivo: string; 
 export interface RhEpi { id: string; funcionario_id: string; epi: string; ca: string | null; entrega: string; validade_ca: string | null; vida_util_meses: number | null; quantidade: number; motivo: string | null; obs: string | null
   catalogo_id: string | null; fabricante: string | null; tamanho: string | null; assinatura: 'facial' | 'tela' | 'papel' | null; assinado_em: string | null; atualizado_em: string }
 export interface RhEpiCatalogo { id: string; descricao: string; onde_utiliza: string | null; fabricante: string | null; ca: string | null; validade_ca: string | null; tamanhos: string | null; vida_util_meses: number | null; obs: string | null; ativo: boolean; atualizado_em: string }
-export interface RhIndicador { id: string; competencia: string; receita: number | null; beneficios: number | null; encargos: number | null; outros: number | null; atualizado_em: string }
+export interface RhIndicador {
+  id: string; competencia: string; receita: number | null; beneficios: number | null; encargos: number | null; outros: number | null; atualizado_em: string
+  // números do mês para turnover e absenteísmo (planilha antiga ou digitados): vazio = calculado pelo sistema
+  ini: number | null; fim: number | null; adm: number | null; dem: number | null; prev_h: number | null; injust_h: number | null; just_h: number | null
+  he_h: number | null; trab_h: number | null; afast: number | null; origem: 'planilha' | 'manual' | null
+}
+export interface RhBeneficio {
+  id: string; nome: string; categoria: string; fornecedor: string | null; valor: number | null; desconto_pct: number; desconto_base: 'valor' | 'salario'
+  ativo: boolean; obs: string | null; criado_em: string; atualizado_em: string
+}
+export interface RhBeneficioVinculo { id: string; funcionario_id: string; beneficio_id: string; valor: number | null; desconto_pct: number | null; inicio: string | null; fim: string | null; obs: string | null; atualizado_em: string }
+export type OrigemEvento = 'he50' | 'he60' | 'he80' | 'he100' | 'faltas_dias' | 'dsr_dias' | 'atrasos_horas' | 'beneficio_desconto' | 'beneficio_empresa' | 'manual'
+export interface RhEventoFolha { id: string; codigo: number; descricao: string; origem: OrigemEvento; beneficio_id: string | null; ativo: boolean; ordem: number; padrao: boolean; atualizado_em: string }
 export interface RhAso { id: string; funcionario_id: string; tipo: string; data_exame: string; periodicidade_meses: number | null; resultado: string | null; medico: string | null; crm: string | null; obs: string | null; atualizado_em: string }
 export interface RhOcorrencia {
   id: string; numero: number; funcionario_id: string; tipo: 'verbal' | 'escrita' | 'suspensao'; data_ocorrencia: string; data_aplicacao: string | null
@@ -136,7 +148,21 @@ export interface ReleaseItem {
   id: string; release_id: string; venda_id: string | null; tipo: 'novo' | 'alterado' | 'saiu'; codigo: string | null; codigo_cliente: string | null
   descricao: string | null; pedido: string | null; prazo: string | null; saldo_antes: number | null; saldo_depois: number | null
 }
-export interface Entrega { id: string; venda_id: string; data: string; qtd: number; nf: string | null; obs: string | null; criado_por: string | null; criado_em: string }
+export interface Entrega { id: string; venda_id: string; data: string; qtd: number; nf: string | null; obs: string | null; criado_por: string | null; criado_em: string; nota_saida_id: string | null }
+// estoque de peça pronta (OF soma, conjunto consome, entrega tira)
+export interface ProdutoSaldo { produto_id: string; saldo: number; minimo: number; contado_em: string | null; contado_por: string | null; atualizado_em: string }
+export interface ProdutoMov {
+  id: string; produto_id: string; data: string; tipo: 'of' | 'consumo' | 'entrega' | 'contagem'; qtd: number; saldo: number | null; of_id: string | null
+  entrega_id: string | null; obs: string | null; criado_por: string | null; criado_nome: string | null; criado_em: string
+}
+// nota fiscal de saída (emitida pela JAF) que baixou entregas
+export interface BaixaNota { venda_id: string; pedido: string | null; prazo: string | null; saldo?: number; qtd: number }
+export interface ItemNotaSaida { n: number; codigo: string | null; descricao: string | null; qtd: number; produto_id: string | null; pedido: string | null; baixado: number; sobra: number; baixas: BaixaNota[] }
+export interface NotaSaida {
+  id: string; chave: string; numero: string | null; serie: string | null; emissao: string | null; cliente_id: string | null; cliente_nome: string | null; cnpj: string | null
+  valor: number | null; itens: ItemNotaSaida[]; entregas: number; baixado: number; desfeito_em: string | null; desfeito_por: string | null
+  criado_por: string | null; criado_nome: string | null; criado_em: string; atualizado_em: string
+}
 export interface ComponenteOF { codigo: string; qtd: number; ref: string | null }
 export interface OF {
   id: string; numero: number; tipo: 'componente' | 'conjunto'; produto_id: string; qtd: number; produzido: number | null; ri: number | null; kg: number | null
@@ -187,8 +213,10 @@ export interface Tabelas {
   rh_feriados: RhFeriado; rh_matrizes: RhMatriz; rh_matriz_itens: RhMatrizItem; rh_matriz_niveis: RhNivel; rh_plano_treinos: RhPlano
   rh_metas: RhMeta; rh_epis: RhEpi; rh_asos: RhAso; rh_ocorrencias: RhOcorrencia; rh_anexos: RhAnexo; rh_processos: RhProcesso
   rh_cargos_salarios: RhCargoSalario; rh_epi_catalogo: RhEpiCatalogo; rh_indicadores: RhIndicador
+  rh_beneficios: RhBeneficio; rh_beneficio_vinculos: RhBeneficioVinculo; rh_eventos_folha: RhEventoFolha
   produtos: Produto; produto_estrutura: Estrutura; mp_lotes: LoteMP; vendas: Venda; vendas_entregas: Entrega; ofs: OF; preventivas: Preventiva; registros: RegistroFab
   necessidades: Necessidade; vendas_releases: Release; vendas_release_itens: ReleaseItem
+  produto_saldos: ProdutoSaldo; produto_movs: ProdutoMov; notas_saida: NotaSaida
 }
 export type NomeTabela = keyof Tabelas
 
