@@ -8,6 +8,7 @@ import { aviso, erro } from '../ui/avisos.ts'
 import { Campo } from '../ui/base.tsx'
 import { esquecerLembrados } from '../ui/ganchos.ts'
 import { boasVindas } from '../telas/Ajuda.tsx'
+import * as Novidades from '../telas/Novidades.tsx'
 import { fecharTodas, janelaAberta, lerForm, modal } from '../ui/janelas.tsx'
 
 export type Fase =
@@ -83,7 +84,9 @@ export const App = {
     }
     esquecerLembrados()
     mudar({ t: 'sistema', n: ++nSistema })
-    if (!App.lerPref('boasVindas')) setTimeout(() => { if (fase.t === 'sistema') boasVindas() }, 600)
+    if (!App.lerPref('boasVindas')) { Novidades.marcarVistas(); setTimeout(() => { if (fase.t === 'sistema') boasVindas() }, 600) }
+    // depois de uma atualização: a janelinha "o que mudou", uma vez, só para quem foi afetado
+    else setTimeout(() => { if (fase.t === 'sistema') void Novidades.mostrar() }, 600)
   },
 
   async sair(): Promise<void> {

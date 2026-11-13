@@ -721,12 +721,37 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   await rpc(tec, 'salvar_processo', { produto_id: barra, passos: [] })
   conf((await q(`select processo from public.produtos where id = $1`, [barra]))[0].processo === null, 'lista vazia volta a montar pela estrutura')
 
+  // v3.4: componente comprado (CC) é matéria-prima: não ganha OF nem entra no passo a passo (pedido do Marcio, PCP)
+  {
+    const r = await q(`select public.eh_comprado('CC 03.0333') a, public.eh_comprado('cc03.0001') b, public.eh_comprado('CF 02.0001') c, public.eh_comprado('ACC 01.0001') d, public.eh_comprado(null) e`)
+    conf(r[0].a && r[0].b && !r[0].c && !r[0].d && !r[0].e, 'código CC reconhecido como componente comprado', r[0])
+    await novoProd({ codigo: 'CC 03.9001', descricao: 'Bucha comprada teste', mp_codigo: 'TB-INOX-T', mp_qtd: 0.05, mp_unidade: 'Kg', operacao: 'Fresar rasgo' })
+    const gb = await novoProd({ codigo: 'GB 01.9001', descricao: 'Conjunto com CC teste', operacao: 'Montar Conjunto', estrutura: [{ codigo: 'TUBO-T', qtd: 1 }, { codigo: 'CC 03.9001', qtd: 2 }] })
+    const ofG = await rpc(pcp, 'emitir_of', { produto_id: gb, qtd: 3, gerar_componentes: true })
+    const filG = await q(`select p.codigo from public.ofs f join public.produtos p on p.id = f.produto_id where f.pai_id = $1`, [ofG.id])
+    conf(ofG.componentes === 1 && filG.length === 1 && filG[0].codigo === 'TUBO-T', 'OF de conjunto: CF ganha OF, CC não', { ofG, filG })
+    const cg = (await q(`select componentes, passos from public.ofs where id = $1`, [ofG.id]))[0]
+    const ccLinha = cg.componentes.find(c => c.codigo === 'CC 03.9001')
+    conf(!!ccLinha && ccLinha.ref === null && Number(ccLinha.qtd) === 6, 'CC continua na lista do conjunto (qtd certa), sem nº de OF', cg.componentes)
+    conf(!cg.passos.some(x => /Fresar rasgo/.test(x.operacao)), 'operação do CC fica fora do passo a passo do conjunto', cg.passos)
+    await q(`delete from public.ofs where pai_id = $1 or id = $1`, [ofG.id])
+    // o caso do Marcio: CC comprado para ser fresado vira outro código (GB); a OF do GB usa o R.I. do CC, em peças
+    const ccId = (await q(`select id from public.produtos where codigo = 'CC 03.9001'`))[0].id
+    const gbF = await novoProd({ codigo: 'GB 01.9002', descricao: 'Bucha fresada teste', mp_codigo: 'CC 03.9001', mp_qtd: 1, mp_unidade: 'Pç', operacao: 'Fresar rasgo' })
+    const loteCC = await rpc(pcp, 'salvar_lote', { produto_id: ccId, qtd: 40, fornecedor_nome: 'Fornecedor CC teste', status: 'Aprovado' })
+    const ofF = await rpc(pcp, 'emitir_of', { produto_id: gbF, qtd: 15, ri: loteCC.ri })
+    const kgF = (await q(`select kg::float k from public.ofs where id = $1`, [ofF.id]))[0].k
+    conf(kgF === 15 && Number((await q('select public.consumo_lote($1) c', [loteCC.ri]))[0].c) === 15, 'OF do GB baixa 15 pç do R.I. do CC (CC tratado como matéria-prima)', { kgF })
+    await q(`delete from public.ofs where id = $1`, [ofF.id])
+  }
+
   // v2.9: o mesmo passo fica marcado na OF do conjunto e na OF do componente
   const ofC = await rpc(pcp, 'emitir_of', { produto_id: barra, qtd: 10, gerar_componentes: true })
   const fil = await q(`select f.id, p.codigo from public.ofs f join public.produtos p on p.id = f.produto_id where f.pai_id = $1`, [ofC.id])
   const ofTubo = fil.find(x => x.codigo === 'TUBO-T')?.id, ofFl = fil.find(x => x.codigo === 'FLANGE-T')?.id
   const passosDe = async (id) => (await q(`select passos from public.ofs where id = $1`, [id]))[0].passos
   const pC0 = await passosDe(ofC.id)
+  conf(fil.length === 2 && !fil.some(x => x.codigo === 'PARAF-T'), 'v3.4: peça de só conferir no recebimento (parafuso) não ganha OF', fil)
   conf(!!ofTubo && !!ofFl && pC0.length === 4 && pC0[1].operacao === 'Amassar a ponta' && pC0[1].peca === 'Tubo cortado teste', 'conjunto com as OFs dos componentes para sincronizar', { fil, pC0 })
   await rpc(beto, 'marcar_passo_of', { id: ofTubo, n: 2, feito: true })
   let pC = await passosDe(ofC.id)
@@ -776,6 +801,13 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   const it = (await q(`select id, produto_id, peca_id from public.pedido_itens where pedido_id = $1`, [ped.id]))[0]
   conf(it.produto_id === mpInox && it.peca_id === null, 'item do pedido é material (não peça)')
   conf((await ver(pcp, 'select * from public.pedidos_compra')).length === 0, 'PCP continua sem ver preços de compra')
+  // v3.4: o PCP acompanha os pedidos de matéria-prima em aberto, sem preço
+  const ab1 = await rpc(pcp, 'compras_mp_abertas')
+  const abIt = ab1.find(x => x.pedido_id === ped.id)
+  conf(!!abIt && abIt.codigo === 'TB-INOX-T' && Number(abIt.qtd) === 100 && Number(abIt.recebido) === 0 && abIt.prazo === '2026-12-01' && abIt.fornecedor === 'Aço Inox Teste Ltda',
+    'PCP vê o pedido de matéria-prima em aberto (material, quantidade, prazo e fornecedor)', ab1)
+  conf(!JSON.stringify(ab1).includes('2500') && !('valor' in abIt), 'a lista do PCP não traz preço', abIt)
+  conf((await erro(beto, 'compras_mp_abertas'))?.includes('perfil não pode'), 'produção não vê as compras')
 
   // recebimento: o R.I. nasce sozinho, sem duplicar
   conf((await erro(jul, 'receber_pedido', { pedido_id: ped.id, itens: [{ item_id: it.id, qtd: 10 }], conta: { valor: 100, vencimento: '2026-12-10' } }))?.includes('Só o Dono'), 'comercial não lança conta a pagar')
@@ -792,6 +824,7 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   await rpc(jul, 'receber_pedido', { pedido_id: ped.id, chave: '6f1c2a54-0000-4000-8000-000000000028', itens: [{ item_id: it.id, qtd: 40, status: 'Aprovado' }] })
   const p2 = (await q(`select p.status, i.recebido::float r from public.pedidos_compra p join public.pedido_itens i on i.pedido_id = p.id where p.id = $1`, [ped.id]))[0]
   conf(p1st === 'aguardando' && p2.status === 'recebido' && p2.r === 100, 'chegou tudo: pedido baixado sozinho', { p1st, p2 })
+  conf(!(await rpc(pcp, 'compras_mp_abertas')).some(x => x.pedido_id === ped.id), 'pedido que chegou todo sai da lista do PCP')
 
   // pedido cancelado devolve a necessidade para a lista
   const ped2 = await rpc(jul, 'salvar_pedido', { tipo: 'mp', fornecedor_id: forn, itens: [{ produto_id: mpInox, qtd: 20, valor: 500 }], necessidades: [nec2] })

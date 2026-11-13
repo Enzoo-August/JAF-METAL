@@ -22,7 +22,7 @@ export function passosSugeridos(prodId: string, nivel = 0): PassoProcesso[] {
   if (nivel < 4) {
     for (const e of C.componentes(prodId)) {
       const f = S.get('produtos', e.filho_id)
-      if (!f || f.classe !== 'peca' || /^\s*controlar\s+recebimento/i.test(f.operacao || '')) continue
+      if (!f || f.classe !== 'peca' || C.comprado(f)) continue
       if (f.mp_codigo || C.componentes(f.id).length) v.push(...passosSugeridos(f.id, nivel + 1))
     }
   }

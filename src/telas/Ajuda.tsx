@@ -10,6 +10,7 @@ import { Btn, Cab, Chips, Vazio } from '../ui/base.tsx'
 import type { Rota } from '../ui/ganchos.ts'
 import { Ic } from '../ui/icones.tsx'
 import { fecharTodas, modal } from '../ui/janelas.tsx'
+import * as Novidades from './Novidades.tsx'
 
 // ------------------------------------------------------------------ artigos (texto: *negrito*; passos numerados)
 type Bloco = string | { passos: string[] }
@@ -86,7 +87,7 @@ export const ARTIGOS: Artigo[] = [
     'O custo de cada peça já vem com IPI, frete e descontos da nota. O Dono e o Escritório podem lançar as parcelas no *contas a pagar* com os vencimentos da própria nota.',
     'A mesma nota não entra duas vezes (o sistema confere a chave de 44 números). Fornecedor novo é cadastrado com os dados da nota, e o sistema lembra qual código do fornecedor é qual peça: na próxima nota já vem tudo escolhido.'] },
   { id: 'mpAjuda', area: 'pcp', titulo: 'Matéria-prima: entrada, R.I. e inventário', palavras: 'matéria prima mp entrada ri lote certificado inventário etiqueta esm', perm: 'mp_ver', rota: '#/mp', corpo: [
-    'Cada chegada de material é um *R.I.* (lote), como na E.S.M. Em *Nova entrada* informe material, fornecedor, NF, peso e o certificado. Depois o sistema oferece imprimir a *etiqueta de Identificação de Material*.',
+    'Cada chegada de material é um *R.I.* (lote), como na E.S.M. Em *Nova entrada* informe material, fornecedor, NF, peso e o certificado. Depois o sistema oferece imprimir a *etiqueta de Identificação de Material*: a folha A4 sai com *4 etiquetas* (botão *Etiquetas* no alto da tela; digite até 4 números de R.I. e deixe em branco a posição já usada).',
     'O saldo do lote baixa sozinho com as OFs. Se aparecer o aviso amarelo de *R.I. usado em OF sem entrada*, é só tocar no R.I. e lançar a entrada que faltou.',
     'Para conferir a balança com o sistema use *Inventário*: digite o peso real de cada lote.'] },
   { id: 'programacao', area: 'comercial', titulo: 'Programação do cliente pelo arquivo (release)', palavras: 'programação release arquivo txt csv excel importar pedido cliente sap atualizar última atualização desfazer', perm: 'vendas_editar', rota: '#/pedidos', corpo: [
@@ -269,6 +270,7 @@ export function TelaAjuda({ r }: { r: Rota }) {
     <Cab titulo="Ajuda" sub="Digite o que quer fazer. Ex.: férias, retirar peça, ponto, advertência.">
       <Btn txt="Manual em PDF" icone="baixar" data-a="manual" onClick={() => manualPdf()} />
       <Btn txt="Boas-vindas" icone="ajuda" data-a="tour" onClick={() => boasVindas()} />
+      {Novidades.pendentes(true).length > 0 && <Btn txt="O que mudou" icone="ok" data-a="novidades" onClick={() => void Novidades.mostrar(true)} />}
     </Cab>
     <div className="ajuda-busca"><Ic n="busca" /><input type="search" id="buscaAjuda" placeholder="O que você quer fazer?" value={q} autoComplete="off" onChange={(e) => setQ(e.target.value)} aria-label="Buscar na ajuda" /></div>
     <Chips atual={area} aoEscolher={setArea} nome="aa" opcoes={chips} />

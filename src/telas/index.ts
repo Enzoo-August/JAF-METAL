@@ -6,6 +6,7 @@ import { registrarCadastroRapido } from '../ui/Combo.tsx'
 import type { Rota } from '../ui/ganchos.ts'
 import { TelaAdmin, TelaConta, trocarSenha } from './Admin.tsx'
 import { boasVindas, TelaAjuda } from './Ajuda.tsx'
+import * as Novidades from './Novidades.tsx'
 import * as Clientes from './Clientes.tsx'
 import * as Compras from './Compras.tsx'
 import * as Financeiro from './Financeiro.tsx'
@@ -97,7 +98,7 @@ export const Telas = {
   rh: { formPessoa, programarFerias, avisoFerias, formAusencia, formAso, formEpi, fichaEpi, termoEpi, formCatalogo, formOcorrencia, documento, exportarContabilidade, montarFolha },
   admin: { trocarSenha },
   inicio: { personalizar },
-  ajuda: { boasVindas },
+  ajuda: { boasVindas, novidades: Novidades },
 }
 
 // "Cadastrar …" direto da lista de sugestões de um campo

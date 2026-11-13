@@ -1,10 +1,10 @@
 /* Pedidos de clientes (planilha "Controle de Pedidos"): o que cada cliente pediu, prazo, quanto já foi entregue e o saldo.
  * Situação igual à da planilha: Ok (entregue) · Aguardando (no prazo) · Atenção (vence hoje) · Atraso · Cancelado.
  * Necessidade (aba "Necessidade" da planilha): o saldo dos pedidos explodido pela estrutura → peças e matéria-prima. */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { App } from '../../app/controle.tsx'
 import { API } from '../../lib/api.ts'
-import { C, S } from '../../lib/dados.ts'
+import { buscarComprasMP, C, comprasMPAbertas, S, situacaoCompraMP } from '../../lib/dados.ts'
 import { Perm } from '../../lib/perm.ts'
 import type { Venda } from '../../lib/tipos.ts'
 import * as U from '../../lib/util.ts'
@@ -203,6 +203,25 @@ export async function entregar(v: Venda): Promise<unknown> {
   })
 }
 
+// ---------------------------------------------------------------- compras de matéria-prima em andamento (v3.4, pedido do PCP)
+// o que já foi pedido ao fornecedor e ainda não chegou: atrasado, chega hoje, chega em poucos dias. Sem preço.
+function ComprasAbertas() {
+  useEffect(() => { void buscarComprasMP(true) }, [])
+  const l = comprasMPAbertas()
+  const nPed = new Set(l.map(x => x.pedido_id)).size
+  const verPed = Perm.pode('compras_ver')
+  return <section className="card mt" id="necCompras"><div className="card-cab"><h2>Compras em andamento</h2>
+    {nPed > 0 && <span className="sub">{U.plural(nPed, 'pedido')} de matéria-prima em aberto</span>}</div>
+    {l.length ? <div className="lista nec-lista" id="tNecCompras">{l.map(x => {
+      const s = situacaoCompraMP(x.prazo), falta = U.r4(x.qtd - x.recebido), un = C.unidadeMP(x.produto_id)
+      return <div key={x.pedido_id + x.produto_id} className="linha" data-compra={x.numero} data-sit={s.cod}>
+        <div className="meio"><b className="mono">{x.codigo}</b><small>{x.descricao}</small>
+          <small>{verPed ? <a href={'#/pedido/' + x.pedido_id}>Pedido nº {x.numero}</a> : <>Pedido nº {x.numero}</>}{x.fornecedor ? ' · ' + x.fornecedor : ''} · feito em {U.dataCurta(x.data)}{x.prazo ? ' · prazo ' + U.dataCurta(x.prazo) : ''}</small></div>
+        <div className="lado"><b>{U.qtd(falta)} {un}</b><small>{x.recebido > 0 ? `chegou ${U.qtd(x.recebido)} de ${U.qtd(x.qtd)}` : 'a chegar'}</small><Tag s={s} /></div></div> })}</div>
+      : <p className="sub">Nenhum pedido de compra de matéria-prima em aberto.</p>}
+  </section>
+}
+
 // ---------------------------------------------------------------- necessidade (MRP)
 function Necessidade({ r }: { r: Rota }) {
   const [ate, setAte] = useLembrar('nec.ate', '')
@@ -294,6 +313,7 @@ function Necessidade({ r }: { r: Rota }) {
             : <p className="sub">Nada pedido pelo PCP agora.{lancar && !comprar ? ' Use “Pedir compra” para mandar uma necessidade ao Comercial.' : ''}</p>}
           {viraram.length > 0 && <p className="peq mt">Já viraram pedido de compra: {viraram.map(x => `${S.get('produtos', x.produto_id)?.codigo || ''} (${U.qtd(x.qtd)} ${un(x.produto_id)})`).join(', ')}.</p>}
         </section>
+        {Perm.pode('compras_mp_ver') && <ComprasAbertas />}
         <section className="card mt"><div className="card-cab"><h2>Para os pedidos de clientes</h2></div>
           <p className="sub">Calculado sozinho: estrutura de cada conjunto × saldo dos pedidos, descontando o estoque{verPed ? ' e o que já está em pedido de compra' : ''}.</p>
           {mps.length > 0 && <div className="lista nec-lista mt" id="tNecM">{mps.map(x => <div key={x.p.id} className={'linha' + (sel.has('a:' + x.p.id) ? ' marcada' : '')}>

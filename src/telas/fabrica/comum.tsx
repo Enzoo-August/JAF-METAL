@@ -16,10 +16,10 @@ export function ComTabelas({ tabs, children }: { tabs: NomeTabela[]; children: (
 type AtalhoProduto = Omit<PropsCombo<Produto>, 'fonte' | 'campos' | 'rotuloDe'> & { classe?: 'mp' | 'peca'; todos?: boolean }
 // código JAF (peças, conjuntos e matéria-prima)
 export const ComboProduto = ({ classe, todos, ...p }: AtalhoProduto) => <Combo<Produto>
-  fonte={() => S.lista('produtos').filter(x => (!classe || x.classe === classe) && (todos || x.situacao !== 'inativo' || x.id === p.inicial?.id))}
+  fonte={() => S.lista('produtos').filter(x => (!classe || x.classe === classe || (classe === 'mp' && C.comprado(x))) && (todos || x.situacao !== 'inativo' || x.id === p.inicial?.id))}
   campos={(x) => [x.codigo, x.descricao, x.codigo_cliente || '']}
   rotuloDe={(x) => x.codigo ? `${x.codigo} — ${x.descricao}` : ''}
-  linha={(x) => <><b>{x.codigo}</b> <span>{x.descricao}</span>{x.classe === 'mp' ? <em>{U.qtd(C.estoqueMP().get(x.id) || 0)} kg</em> : x.codigo_cliente ? <em>{x.codigo_cliente}</em> : null}</>}
+  linha={(x) => <><b>{x.codigo}</b> <span>{x.descricao}</span>{x.classe === 'mp' || C.comprado(x) ? <em>{U.qtd(C.estoqueMP().get(x.id) || 0)} {x.classe === 'mp' ? 'kg' : 'pç'}</em> : x.codigo_cliente ? <em>{x.codigo_cliente}</em> : null}</>}
   {...p} />
 
 export const nomeProduto = (id: string | null | undefined): string => { const p = S.get('produtos', id); return p ? `${p.codigo} — ${p.descricao}` : '' }

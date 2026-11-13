@@ -28,7 +28,7 @@ window.roteiro = async function roteiro(filtro) {
   const est = (cod) => S.lista('pecas').find(p => p.codigo === cod)?.estoque;
   const aviso = () => [...document.querySelectorAll('#avisos .aviso')].at(-1);
   async function como(login) {
-    await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await dorme(700);
+    await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); Telas.ajuda.novidades.marcarVistas(); await App.entrarNoSistema(); await dorme(700);
     UI.fecharTodas();
   }
   const passo = async (nome, fn) => {
@@ -1305,6 +1305,74 @@ window.roteiro = async function roteiro(filtro) {
     conf(document.querySelectorAll('[data-pesq-setores] tbody tr').length === 4, 'uma linha por setor');
     conf(document.querySelectorAll('[data-pesq-comentarios] .linha').length === 2, 'opiniões escritas aparecem, sem nome');
     conf(/1,6 h/.test(document.querySelector('[data-pesq-horas]')?.textContent || ''), 'média de horas economizadas por semana', document.querySelector('[data-pesq-horas]')?.textContent);
+  });
+
+  await passo('v3.4 janelinha do que mudou: só para quem foi afetado, uma vez', async () => {
+    const entrarSemVer = async (login) => { await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); App.gravarPref('novidades', null); await App.entrarNoSistema() };
+    await entrarSemVer('pcp');
+    const j = await espera(() => document.querySelector('[data-novidades]'), 4000);
+    conf(!!j && j.dataset.novidades === '3.4', 'PCP vê a janelinha da 3.4 ao entrar', j?.dataset.novidades);
+    conf(document.querySelectorAll('[data-novidades] [data-nov-item]').length === 4, 'PCP vê as 4 novidades dele', document.querySelectorAll('[data-novidades] [data-nov-item]').length);
+    conf(/Atualização 3\.4/.test(document.querySelector('.janela h2, .janela-cab, .janela')?.textContent || ''), 'título diz a versão');
+    UI.fecharTodas(); await dorme(300);
+    await API.sair(); await API.entrar('pcp', 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await dorme(1200);
+    conf(!document.querySelector('[data-novidades]'), 'na segunda vez não aparece de novo');
+    await entrarSemVer('helena'); await dorme(1200);
+    conf(!document.querySelector('[data-novidades]'), 'RH não vê novidade que não é da área dele');
+    await entrarSemVer('operador'); await dorme(1200);
+    conf(!document.querySelector('[data-novidades]'), 'operador também não');
+    await entrarSemVer('comercial');
+    const jc = await espera(() => document.querySelector('[data-novidades]'), 4000);
+    conf(!!jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length === 2, 'Comercial vê só as 2 de compra de matéria-prima', jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length);
+    UI.fecharTodas();
+    await ir('#/ajuda'); const b = await espera(() => document.querySelector('[data-a=novidades]'));
+    conf(!!b, 'Ajuda tem o botão “O que mudou” para ver de novo');
+    await clicar(b); conf(!!await espera(() => document.querySelector('[data-novidades]')), 'o botão abre a janelinha de novo'); UI.fecharTodas();
+  });
+
+  await passo('v3.4 compras de matéria-prima em andamento e aviso no Início (PCP sem preço)', async () => {
+    await como('pcp');
+    await espera(() => C.alertas().some(a => /de matéria-prima atrasado/.test(a.txt)), 5000);
+    const al = C.alertas();
+    conf(al.some(a => /1 pedido de matéria-prima atrasado/.test(a.txt) && a.nivel === 'alto'), 'PCP: aviso do pedido de matéria-prima atrasado', al.map(a => a.txt));
+    conf(!al.some(a => /pedido de compra atrasado/.test(a.txt)), 'o aviso do almoxarifado não repete o de matéria-prima');
+    await ir('#/necessidade?aba=mp');
+    const t = await espera(() => document.querySelector('#tNecCompras'));
+    conf(!!t && t.querySelectorAll('.linha').length >= 2 && t.querySelectorAll('.linha').length === document.querySelectorAll('#tNecCompras [data-compra]').length, 'lista os pedidos de matéria-prima em aberto (um por material)', t?.querySelectorAll('.linha').length);
+    conf(!!t?.querySelector('[data-sit=atrasado]') && /Atrasado 2 dias/.test(t.textContent), 'mostra o atrasado com os dias', t?.textContent);
+    conf(!/R\$/.test(document.querySelector('#necCompras')?.textContent || 'R$'), 'sem preço na lista do PCP');
+    conf(!t.querySelector('a[href^="#/pedido/"]'), 'PCP não tem link para o pedido (tela de compras é do Comercial)');
+    await como('comercial');
+    conf(C.alertas().some(a => /de matéria-prima atrasado/.test(a.txt)), 'Comercial também vê o aviso');
+    await ir('#/comprar?aba=mp');
+    const t2 = await espera(() => document.querySelector('#tNecCompras'));
+    conf(!!t2?.querySelector('a[href^="#/pedido/"]'), 'Comercial abre o pedido pela lista');
+  });
+
+  await passo('v3.4 etiquetas de R.I. 4 por folha', async () => {
+    await como('pcp'); await ir('#/mp');
+    await clicar(await espera(() => document.querySelector('[data-mp=etiquetas]')));
+    const f = await espera(() => document.querySelector('.etq-grade'));
+    conf(!!f && f.querySelectorAll('.etq-pos').length === 4, 'janela com as 4 posições da folha');
+    const campo = (k) => document.querySelector(`[name=ri${k}]`);
+    digitar(campo(0), '1002'); digitar(campo(2), '9999'); await dorme(200);
+    conf(/AB05/.test(document.querySelector('[data-etq-info="1"]')?.textContent || ''), 'mostra o material do R.I. digitado', document.querySelector('[data-etq-info="1"]')?.textContent);
+    conf(/não encontrado/.test(document.querySelector('[data-etq-info="3"]')?.textContent || ''), 'avisa o R.I. que não existe');
+    const jan = f.closest('form');
+    jan.requestSubmit(); await dorme(400);
+    conf(!document.querySelector('.previa-pdf') && document.body.contains(f), 'não gera com R.I. errado');
+    digitar(campo(2), '1003'); await dorme(150);
+    jan.requestSubmit();
+    const pv = await espera(() => document.querySelector('.previa-pdf[data-previa=ok], .previa-pdf[data-previa=erro]'), 10000);
+    conf(pv?.dataset.previa === 'ok', 'gera a folha em PDF e abre a prévia', pv?.dataset.previa);
+    UI.fecharTodas(); await dorme(200);
+    // botão "Etiqueta" do R.I. abre a mesma folha com ele na 1ª posição
+    void Telas.fabrica.etiqueta(C.loteDoRI(1001));
+    await espera(() => document.querySelector('.etq-grade'));
+    conf(campo(0)?.value === '1001' && campo(1)?.value === '', 'botão Etiqueta do R.I. abre a folha com ele na 1ª posição');
+    await clicar(document.querySelector('[data-etq=ultimos]')); await dorme(200);
+    conf([1, 2, 3].every(k => campo(k)?.value), 'completar com os últimos R.I. preenche as posições vazias', [1, 2, 3].map(k => campo(k)?.value));
+    UI.fecharTodas();
   });
 
   await passo('v3.2 atrasados somados na semana e romaneio da carga', async () => {

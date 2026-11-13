@@ -82,19 +82,21 @@ function Ficha({ id }: { id: string }) {
   const mp = p.mp_codigo ? C.produtoPorCodigo(p.mp_codigo) : null
   const ofs = U.ordenar(S.lista('ofs').filter(o => o.produto_id === p.id), o => o.numero, true)
   const vendas = S.lista('vendas').filter(v => (v.produto_id === p.id || v.codigo === p.codigo) && !v.cancelado && C.saldoVenda(v) > 0)
-  const lotes = p.classe === 'mp' ? U.ordenar(S.lista('mp_lotes').filter(l => l.produto_id === p.id && C.saldoLote(l) > 0), l => l.ri) : []
+  // matéria-prima e componente comprado (CC) têm saldo pelos lotes (R.I.)
+  const porRI = p.classe === 'mp' || C.comprado(p)
+  const lotes = porRI ? U.ordenar(S.lista('mp_lotes').filter(l => l.produto_id === p.id && C.saldoLote(l) > 0), l => l.ri) : []
   const regs = U.ordenar(S.lista('registros').filter(r => r.codigo && U.sem(r.codigo) === U.sem(p.codigo)), r => r.data || '', true)
   const cli = S.get('clientes', p.cliente_id)
   return <>
     <Voltar para="#/produtos" txt="Produtos" />
     <header className="cab"><div><h1>{p.codigo} {p.situacao !== 'ativo' && <Tag s={SIT[p.situacao]} />}</h1><p className="sub">{p.descricao}</p></div>
       <div className="acoes">
-        {p.classe === 'peca' && p.situacao === 'ativo' && Perm.pode('of_emitir') && (mp || comps.length > 0) && <Btn txt="Emitir OF" icone="producao" cls="pri" onClick={() => void formOF({ produto_id: p.id })} />}
-        {p.classe === 'mp' && Perm.pode('mp_editar') && <Btn txt="Entrada de material" icone="entrada" cls="pri" onClick={() => void formLote({ produto_id: p.id })} />}
+        {p.classe === 'peca' && !C.comprado(p) && p.situacao === 'ativo' && Perm.pode('of_emitir') && (mp || comps.length > 0) && <Btn txt="Emitir OF" icone="producao" cls="pri" onClick={() => void formOF({ produto_id: p.id })} />}
+        {porRI && Perm.pode('mp_editar') && <Btn txt="Entrada de material" icone="entrada" cls="pri" onClick={() => void formLote({ produto_id: p.id })} />}
         {Perm.pode('produtos_editar') && <Btn txt="Editar" icone="lapis" cls="fantasma" data-prod-acao="editar" onClick={() => void formProduto(p)} />}
       </div></header>
     <div className="grade g4">
-      {p.classe === 'mp' ? <div className="kpi"><small>Em estoque</small><b>{U.qtd(C.estoqueMP().get(p.id) || 0)}</b><span>{U.plural(lotes.length, 'lote')} com saldo</span></div>
+      {porRI ? <div className="kpi"><small>Em estoque</small><b>{U.qtd(C.estoqueMP().get(p.id) || 0)}</b><span>{U.plural(lotes.length, 'lote')} com saldo</span></div>
         : <div className="kpi"><small>Em OF aberta</small><b>{U.qtd(C.emOFAberta(p.id))}</b><span>{U.plural(ofs.filter(o => o.status === 'aberta').length, 'OF')}</span></div>}
       <div className="kpi"><small>Pedidos em aberto</small><b>{U.qtd(U.soma(vendas, v => C.saldoVenda(v)))}</b><span>{U.plural(vendas.length, 'item', 'itens')}</span></div>
       {p.pecas_mes ? <div className="kpi"><small>Peças por mês</small><b>{U.qtd(p.pecas_mes)}</b><span>previsão</span></div> : null}

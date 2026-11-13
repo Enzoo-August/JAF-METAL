@@ -199,6 +199,14 @@ function ferramentas(doc: Doc, W: number, H: number): Pick<CtxDoc, 'texto' | 'as
   return { texto, assinatura }
 }
 
+// ---------------------------------------------------------------- folha livre (sem cabeçalho nem rodapé), ex.: etiquetas
+export async function pdfLivre(desenhar: (doc: Doc, W: number, H: number, logo: string | null) => void): Promise<Blob> {
+  await carregarLogo().catch(() => null)
+  const { doc } = await novo('p')
+  desenhar(doc, doc.internal.pageSize.getWidth(), doc.internal.pageSize.getHeight(), logo)
+  return doc.output('blob')
+}
+
 // ---------------------------------------------------------------- várias folhas num PDF só (ex.: OF do conjunto + OFs dos componentes)
 export interface FolhaPdf { titulo: string; sub: string; desenhar: (c: CtxDoc) => void }
 export async function pdfFolhas(folhas: FolhaPdf[], deitado = false): Promise<Blob> {

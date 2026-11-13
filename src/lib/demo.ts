@@ -464,6 +464,9 @@ async function demoFabrica(dia: (n: number) => string): Promise<void> {
   const aco = S.lista('fornecedores').find(f => f.nome === 'Aço Exemplo Distribuidora')!
   await API.rpc('salvar_pedido', { p: { tipo: 'mp', fornecedor_id: aco.id, data: dia(-3), prazo: dia(4), documento: 'Orçamento 2031',
     itens: [{ produto_id: cod('IA07.B01.cg').id, qtd: 40, valor: 1300 }] } })
+  // v3.4: um pedido de matéria-prima atrasado (para o aviso do Início e a lista "Compras em andamento")
+  await API.rpc('salvar_pedido', { p: { tipo: 'mp', fornecedor_id: aco.id, data: dia(-12), prazo: dia(-2), documento: 'Orçamento 2019',
+    itens: [{ produto_id: cod('AB05.A05.bb x bw').id, qtd: 120, valor: 2100 }] } })
   await API.rpc('salvar_necessidade', { p: { produto_id: cod('AE01.B01.ac').id, qtd: 50, prazo: dia(7), motivo: 'Estoque de segurança do pino' } })
   // pesquisa rápida (v3.3): o Dono de teste é o leitor do resultado, com respostas inventadas
   if (API._pg) await API._pg.exec(`insert into public.pesquisa_leitores (user_id) select user_id from public.perfis where perfil = 'dono' on conflict do nothing;

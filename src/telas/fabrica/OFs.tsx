@@ -108,7 +108,7 @@ function Ficha({ id }: { id: string }) {
       {o.componentes.length ? <div className="rolagem-x"><table className="tabela-fab"><thead><tr><th>Código</th><th className="so-largo">Descrição</th><th className="n">Qtd</th><th>OF comp.</th></tr></thead>
         <tbody>{o.componentes.map((c, i) => { const cp = C.produtoPorCodigo(c.codigo), ref = ofPorNumero(c.ref)
           return <tr key={i}><td>{cp ? <a href={'#/produto/' + cp.id}>{c.codigo}</a> : c.codigo}</td><td className="so-largo">{cp?.descricao || ''}</td><td className="n">{U.qtd(c.qtd)}</td>
-            <td>{ref ? <a href={'#/of/' + ref.id}>{ref.numero}</a> : c.ref || '—'}{ref ? <> <Tag s={C.situacaoOF(ref)} /></> : null}</td></tr> })}</tbody></table></div>
+            <td>{ref ? <a href={'#/of/' + ref.id}>{ref.numero}</a> : c.ref || (C.comprado(cp) ? <small className="col-sub">comprado (R.I.)</small> : '—')}{ref ? <> <Tag s={C.situacaoOF(ref)} /></> : null}</td></tr> })}</tbody></table></div>
         : <p className="sub">Este conjunto não tem estrutura cadastrada. Cadastre os componentes em Produtos.</p>}</section>}
     {filhas.length > 0 && <section className="card mt"><div className="card-cab"><h2>OFs geradas para os componentes</h2></div><div className="lista">{filhas.map(x => <LinhaOF key={x.id} o={x} />)}</div></section>}
   </>
@@ -144,7 +144,8 @@ function CorpoOF({ b }: { b: Partial<OF> }) {
         {mp && !lotes.length && <p className="nota amarela"><b>Atenção:</b> não há lote de {mp.codigo} com saldo. Lance a entrada em Matéria-prima.</p>}
       </fieldset>}
       {prod && temEstr && !b.id && <fieldset className="secao"><legend>Componentes</legend>
-        <Campo nome="gerar_componentes" rotulo="Emitir também as OFs dos componentes que são fabricados aqui" tipo="check" valor={true} /></fieldset>}
+        <Campo nome="gerar_componentes" rotulo="Emitir também as OFs dos componentes que são fabricados aqui" tipo="check" valor={true} />
+        {C.componentes(prod.id).some(e => C.comprado(S.get('produtos', e.filho_id))) && <p className="peq" data-cc-aviso="1">Componente comprado (CC ou só conferir no recebimento) não ganha OF: chega do fornecedor por R.I., como a matéria-prima.</p>}</fieldset>}
       <fieldset className="secao"><legend>Onde e quem</legend>
         <ComboMaquina id="ofMaq" nome="maquina_id" rotulo="Máquina (opcional)" placeholder="Onde vai ser feita" inicial={S.get('maquinas', b.maquina_id)} />
         <Campo nome="emitido_por" rotulo="Emitido por" valor={b.emitido_por || API.sessao?.nome} />
@@ -161,7 +162,7 @@ function CorpoOF({ b }: { b: Partial<OF> }) {
             <span className={saldoMP < precisa ? 'txt-vermelho' : ''}>Saldo em estoque: <b>{U.qtd(saldoMP)}</b>{lotes.length ? ` em ${U.plural(lotes.length, 'lote')}` : ''}</span>
             {lotes.length > 0 && <span className="peq">{lotes.slice(0, 5).map(l => `R.I. ${l.ri} (${U.qtd(C.saldoLote(l))})`).join(' · ')}</span>}</div>}
           {temEstr && <div className="resumo-bloco"><small>Componentes por {q ? U.qtd(q) : '1'} pç</small>
-            <ul className="resumo-lista">{C.componentes(prod.id).map(e => { const f = S.get('produtos', e.filho_id); return <li key={e.id}><span className="mono">{f?.codigo}</span> <span>{f?.descricao}</span> <b>{U.qtd(Number(e.qtd) * (q || 1))} {e.unidade}</b></li> })}</ul></div>}
+            <ul className="resumo-lista">{C.componentes(prod.id).map(e => { const f = S.get('produtos', e.filho_id); return <li key={e.id}><span className="mono">{f?.codigo}</span> <span>{f?.descricao}{C.comprado(f) && <small className="col-sub" data-cc="1">comprado · sem OF (R.I.)</small>}</span> <b>{U.qtd(Number(e.qtd) * (q || 1))} {e.unidade}</b></li> })}</ul></div>}
           {!b.id && <PreviaPassos p={prod} />}
         </>}
     </aside>

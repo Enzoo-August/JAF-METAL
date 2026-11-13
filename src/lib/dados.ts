@@ -214,7 +214,7 @@ export const C = {
     const m = produtoId ? S.get('produtos', produtoId) : null
     if (!m) return 'kg'
     const u = S.lista('produtos').find(x => x.mp_codigo && x.mp_unidade && x.mp_codigo.toLowerCase() === m.codigo.toLowerCase())?.mp_unidade
-    return (u || 'kg').toLowerCase().replace(/^kgs?$/, 'kg')
+    return (u || (C.comprado(m) ? 'pç' : 'kg')).toLowerCase().replace(/^kgs?$/, 'kg')
   },
   pedidosAbertosDoMaterial(produtoId: string): { ped: PedidoCompra; item: PedidoItem }[] {
     const r: { ped: PedidoCompra; item: PedidoItem }[] = []
@@ -397,6 +397,10 @@ export const C = {
     }
     return cache.estoqueMP
   },
+  // componente comprado (código CC, ex.: CC 03.0333): chega do fornecedor por R.I., como a matéria-prima — não ganha OF (mesma regra do banco: eh_comprado)
+  ehComprado(cod: string | null | undefined): boolean { return /^\s*CC[\s.-]*\d/i.test(cod || '') },
+  // peça que não se fabrica aqui: código CC ou operação "Controlar recebimento" (só conferir quando chega) — não precisa de OF
+  comprado(p: Produto | null | undefined): boolean { return !!p && (C.ehComprado(p.codigo) || /^\s*controlar\s+recebimento/i.test(p.operacao || '')) },
   produtoPorCodigo(cod: string | null | undefined): Produto | null {
     if (!cod) return null
     limparCache()
@@ -466,7 +470,10 @@ export const C = {
     const pecas = new Map([...bruto].filter(([, q]) => q > 0))
     // matéria-prima: só do que ainda falta fabricar (desconta o estoque de peça pronta e o que já está em OF aberta)
     for (const [id, q] of pecas) {
-      const pr = S.get('produtos', id); if (!pr?.mp_codigo || !pr.mp_qtd) continue
+      const pr = S.get('produtos', id)
+      // componente comprado (CC ou só conferir no recebimento): é comprado como a matéria-prima, em peças (desconta o que tiver contado como peça pronta)
+      if (C.comprado(pr)) { const f = Math.max(0, U.r4(q - Math.max(0, C.estoquePeca(id)))); if (f) mp.set(id, (mp.get(id) || 0) + f); continue }
+      if (!pr?.mp_codigo || !pr.mp_qtd) continue
       const falta = Math.max(0, q - Math.max(0, C.estoquePeca(id)) - C.emOFAberta(id))
       const m = C.produtoPorCodigo(pr.mp_codigo); if (!m || !falta) continue
       mp.set(m.id, (mp.get(m.id) || 0) + falta * Number(pr.mp_qtd))
@@ -481,7 +488,7 @@ export const C = {
     const n = C.necessidade(vendas)
     const ids = new Set([...n.pecas.keys(), ...S.lista('produto_saldos').filter(x => Number(x.minimo) > 0).map(x => x.produto_id)])
     const l = [...ids].map(id => {
-      const p = S.get('produtos', id); if (!p || p.classe !== 'peca') return null
+      const p = S.get('produtos', id); if (!p || p.classe !== 'peca' || C.comprado(p)) return null
       const q = n.pecas.get(id) || 0, est = C.estoquePeca(id), em = C.emOFAberta(id), min = Number(S.get('produto_saldos', id)?.minimo) || 0
       const fPed = Math.max(0, U.r4(q - Math.max(0, est) - em)), fMin = Math.max(0, U.r4(q + min - Math.max(0, est) - em))
       const falta = Math.max(fPed, fMin)
@@ -584,11 +591,20 @@ export const C = {
     if (Perm.pode('compras')) {
       const lc = C.listaCompras().filter(x => !x.jaPedido)
       if (lc.length) add('alto', `${U.plural(lc.length, 'peça')} abaixo do mínimo para comprar`, '#/compras/lista', lc.length)
-      const peds = S.lista('pedidos_compra').filter(p => p.status === 'aguardando')
+      const peds = S.lista('pedidos_compra').filter(p => p.status === 'aguardando' && p.tipo !== 'mp')   // os de matéria-prima têm aviso próprio (abaixo)
       const atr = peds.filter(p => p.prazo && p.prazo < hoje())
       if (atr.length) add('alto', `${U.plural(atr.length, 'pedido')} de compra ${atr.length === 1 ? 'atrasado' : 'atrasados'}`, '#/compras?f=atrasado', atr.length)
       const hj = peds.filter(p => p.prazo === hoje())
       if (hj.length) add('medio', `${U.plural(hj.length, 'pedido')} para chegar hoje`, '#/compras?f=hoje', hj.length)
+    }
+    // v3.4: pedidos de compra de matéria-prima atrasados ou perto de chegar (o PCP acompanha; pedido do Marcio)
+    if (Perm.pode('compras_mp_ver')) {
+      const ab = comprasMPAbertas()
+      const nPed = (cod: string) => new Set(ab.filter(x => situacaoCompraMP(x.prazo).cod === cod).map(x => x.pedido_id)).size
+      const atr = nPed('atrasado'), prox = nPed('proximo')
+      const rota = Perm.pode('necessidade') ? '#/necessidade?aba=mp' : '#/compras?f=aberto'
+      if (atr) add('alto', `${U.plural(atr, 'pedido')} de matéria-prima ${atr === 1 ? 'atrasado' : 'atrasados'}`, rota, atr)
+      if (prox) add('medio', `${U.plural(prox, 'pedido')} de matéria-prima ${prox === 1 ? 'chega' : 'chegam'} até ${U.dataCurta(U.somaDias(hoje(), PROXIMO_DIAS))}`, rota, prox)
     }
     if (Perm.pode('financeiro')) {
       const ab = S.lista('lancamentos').filter(l => !l.pago_em)
@@ -654,6 +670,51 @@ export const C = {
     const ordem = { alto: 0, medio: 1, baixo: 2 }
     return a.sort((x, y) => ordem[x.nivel] - ordem[y.nivel])
   },
+}
+
+// ---------------- compras de matéria-prima em aberto
+// Quem compra (Dono, Escritório, Almoxarifado, Comercial) calcula pelas tabelas de compra; o PCP não lê essas tabelas
+// (têm preço): recebe pela função compras_mp_abertas, que devolve só material, quantidade, prazo e fornecedor.
+export interface CompraMP { pedido_id: string; numero: number; data: string; prazo: string | null; fornecedor: string | null; produto_id: string; codigo: string; descricao: string; qtd: number; recebido: number }
+const comprasPCP = { uid: '', lista: [] as CompraMP[], em: 0, buscando: false }
+const pelaFuncao = (): boolean => Perm.pode('compras_mp_ver') && !S.tabelasDoPerfil().includes('pedidos_compra')
+export async function buscarComprasMP(forcar = false): Promise<void> {
+  if (!pelaFuncao() || comprasPCP.buscando) return
+  const uid = API.sessao?.uid || ''
+  if (comprasPCP.uid !== uid) { comprasPCP.uid = uid; comprasPCP.lista = []; comprasPCP.em = 0 }
+  if (!forcar && Date.now() - comprasPCP.em < 60000) return
+  comprasPCP.buscando = true
+  try {
+    const l = (await API.rpc<CompraMP[]>('compras_mp_abertas', {})) || []
+    const mudou = JSON.stringify(l) !== JSON.stringify(comprasPCP.lista)
+    comprasPCP.lista = l
+    if (mudou) avisar()
+  } catch { /* sem internet: tenta de novo daqui a pouco */ } finally { comprasPCP.em = Date.now(); comprasPCP.buscando = false }
+}
+export function comprasMPAbertas(): CompraMP[] {
+  if (!Perm.pode('compras_mp_ver')) return []
+  if (pelaFuncao()) { void buscarComprasMP(); return comprasPCP.uid === (API.sessao?.uid || '') ? comprasPCP.lista : [] }
+  const r: CompraMP[] = []
+  for (const x of S.lista('pedido_itens')) {
+    if (!x.produto_id || !(Number(x.recebido) < Number(x.qtd))) continue
+    const ped = S.get('pedidos_compra', x.pedido_id)
+    if (!ped || ped.tipo !== 'mp' || ped.status !== 'aguardando') continue
+    const p = S.get('produtos', x.produto_id)
+    r.push({ pedido_id: ped.id, numero: ped.numero, data: ped.data, prazo: ped.prazo, fornecedor: S.get('fornecedores', ped.fornecedor_id)?.nome || null,
+      produto_id: x.produto_id, codigo: p?.codigo || '', descricao: p?.descricao || '', qtd: Number(x.qtd), recebido: Number(x.recebido) })
+  }
+  return r.sort((a, b) => (a.prazo || '9') < (b.prazo || '9') ? -1 : (a.prazo || '9') > (b.prazo || '9') ? 1 : a.numero - b.numero)
+}
+// situação de cada pedido de matéria-prima: atrasado, chega hoje, chega nos próximos 3 dias…
+export const PROXIMO_DIAS = 3
+export function situacaoCompraMP(prazo: string | null): Situacao {
+  const h = hoje()
+  if (!prazo) return { cod: 'semprazo', txt: 'Sem prazo', cor: 'cinza' }
+  if (prazo < h) { const n = U.dias(prazo, h); return { cod: 'atrasado', txt: `Atrasado ${U.plural(n, 'dia')}`, cor: 'vermelho' } }
+  if (prazo === h) return { cod: 'proximo', txt: 'Chega hoje', cor: 'amarelo' }
+  const n = U.dias(h, prazo)
+  if (n <= PROXIMO_DIAS) return { cod: 'proximo', txt: n === 1 ? 'Chega amanhã' : `Chega em ${n} dias`, cor: 'amarelo' }
+  return { cod: 'aguardando', txt: `Prazo ${U.dataCurta(prazo)}`, cor: 'azul' }
 }
 
 // contas que dependem de listas grandes ficam guardadas até os dados mudarem

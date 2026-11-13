@@ -17,6 +17,7 @@ const R = {
   compras: ['dono', 'escritorio', 'almoxarife'],                       // compra de peças do almoxarifado
   compras_mp: ['dono', 'escritorio', 'almoxarife', 'comercial'],       // pedido de compra de matéria-prima
   compras_ver: ['dono', 'escritorio', 'almoxarife', 'comercial'],      // lista de pedidos de compra
+  compras_mp_ver: ['dono', 'escritorio', 'almoxarife', 'comercial', 'pcp'],   // acompanhar os pedidos de matéria-prima em aberto (o PCP sem preço)
   fornecedores: ['dono', 'escritorio', 'almoxarife', 'comercial'],
   precos: ['dono', 'escritorio', 'almoxarife', 'manutencao'],
   historico_mov: ALMOX,
