@@ -12,6 +12,12 @@ export interface ItemNovidade { titulo: string; txt: string; pode: () => boolean
 export interface Novidade { versao: string; data: string; itens: ItemNovidade[] }
 
 export const NOVIDADES: Novidade[] = [
+  { versao: '3.5', data: '2026-11-16', itens: [
+    { titulo: 'Serviço externo pela nota fiscal', pode: () => Perm.pode('pcp_reg_editar'), ir: { rota: '#/reg/servico_externo', txt: 'Abrir Serviço externo' },
+      txt: 'Em Serviço externo, botão "Ler nota (XML ou PDF)". A nota de saída para o fornecedor lança os serviços; a nota de retorno dá a baixa na quantidade que voltou. Você confere tudo antes de gravar.' },
+    { titulo: 'Retorno parcial continua em aberto', pode: () => Perm.pode('pcp_reg_editar'),
+      txt: 'O serviço externo só sai de "Em aberto" quando volta tudo. Voltou uma parte? Ele mostra quanto voltou e continua na lista. A ficha também mostra o nº da NF de saída e de retorno.' },
+  ] },
   { versao: '3.4', data: '2026-11-13', itens: [
     { titulo: 'Etiquetas de R.I.: 4 por folha', pode: () => Perm.pode('mp_editar'), ir: { rota: '#/mp', txt: 'Abrir Matéria-prima' },
       txt: 'Em Matéria-prima, botão "Etiquetas": digite até 4 números de R.I. e sai uma folha A4 com 4 etiquetas no modelo Form. 001. Deixe em branco a posição que já foi usada na folha.' },

@@ -163,6 +163,13 @@ export interface NotaSaida {
   valor: number | null; itens: ItemNotaSaida[]; entregas: number; baixado: number; desfeito_em: string | null; desfeito_por: string | null
   criado_por: string | null; criado_nome: string | null; criado_em: string; atualizado_em: string
 }
+// v3.5: nota fiscal de serviço externo (saída da JAF para o fornecedor ou retorno do fornecedor)
+export interface ItemNotaServico { registro_id: string; numero: number | null; codigo: string | null; qtd: number | null; antes?: { status: string | null; concluido_em: string | null; nf_retorno: string | null } }
+export interface NotaServico {
+  id: string; chave: string; tipo: 'saida' | 'retorno'; numero: string | null; serie: string | null; emissao: string | null; fornecedor: string | null; cnpj: string | null
+  origem: 'xml' | 'pdf' | null; itens: ItemNotaServico[]; qtd: number; desfeito_em: string | null; desfeito_por: string | null
+  criado_por: string | null; criado_nome: string | null; criado_em: string; atualizado_em: string
+}
 export interface ComponenteOF { codigo: string; qtd: number; ref: string | null }
 export interface OF {
   id: string; numero: number; tipo: 'componente' | 'conjunto'; produto_id: string; qtd: number; produzido: number | null; ri: number | null; kg: number | null
@@ -216,7 +223,7 @@ export interface Tabelas {
   rh_beneficios: RhBeneficio; rh_beneficio_vinculos: RhBeneficioVinculo; rh_eventos_folha: RhEventoFolha
   produtos: Produto; produto_estrutura: Estrutura; mp_lotes: LoteMP; vendas: Venda; vendas_entregas: Entrega; ofs: OF; preventivas: Preventiva; registros: RegistroFab
   necessidades: Necessidade; vendas_releases: Release; vendas_release_itens: ReleaseItem
-  produto_saldos: ProdutoSaldo; produto_movs: ProdutoMov; notas_saida: NotaSaida
+  produto_saldos: ProdutoSaldo; produto_movs: ProdutoMov; notas_saida: NotaSaida; notas_servico: NotaServico
 }
 export type NomeTabela = keyof Tabelas
 

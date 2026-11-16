@@ -20,7 +20,7 @@ export const AREAS: Area[] = [
     { rota: 'entregas', rot: 'Relatório de entregas', ic: 'calendario', perm: 'menu_pcp', chaves: 'entregas por data semana produto programação pdf excel' },
     { rota: 'necessidade', rot: 'Necessidade', ic: 'lista', perm: 'necessidade', nao: 'menu_comercial', chaves: 'mrp necessidade de componentes mp falta fabricar pedir compra emitir of' },
     { rota: 'pronto', rot: 'Peça pronta (estoque)', ic: 'estoque', perm: 'of_menu', chaves: 'estoque de peça pronta acabada componente conjunto contagem inventário mínimo' },
-    { rota: 'reg/servico_externo', rot: 'Serviço externo', ic: 'fornecedor', perm: 'pcp_reg_ver', chaves: 'sol serv ext tratamento zincagem fora retorno' },
+    { rota: 'reg/servico_externo', rot: 'Serviço externo', ic: 'fornecedor', perm: 'pcp_reg_ver', chaves: 'sol serv ext tratamento zincagem fora retorno nota nf xml pdf danfe remessa' },
     { rota: 'reg/requisicao', rot: 'Requisições', ic: 'retirar', perm: 'pcp_reg_ver', chaves: 'req componentes requisição' },
     { rota: 'producao', rot: 'Ordens de produção', ic: 'producao', perm: 'pcp', nao: 'of_menu', chaves: 'op fila produzindo pronta entrega' },
     { rota: 'equipe', rot: 'Equipe', ic: 'equipe', perm: 'pcp', nao: 'rh_ver', chaves: 'funcionários pessoas' },

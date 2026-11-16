@@ -21,11 +21,11 @@ const INCR: Record<NomeTabela, string | null> = {
   produtos: 'atualizado_em', produto_estrutura: 'atualizado_em', mp_lotes: 'atualizado_em', vendas: 'atualizado_em', vendas_entregas: null,
   ofs: 'atualizado_em', preventivas: 'atualizado_em', registros: 'atualizado_em', necessidades: 'atualizado_em',
   vendas_releases: 'atualizado_em', vendas_release_itens: null,   // os itens de cada atualização só são lidos quando alguém abre (API.lerOnde)
-  produto_saldos: 'atualizado_em', produto_movs: null, notas_saida: 'atualizado_em',   // movimentos do estoque de peça pronta: só quando alguém abre a peça
+  produto_saldos: 'atualizado_em', produto_movs: null, notas_saida: 'atualizado_em', notas_servico: 'atualizado_em',   // movimentos do estoque de peça pronta: só quando alguém abre a peça
   rh_beneficios: 'atualizado_em', rh_beneficio_vinculos: 'atualizado_em', rh_eventos_folha: 'atualizado_em',
 }
 // tabelas grandes da fábrica: só são lidas quando alguém abre uma tela que precisa delas (o sistema abre rápido no celular)
-export const FABRICA: NomeTabela[] = ['produtos', 'produto_estrutura', 'mp_lotes', 'vendas', 'vendas_entregas', 'ofs', 'preventivas', 'registros', 'necessidades', 'vendas_releases', 'produto_saldos', 'notas_saida']
+export const FABRICA: NomeTabela[] = ['produtos', 'produto_estrutura', 'mp_lotes', 'vendas', 'vendas_entregas', 'ofs', 'preventivas', 'registros', 'necessidades', 'vendas_releases', 'produto_saldos', 'notas_saida', 'notas_servico']
 const SOB_DEMANDA = new Set<NomeTabela>(FABRICA)
 const carregadas = new Set<NomeTabela>()
 const lendo = new Map<NomeTabela, Promise<void>>()

@@ -1265,6 +1265,19 @@ button.kpi { display: block; width: 100%; text-align: left; font: inherit; curso
 .escolha-doc b { display: block; font-size: 1rem; }
 .escolha-doc small { display: block; color: var(--texto-2); margin-top: 2px; }
 .ns-baixa { color: var(--verde) !important; }
+/* v3.5 serviço externo pela nota fiscal */
+.sx-item .check { align-items: flex-start; }
+.sx-item .linha-campos { margin-top: 8px; }
+.sx-baixa { color: var(--verde) !important; }
+.sx-item > small { display: block; margin-top: 4px; white-space: normal; }
+.sx-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sx-baixas { margin: 6px 0 0; padding-left: 18px; font-size: .88rem; }
+.sx-baixas li + li { margin-top: 3px; }
+.sx-resumo { display: flex; flex-wrap: wrap; gap: 10px 24px; background: var(--cartao); border: 1px solid var(--borda); border-radius: var(--raio); padding: 12px 16px; }
+.sx-resumo > div { min-width: 0; }
+.sx-resumo small { display: block; color: var(--texto-2); font-size: .76rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.sx-resumo b { display: block; font-size: 1.05rem; overflow-wrap: anywhere; }
+.sx-resumo span { display: block; color: var(--texto-3); font-size: .82rem; }
 .ind-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .ind-card { text-align: left; font: inherit; color: var(--texto); background: var(--cartao); border: 1px solid var(--borda); border-left: 6px solid var(--verde); border-radius: var(--raio); padding: 16px 18px; box-shadow: var(--sombra); cursor: pointer; }
 .ind-card.ruim { border-left-color: var(--vermelho); }

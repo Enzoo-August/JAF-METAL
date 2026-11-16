@@ -487,6 +487,7 @@ function Copia() {
       ['Programações de clientes', S.lista('vendas_releases').map(({ layout: _l, ultimas_nf: _u, ...x }) => x), { cliente_id: (v) => S.get('clientes', v)?.nome || '' }],
       ['Estoque de peça pronta', S.lista('produto_saldos').map(x => ({ id: x.produto_id, produto: np(x.produto_id), saldo: x.saldo, minimo: x.minimo, contado_em: x.contado_em, contado_por: x.contado_por }))],
       ['Notas de saída', S.lista('notas_saida').map(({ itens: _i, ...x }) => x), { cliente_id: (v) => S.get('clientes', v)?.nome || '' }],
+      ['Notas do serviço externo', S.lista('notas_servico').map(({ itens, ...x }) => ({ ...x, servicos: itens.map(i => i.numero).filter(Boolean).join(', ') }))],
       ['Check-lists preventiva', S.lista('preventivas'), { maquina_id: (v) => S.get('maquinas', v)?.nome || '' }],
       ['Registros', S.lista('registros'), { maquina_id: (v) => S.get('maquinas', v)?.nome || '', cliente_id: (v) => S.get('clientes', v)?.nome || '', fornecedor_id: fn }],
     ]

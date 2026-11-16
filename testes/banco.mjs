@@ -1115,6 +1115,70 @@ conf(Number(s2.custo) === 2.5 && s2.partes[0].documento === 'NF 1', 'saída depo
   await q('delete from public.avaliacoes'); await q('delete from public.pesquisa_leitores')
 }
 
+// ---------------------------------------------------------------- v3.5: serviço externo pela nota fiscal (saída e retorno) — dados inventados
+{
+  const pcp = (await q(`select user_id from public.perfis where login = 'paula.pcp'`))[0].user_id
+  const rh = (await q(`select user_id from public.perfis where login = 'rita.rh'`))[0].user_id
+  const beto = (await q(`select user_id from public.perfis where login = 'beto'`))[0].user_id
+  const tec = (await q(`select user_id from public.perfis where login = 'tiago.tec'`))[0].user_id
+  const chaveNF = (num) => {   // chave de 44 números com o dígito certo (módulo 11)
+    const b = '35' + '2611' + '00000000000191' + '55' + '001' + String(num).padStart(9, '0') + '1' + '12345678'
+    let s = 0, p = 2; for (let i = b.length - 1; i >= 0; i--) { s += Number(b[i]) * p; p = p === 9 ? 2 : p + 1 }
+    return b + ((s % 11) < 2 ? 0 : 11 - (s % 11))
+  }
+  const reg = async (id) => (await q(`select numero, status, concluido_em::text c, dados from public.registros where id = $1`, [id]))[0]
+  const kS = chaveNF(9001), idS = '7a1c2a54-0000-4000-8000-000000000351'
+  const saida = { id: idS, tipo: 'saida', chave: kS, numero: '9001', serie: '1', emissao: '2026-11-10', fornecedor: 'Zincagem Teste', cnpj: '22.333.444/0001-55', origem: 'xml',
+    itens: [{ codigo: 'CF 02.9101', descricao: 'Pino teste', titulo: 'Zincar branco 8 a 12 microns', qtd: 500, of: '260871' },
+            { codigo: 'GB 01.9101', descricao: 'Bucha teste', titulo: 'Cementar e revenir', qtd: null, peso: '120 kg' }] }
+  conf((await erro(beto, 'lancar_nota_servico', saida))?.includes('perfil não pode') && (await erro(rh, 'lancar_nota_servico', saida))?.includes('perfil não pode')
+    && (await erro(tec, 'lancar_nota_servico', saida))?.includes('perfil não pode'), 'v3.5: produção, RH e Técnico não lançam nota de serviço externo')
+  conf((await erro(pcp, 'lancar_nota_servico', { ...saida, id: undefined, itens: [{ codigo: 'CF 02.9101', qtd: 10 }] }))?.includes('descrição do serviço'), 'saída: sem a descrição do serviço não lança')
+  conf((await erro(pcp, 'lancar_nota_servico', { ...saida, id: undefined, chave: '123' }))?.includes('chave'), 'saída: sem a chave de 44 números não lança')
+  const maxAntes = Number((await q(`select coalesce(max(numero), 0) m from public.registros where tipo = 'servico_externo'`))[0].m)
+  const s1 = await rpc(pcp, 'lancar_nota_servico', saida)
+  const [rA, rB] = [s1.itens[0].registro_id, s1.itens[1].registro_id]
+  const a0 = await reg(rA), b0 = await reg(rB)
+  conf(s1.registros === 2 && a0.numero === maxAntes + 1 && b0.numero === maxAntes + 2, 'saída: cada item vira um serviço externo, com a numeração seguida', { s1, a0, b0, maxAntes })
+  conf(a0.status === 'Fora (no fornecedor)' && a0.dados.fornecedor === 'Zincagem Teste' && a0.dados.nf_saida === '9001' && a0.dados.saida === '2026-11-10' && a0.dados.of === '260871'
+    && Number(a0.dados.qtd) === 500 && a0.c === null, 'saída: fornecedor, NF, data de saída, OF e quantidade gravados', a0)
+  conf(!('qtd' in b0.dados) && b0.dados.peso === '120 kg', 'saída: item só com peso fica sem quantidade', b0.dados)
+  conf((await rpc(pcp, 'lancar_nota_servico', saida)).repetido === true && Number((await q(`select count(*) n from public.registros where tipo = 'servico_externo' and dados->>'nf_saida' = '9001'`))[0].n) === 2,
+    'toque duplo não lança duas vezes')
+  conf((await erro(pcp, 'lancar_nota_servico', { ...saida, id: undefined }))?.includes('já foi lançada'), 'a mesma nota (outra leitura) não entra de novo')
+
+  const kR1 = chaveNF(7001), kR2 = chaveNF(7002), kR3 = chaveNF(7003)
+  const ret = (chave, numero, itens, emissao = '2026-11-14') => ({ tipo: 'retorno', chave, numero, emissao, fornecedor: 'Zincagem Teste', itens })
+  const n1 = await rpc(pcp, 'lancar_nota_servico', ret(kR1, '7001', [{ registro_id: rA, qtd: 200 }]))
+  const a1 = await reg(rA)
+  conf(Number(a1.dados.qtd_retorno) === 200 && a1.status === 'Fora (no fornecedor)' && a1.c === '2026-11-14' && a1.dados.nf_retorno === '7001',
+    'retorno de uma parte: soma na Qde retornada e continua fora', a1)
+  conf((await erro(pcp, 'lancar_nota_servico', ret(kR2, '7002', [{ registro_id: rA, qtd: 400 }])))?.includes('só 300 em aberto')
+    && Number((await reg(rA)).dados.qtd_retorno) === 200 && !(await q(`select 1 from public.notas_servico where chave = $1`, [kR2])).length,
+    'retorno maior do que está em aberto é recusado e nada muda')
+  const n2 = await rpc(pcp, 'lancar_nota_servico', ret(kR2, '7002', [{ registro_id: rA, qtd: 300 }, { registro_id: rB, qtd: 80 }], '2026-11-16'))
+  const a2 = await reg(rA), b2 = await reg(rB)
+  conf(Number(a2.dados.qtd_retorno) === 500 && a2.status === 'Retornou' && a2.c === '2026-11-16' && a2.dados.nf_retorno === '7001, 7002', 'voltou o resto: fica "Retornou", com as duas NFs', a2)
+  conf(b2.status === 'Retornou' && Number(b2.dados.qtd_retorno) === 80, 'serviço sem quantidade (só peso): o retorno fecha', b2)
+  conf(n2.qtd === 380 && n2.registros === 2, 'nota de retorno guarda o total', n2)
+  conf((await ver(pcp, 'select * from public.notas_servico')).length >= 3 && (await ver(rh, 'select * from public.notas_servico')).length === 0, 'PCP vê as notas do serviço externo; RH não')
+
+  conf((await erro(pcp, 'desfazer_nota_servico', s1.id))?.includes('desfaça primeiro a nota de retorno'), 'não desfaz a saída com retorno já lançado')
+  conf((await erro(beto, 'desfazer_nota_servico', n2.id))?.includes('perfil não pode'), 'produção não desfaz')
+  await rpc(pcp, 'desfazer_nota_servico', n2.id)
+  const a3 = await reg(rA), b3 = await reg(rB)
+  conf(Number(a3.dados.qtd_retorno) === 200 && a3.status === 'Fora (no fornecedor)' && a3.c === '2026-11-14' && a3.dados.nf_retorno === '7001', 'desfazer o retorno volta o serviço como estava', a3)
+  conf(!('qtd_retorno' in b3.dados) && !('nf_retorno' in b3.dados) && b3.status === 'Fora (no fornecedor)' && b3.c === null, 'desfazer o único retorno limpa a Qde retornada e a data', b3)
+  conf((await erro(pcp, 'desfazer_nota_servico', n2.id))?.includes('já foi desfeita'), 'não desfaz duas vezes')
+  const n2b = await rpc(pcp, 'lancar_nota_servico', ret(kR2, '7002', [{ registro_id: rA, qtd: 100 }]))
+  conf(!!n2b.id && Number((await reg(rA)).dados.qtd_retorno) === 300, 'depois de desfeita, a mesma nota pode ser lançada de novo')
+  await rpc(pcp, 'desfazer_nota_servico', n2b.id); await rpc(pcp, 'desfazer_nota_servico', n1.id)
+  await rpc(pcp, 'desfazer_nota_servico', s1.id)
+  conf(!(await q(`select 1 from public.registros where id = any($1::uuid[])`, [[rA, rB]])).length, 'desfazer a saída exclui os serviços que ela lançou')
+  conf((await erro(pcp, 'lancar_nota_servico', ret(kR3, '7003', [{ registro_id: rA, qtd: 1 }])))?.includes('não existe mais'), 'retorno de serviço excluído é recusado')
+  conf((await erro('anon', 'lancar_nota_servico', saida)) !== null && (await erro('anon', 'desfazer_nota_servico', s1.id)) !== null, 'anônimo não lança nem desfaz nota')
+}
+
 // ---------------------------------------------------------------- funções liberadas
 const sb = await rpc(dono, 'saude_banco')
 conf(sb.bytes > 0 && sb.tabelas.length > 0 && sb.historico > 0, 'Dono vê o espaço usado no banco', sb)

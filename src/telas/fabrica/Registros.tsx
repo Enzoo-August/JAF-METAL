@@ -17,6 +17,7 @@ import { ComboMaquina } from '../../ui/Combo.tsx'
 import { useLembrar, type Rota } from '../../ui/ganchos.ts'
 import { confirmar, lerForm, modal } from '../../ui/janelas.tsx'
 import { ComTabelas, usados } from './comum.tsx'
+import { lerNotaServico, notasLidas, servicoRetornou } from './ServicoNota.tsx'
 
 type TipoCampo = 'text' | 'area' | 'date' | 'num' | 'dinheiro' | 'time'
 // k: coluna do registro (numero, data, codigo, titulo, status, prazo, concluido_em, responsavel, valor, maquina_id) ou "d.xxx" (dentro de dados)
@@ -74,7 +75,8 @@ export const DEFS: DefReg[] = [
   { tipo: 'servico_externo', nome: 'Serviço externo', sing: 'serviço externo', aba: 'Sol. Serv. Ext.', area: 'pcp', form: 'Sol. S. Ext.', status: ['Fora (no fornecedor)', 'Retornou'], fechados: ['Retornou'],
     campos: [C_('numero', 'Seq.', { t: 'num' }), C_('data', 'Data', { t: 'date' }), C_('codigo', 'Produto', { lista: true }), C_('d.descricao', 'Descrição'), C_('titulo', 'Descrição do serviço', { lista: true, req: true, sug: true }),
       C_('d.qtd', 'Qde', { t: 'num', lista: true }), C_('d.peso', 'Peso'), C_('d.of', 'OF'), C_('d.fornecedor', 'Fornecedor', { lista: true, sug: true }), C_('d.saida', 'Data saída', { t: 'date' }),
-      C_('concluido_em', 'Data retorno', { t: 'date' }), C_('d.qtd_retorno', 'Qde retornada', { t: 'num' }), C_('responsavel', 'Emitido por', { sug: true }), C_('status', 'Status')] },
+      C_('concluido_em', 'Data retorno', { t: 'date' }), C_('d.qtd_retorno', 'Qde retornada', { t: 'num' }), C_('d.nf_saida', 'NF saída'), C_('d.nf_retorno', 'NF retorno'),
+      C_('responsavel', 'Emitido por', { sug: true }), C_('status', 'Status')] },
   { tipo: 'requisicao', nome: 'Requisições de componentes', sing: 'requisição', aba: 'Req. Componentes', area: 'pcp', form: 'Req. Comp.', status: ['Em aberto', 'Entregue'], fechados: ['Entregue'],
     campos: [C_('numero', 'Nº Req.', { t: 'num' }), C_('data', 'Data', { t: 'date' }), C_('codigo', 'Cód. componente', { lista: true, req: true }), C_('d.qtd', 'Qde req.', { t: 'num', lista: true }), C_('d.of', 'OF', { lista: true }),
       C_('responsavel', 'Solicitado por', { sug: true }), C_('d.entregue', 'Qde entregue', { t: 'num' }), C_('d.entregue_por', 'Entregue por', { sug: true }), C_('concluido_em', 'Data entrega', { t: 'date' }), C_('status', 'Status')] },
@@ -110,7 +112,9 @@ const podeCriar = (d: DefReg) => podeEditarReg(d) || ((d.tipo === 'alteracao' ||
 
 // ---------------------------------------------------------------- valores
 const ler = (r: Partial<RegistroFab>, k: string): unknown => k.startsWith('d.') ? (r.dados || {})[k.slice(2)] : (r as Record<string, unknown>)[k]
-const fechado = (d: DefReg, r: RegistroFab) => d.fechados.includes(r.status || '') || (!!r.concluido_em && !['peca_critica', 'setup', 'desenho', 'copia'].includes(d.tipo))
+// serviço externo: só fecha quando voltou tudo (o retorno de uma parte tem data, mas continua em aberto); o status vale em qualquer caixa ("RETORNOU")
+const fechado = (d: DefReg, r: RegistroFab) => d.tipo === 'servico_externo' ? servicoRetornou(r)
+  : d.fechados.some(s => s.toLowerCase() === (r.status || '').trim().toLowerCase()) || (!!r.concluido_em && !['peca_critica', 'setup', 'desenho', 'copia'].includes(d.tipo))
 const atrasado = (d: DefReg, r: RegistroFab) => !fechado(d, r) && !!r.prazo && r.prazo < U.hoje()
 function mostrar(c: CampoReg, v: unknown): string {
   if (v === null || v === undefined || v === '') return ''
@@ -165,6 +169,9 @@ function Lista({ d, r }: { d: DefReg; r: Rota }) {
   return <>
     <Cab titulo={d.nome} sub={`Planilha: aba “${d.aba}”${d.form ? ` · impresso “${d.form}”` : ''}`}>
       {podeCriar(d) && <Btn txt={d.tipo === 'alteracao' ? 'Solicitar alteração' : d.tipo === 'melhoria' ? 'Sugerir melhoria' : 'Novo'} icone="mais" cls="pri" data-reg-acao="novo" onClick={() => void formReg(d)} />}
+      {d.tipo === 'servico_externo' && podeEditarReg(d) && <>
+        <Btn txt="Ler nota (XML ou PDF)" icone="nota" cls="sec" data-reg-acao="nota" onClick={() => void lerNotaServico()} />
+        <Btn txt="Notas lidas" icone="lista" cls="fantasma" data-reg-acao="notas" onClick={() => void notasLidas()} /></>}
       <Btn txt="PDF" icone="imprimir" cls="fantasma" onClick={() => pdfLista(d, l)} />
       <Btn txt="Excel" icone="planilha" cls="fantasma" onClick={() => excel(d.nome + '.xlsx', [[d.aba.slice(0, 30), l.map(x => linhaExcel(d, x))]])} />
     </Cab>

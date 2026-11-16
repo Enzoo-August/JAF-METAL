@@ -1311,9 +1311,9 @@ window.roteiro = async function roteiro(filtro) {
     const entrarSemVer = async (login) => { await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); App.gravarPref('novidades', null); await App.entrarNoSistema() };
     await entrarSemVer('pcp');
     const j = await espera(() => document.querySelector('[data-novidades]'), 4000);
-    conf(!!j && j.dataset.novidades === '3.4', 'PCP vê a janelinha da 3.4 ao entrar', j?.dataset.novidades);
-    conf(document.querySelectorAll('[data-novidades] [data-nov-item]').length === 4, 'PCP vê as 4 novidades dele', document.querySelectorAll('[data-novidades] [data-nov-item]').length);
-    conf(/Atualização 3\.4/.test(document.querySelector('.janela h2, .janela-cab, .janela')?.textContent || ''), 'título diz a versão');
+    conf(!!j && j.dataset.novidades === '3.5,3.4', 'PCP vê a janelinha da 3.5 e da 3.4 ao entrar', j?.dataset.novidades);
+    conf(document.querySelectorAll('[data-novidades] [data-nov-item]').length === 6, 'PCP vê as 6 novidades dele (2 da 3.5 + 4 da 3.4)', document.querySelectorAll('[data-novidades] [data-nov-item]').length);
+    conf(/Versão 3\.5/.test(j?.textContent || '') && /Versão 3\.4/.test(j?.textContent || ''), 'cada versão com o seu título');
     UI.fecharTodas(); await dorme(300);
     await API.sair(); await API.entrar('pcp', 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await dorme(1200);
     conf(!document.querySelector('[data-novidades]'), 'na segunda vez não aparece de novo');
@@ -1373,6 +1373,121 @@ window.roteiro = async function roteiro(filtro) {
     await clicar(document.querySelector('[data-etq=ultimos]')); await dorme(200);
     conf([1, 2, 3].every(k => campo(k)?.value), 'completar com os últimos R.I. preenche as posições vazias', [1, 2, 3].map(k => campo(k)?.value));
     UI.fecharTodas();
+  });
+
+  await passo('v3.5 serviço externo pela nota fiscal (XML de saída, XML e PDF de retorno, desfazer)', async () => {
+    // a nota da JAF é reconhecida pelo CNPJ da empresa (dados inventados)
+    await como('dono');
+    const empAntes = S.cfg('empresa', {});
+    await API.rpc('salvar_config', { p_chave: 'empresa', p_valor: { ...empAntes, cnpj: '00.000.000/0001-91' } });
+    try {
+      await como('pcp');
+      await S.garantir(['registros', 'produtos', 'notas_servico']);
+      const chaveDe = (cnpj, num) => { const b = '35' + '2611' + cnpj + '55' + '001' + String(num).padStart(9, '0') + '1' + '24681357';
+        let s = 0, p = 2; for (let i = b.length - 1; i >= 0; i--) { s += Number(b[i]) * p; p = p === 9 ? 2 : p + 1; } return b + ((s % 11) < 2 ? 0 : 11 - (s % 11)); };
+      const xmlNota = ({ chave, num, emit, emitNome, dest, destNome, itens, info = '', ref = '' }) => `<?xml version="1.0" encoding="UTF-8"?><nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><NFe><infNFe Id="NFe${chave}" versao="4.00">
+        <ide><natOp>TESTE</natOp><mod>55</mod><serie>1</serie><nNF>${num}</nNF><dhEmi>${U.hoje()}T10:00:00-03:00</dhEmi><tpNF>1</tpNF>${ref ? `<NFref><refNFe>${ref}</refNFe></NFref>` : ''}</ide>
+        <emit><CNPJ>${emit}</CNPJ><xNome>${emitNome}</xNome><enderEmit><xMun>SAO PAULO</xMun><UF>SP</UF></enderEmit></emit>
+        <dest><CNPJ>${dest}</CNPJ><xNome>${destNome}</xNome></dest>
+        ${itens.map((it, i) => `<det nItem="${i + 1}"><prod><cProd>${it.c}</cProd><xProd>${it.x}</xProd><CFOP>${it.cfop}</CFOP><uCom>${it.u || 'PC'}</uCom><qCom>${it.q}</qCom><vUnCom>1.00</vUnCom><vProd>${it.q}.00</vProd></prod></det>`).join('')}
+        <total><ICMSTot><vProd>1.00</vProd><vNF>1.00</vNF></ICMSTot></total>${info ? `<infAdic><infCpl>${info}</infCpl></infAdic>` : ''}</infNFe></NFe><protNFe><infProt><chNFe>${chave}</chNFe><cStat>100</cStat></infProt></protNFe></nfeProc>`;
+      const JAF = '00000000000191', FORN = '22333444000155';
+      const abrirArquivo = async (arq) => {
+        UI.fecharTodas(); await dorme(100);
+        await clicar(await espera(() => document.querySelector('[data-reg-acao=nota]')));
+        const j = await espera(() => janela()?.querySelector('[data-sx=arquivo] input') && janela());
+        const inp = j.querySelector('[data-sx=arquivo] input'), dt = new DataTransfer(); dt.items.add(arq); inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+        return j;
+      };
+      await ir('#/reg/servico_externo');
+      conf(!!await espera(() => document.querySelector('[data-reg-acao=nota]')) && !!document.querySelector('[data-reg-acao=notas]'), 'Serviço externo tem “Ler nota (XML ou PDF)” e “Notas lidas”');
+
+      // 1) nota de venda da JAF: recusada
+      const kV = chaveDe(JAF, 8101);
+      const jv = await abrirArquivo(new File([xmlNota({ chave: kV, num: 8101, emit: JAF, emitNome: 'METALURGICA EXEMPLO LTDA', dest: '99888777000166', destNome: 'CLIENTE EXEMPLO LTDA', itens: [{ c: 'CF 02.0001', x: 'PINO', cfop: '5101', q: 10 }] })], 'venda.xml', { type: 'text/xml' }));
+      await espera(() => erroJanela(jv), 4000);
+      conf(/é de venda/.test(erroJanela(jv) || ''), 'nota de venda não entra no serviço externo', erroJanela(jv));
+
+      // 2) nota de SAÍDA (remessa para zincar)
+      const kS = chaveDe(JAF, 8201);
+      await abrirArquivo(new File([xmlNota({ chave: kS, num: 8201, emit: JAF, emitNome: 'METALURGICA EXEMPLO LTDA', dest: FORN, destNome: 'ZINCAGEM EXEMPLO LTDA',
+        itens: [{ c: 'CF 02.0001', x: 'PINO 6 X 40', cfop: '5901', q: 300 }], info: 'Remessa para zincagem. OF 260001' })], 'remessa.xml', { type: 'text/xml' }));
+      const js = await espera(() => janela()?.querySelector('#sxItens') && janela(), 6000);
+      conf(!!js, 'nota de saída aberta para conferir', erroJanela(janela()));
+      if (!js) return;
+      conf(js.querySelector('[name=fornecedor]').value === 'Zincagem Exemplo', 'fornecedor achado pelo nome já usado nos serviços', js.querySelector('[name=fornecedor]').value);
+      conf(js.querySelector('[name=qtd_0]').value === '300' && js.querySelector('[name=of_0]').value === '260001' && js.querySelector('[name=cod_0]').value === 'CF 02.0001',
+        'item com código, quantidade e OF (das informações da nota)', [js.querySelector('[name=cod_0]').value, js.querySelector('[name=qtd_0]').value, js.querySelector('[name=of_0]').value]);
+      digitar(js.querySelector('[name=serv_0]'), '');
+      await okJanela('Lançar os serviços');
+      conf(/descrição do serviço/.test(erroJanela(js) || ''), 'sem a descrição do serviço não lança', erroJanela(js));
+      digitar(js.querySelector('[name=serv_0]'), 'Zincagem branca');
+      await okJanela('Lançar os serviços'); conf(!erroJanela(js), 'saída lançada', erroJanela(js));
+      const sv = await espera(() => S.lista('registros').find(r => r.tipo === 'servico_externo' && r.dados?.nf_saida === '8201'), 6000);
+      conf(sv && sv.codigo === 'CF 02.0001' && Number(sv.dados.qtd) === 300 && sv.dados.fornecedor === 'Zincagem Exemplo' && sv.status === 'Fora (no fornecedor)' && sv.dados.of === '260001' && sv.titulo === 'Zincagem branca',
+        'serviço externo criado pela nota', sv);
+      if (!sv) return;
+
+      // 3) nota de RETORNO (XML): linha do retorno (5902) e da cobrança (5124) com as mesmas peças → conta uma vez só
+      const kR = chaveDe(FORN, 5501);
+      const xmlR = xmlNota({ chave: kR, num: 5501, emit: FORN, emitNome: 'ZINCAGEM EXEMPLO LTDA', dest: JAF, destNome: 'METALURGICA EXEMPLO LTDA', ref: kS,
+        itens: [{ c: 'Z-77', x: 'RETORNO PINO CF 02.0001', cfop: '5902', q: 120 }, { c: 'SERV', x: 'ZINCAGEM BRANCA CF 02.0001', cfop: '5124', q: 120 }] });
+      await abrirArquivo(new File([xmlR], 'retorno.xml', { type: 'text/xml' }));
+      const jr = await espera(() => janela()?.querySelector('#sxRet') && janela(), 6000);
+      conf(!!jr, 'nota de retorno aberta para conferir', erroJanela(janela()));
+      if (!jr) return;
+      conf(jr.querySelectorAll('[data-sx-ret]').length === 1 && jr.querySelector('[data-sx-total]')?.dataset.sxTotal === '120', 'cobrança do serviço (5124) não soma peça de novo', [jr.querySelectorAll('[data-sx-ret]').length, jr.querySelector('[data-sx-total]')?.dataset.sxTotal]);
+      conf(jr.querySelector(`[data-sx-baixa="${sv.numero}"]`) && /continua em aberto/.test(jr.textContent), 'baixa no serviço da NF de saída, e mostra que continua em aberto');
+      await okJanela('Dar baixa no retorno'); conf(!erroJanela(jr), 'retorno lançado', erroJanela(jr));
+      await espera(() => Number(S.get('registros', sv.id)?.dados?.qtd_retorno) === 120, 6000);
+      let s2 = S.get('registros', sv.id);
+      conf(Number(s2.dados.qtd_retorno) === 120 && s2.status === 'Fora (no fornecedor)' && s2.dados.nf_retorno === '5501' && s2.concluido_em === U.hoje(), 'voltou uma parte: soma 120, continua fora, com a NF e a data', s2);
+      await dorme(300);
+      conf(!!document.querySelector(`#lReg [data-reg="${sv.id}"]`), 'retorno parcial continua na lista “Em aberto”');
+      const jd = await abrirArquivo(new File([xmlR], 'retorno.xml', { type: 'text/xml' }));
+      await espera(() => erroJanela(jd), 4000);
+      conf(/já foi lançada/.test(erroJanela(jd) || ''), 'a mesma nota não entra duas vezes', erroJanela(jd));
+
+      // 4) nota de RETORNO pelo PDF (DANFE)
+      const kP = chaveDe(FORN, 5502);
+      const linhas = ['RECEBEMOS DE ZINCAGEM EXEMPLO LTDA OS PRODUTOS CONSTANTES DA NOTA FISCAL INDICADA AO LADO', 'DANFE', 'DOCUMENTO AUXILIAR DA NOTA FISCAL ELETRONICA',
+        'CHAVE DE ACESSO', kP.match(/.{4}/g).join(' '), 'NATUREZA DA OPERACAO RETORNO DE INDUSTRIALIZACAO', 'NOME / RAZAO SOCIAL CNPJ / CPF DATA DA EMISSAO',
+        `METALURGICA EXEMPLO LTDA 00.000.000/0001-91 ${U.data(U.hoje())}`, 'DADOS DOS PRODUTOS / SERVICOS',
+        'CF 02.0001 PINO 6 X 40 RETORNO 73181500 000 5902 PC 180,0000 1,0000 180,00', 'DADOS ADICIONAIS', `RETORNO REF. NF 8201`];
+      let corpo = 'BT /F1 9 Tf 30 800 Td 14 TL\n' + linhas.map(t => `(${t}) Tj T*`).join('\n') + '\nET';
+      const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', `<< /Length ${corpo.length} >>\nstream\n${corpo}\nendstream`];
+      let pdf = '%PDF-1.4\n'; const off = [];
+      objs.forEach((o, i) => { off.push(pdf.length); pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+      const xr = pdf.length;
+      pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + off.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('') + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xr}\n%%EOF`;
+      await abrirArquivo(new File([pdf], 'NF 5502.pdf', { type: 'application/pdf' }));
+      const jp = await espera(() => janela()?.querySelector('#sxRet') && janela(), 15000);
+      conf(!!jp, 'o PDF da nota de retorno foi lido', erroJanela(janela()));
+      if (!jp) return;
+      conf(!!jp.querySelector('[data-sx-pdf]') && jp.querySelector('[data-sx-total]')?.dataset.sxTotal === '180' && /Zincagem Exemplo/.test(jp.textContent), 'PDF: aviso para conferir, 180 peças e o fornecedor', [jp.querySelector('[data-sx-total]')?.dataset.sxTotal]);
+      await okJanela('Dar baixa no retorno'); conf(!erroJanela(jp), 'retorno do PDF lançado', erroJanela(jp));
+      await espera(() => S.get('registros', sv.id)?.status === 'Retornou', 6000);
+      s2 = S.get('registros', sv.id);
+      conf(s2.status === 'Retornou' && Number(s2.dados.qtd_retorno) === 300 && s2.dados.nf_retorno === '5501, 5502', 'voltou o resto: fica “Retornou” com as duas NFs', s2);
+      const np = S.lista('notas_servico').find(n => n.chave === kP && !n.desfeito_em);
+      conf(np && np.origem === 'pdf' && np.tipo === 'retorno', 'nota gravada como lida do PDF', np);
+
+      // 5) Notas lidas → desfazer o retorno do PDF
+      UI.fecharTodas(); await dorme(100);
+      await clicar(document.querySelector('[data-reg-acao=notas]'));
+      const jn = await espera(() => janela()?.querySelector('#sxNotas') && janela());
+      conf(jn && jn.querySelectorAll('[data-sx-nota]').length >= 3, 'Notas lidas mostra as notas', jn?.querySelectorAll('[data-sx-nota]').length);
+      await clicar(jn.querySelector(`[data-sx-desfazer="${np.id}"]`)); await confirmar(true);
+      await espera(() => S.get('registros', sv.id)?.status !== 'Retornou', 6000); await dorme(300);
+      s2 = S.get('registros', sv.id);
+      conf(s2.status === 'Fora (no fornecedor)' && Number(s2.dados.qtd_retorno) === 120 && s2.dados.nf_retorno === '5501', 'desfazer volta o serviço como estava', s2);
+      conf(!!S.get('notas_servico', np.id)?.desfeito_em, 'nota marcada como desfeita');
+    } finally {
+      UI.fecharTodas();
+      await como('dono'); await API.rpc('salvar_config', { p_chave: 'empresa', p_valor: empAntes });
+    }
   });
 
   await passo('v3.2 atrasados somados na semana e romaneio da carga', async () => {

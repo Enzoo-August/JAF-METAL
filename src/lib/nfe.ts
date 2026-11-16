@@ -37,6 +37,8 @@ export interface Nota {
   duplicatas: Duplicata[]
   infoAdicional: string
   autorizada: boolean       // tem o protocolo de autorização da Sefaz
+  refs: string[]            // chaves das notas referenciadas (refNFe: a nota de retorno aponta a nota de remessa)
+  origem: 'xml' | 'pdf'     // de onde veio (o PDF/DANFE é lido pelo texto e precisa de conferência)
 }
 
 export class ErroNota extends Error {}
@@ -150,5 +152,7 @@ export function lerNotaXml(texto: string): Nota {
       .filter(d => d.valor > 0 && /^\d{4}-\d{2}-\d{2}$/.test(d.vencimento)),
     infoAdicional: tx(el(inf, 'infAdic'), 'infCpl'),
     autorizada: !!el(doc, 'protNFe') && ['100', '150'].includes(tx(el(doc, 'infProt'), 'cStat')),
+    refs: todos(inf, 'refNFe').map(e => dig(e.textContent)).filter(c => c.length === 44),
+    origem: 'xml',
   }
 }

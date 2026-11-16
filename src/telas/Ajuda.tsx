@@ -108,6 +108,12 @@ export const ARTIGOS: Artigo[] = [
     'Em *Relatório de entregas* escolha o período (esta semana, próxima, mês, 30 dias, atrasadas ou datas livres), o cliente e como agrupar: *por dia*, *semana*, *produto* ou *cliente*.',
     'Com *Somar os atrasados* marcado (já vem marcado), o que ficou em aberto de antes entra junto no período, num grupo próprio no topo: é o que vai na próxima carga.',
     '*PDF* sai deitado, um bloco por grupo. *Excel* sai com uma aba de resumo e *uma aba por data* (como o arquivo do PCP).'] },
+  { id: 'servExtNota', area: 'pcp', titulo: 'Serviço externo pela nota fiscal (saída e retorno)', palavras: 'serviço externo nota fiscal nf xml pdf danfe retorno saída remessa zincagem tratamento fornecedor', perm: 'pcp_reg_editar', rota: '#/reg/servico_externo', corpo: [
+    'Em *Serviço externo*, toque em *Ler nota (XML ou PDF)* e escolha o arquivo da nota. O *XML* é o mais certo; o *PDF* (DANFE) também funciona, mas confira as quantidades.',
+    '*Nota de saída* (a JAF manda a peça para zincar, tratar…): cada item vira um serviço externo *Fora (no fornecedor)*, com o nº da NF. Confira a descrição do serviço (vem do último serviço da mesma peça) e a OF.',
+    '*Nota de retorno* (o fornecedor devolve): a quantidade entra na *Qde retornada* do serviço em aberto daquele fornecedor e daquela peça — primeiro o da NF de saída citada na nota, depois o mais antigo. Voltou tudo: fica *Retornou*. Voltou uma parte: continua em aberto.',
+    'A linha da cobrança do serviço (CFOP 5124) não soma peça: só a linha do retorno da mercadoria (CFOP 5902). Nota em quilo: digite quantas peças voltaram.',
+    'A mesma nota não entra duas vezes. Errou? Em *Notas lidas*, toque em *Desfazer*.'] },
   { id: 'romaneio', area: 'pcp', titulo: 'Romaneio para faturamento (com o peso da carga)', palavras: 'romaneio carga faturamento peso embalagem ri of expedição entrega semana atraso', perm: 'vendas', rota: '#/entregas?aba=romaneio', corpo: [
     'Em *Relatório de entregas*, toque na aba *Romaneio*. Escolha o cliente e até que data: o sistema junta *os atrasados + as entregas até a data*, uma linha por peça e pedido.',
     'A quantidade já vem com o saldo; mude se a carga for menor e desmarque o que não vai. A OF e o R.I. vêm sugeridos (a OF do pedido ou a última OF encerrada da peça); a embalagem você digita.',
