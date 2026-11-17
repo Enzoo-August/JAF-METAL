@@ -1348,6 +1348,31 @@ details.mais-ind > summary::-webkit-details-marker { display: none; }
   .tabela-rom input.rom-qtd { width: 76px; }
   .tabela-rom th, .tabela-rom td { padding: 8px 6px; }
 }
+/* v3.6 — romaneio por semana: faixa das próximas semanas com a carga de cada uma */
+.rom-filtros select { min-width: min(100%, 300px); }
+.rom-ck { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--texto-2); cursor: pointer; }
+.rom-ck input { width: 18px; height: 18px; accent-color: var(--acento, var(--marca)); flex: none; }
+.rom-semanas { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 10px; margin-top: 12px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.rom-sem { position: relative; flex: 0 0 auto; min-width: 132px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px 14px; border: 1.5px solid var(--borda-forte); border-radius: 12px; background: var(--cartao); color: var(--texto); font: inherit; text-align: left; cursor: pointer; overflow: hidden; scroll-snap-align: start; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.rom-sem:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(20, 40, 80, .10); }
+.rom-sem small { font-size: .72rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--texto-3); }
+.rom-sem b { font-size: 1.35rem; line-height: 1.1; }
+.rom-sem span { font-size: .8rem; color: var(--texto-2); white-space: nowrap; }
+.rom-sem em { font-style: normal; font-size: .74rem; font-weight: 700; color: var(--vermelho); }
+.rom-sem .rom-carga { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--acento, var(--marca)); opacity: .55; border-radius: 0 4px 0 0; }
+.rom-sem.vazia { opacity: .6; }
+.rom-sem.on { border-color: var(--acento, var(--marca)); background: var(--acento-f, var(--cartao)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--acento, var(--marca)) 22%, transparent); }
+.rom-sem.on .rom-carga { opacity: 1; }
+.rom-sem.livre { border-style: dashed; }
+.rom-periodo { gap: 12px; }
+.rom-titulo { margin-top: 6px; font-weight: 600; color: var(--texto-2); }
+.rom-lote .acoes select { min-height: 40px; max-width: 100%; }
+:root[data-tema="escuro"] .rom-sem.on { background: color-mix(in srgb, var(--acento, var(--marca)) 18%, var(--cartao)); }
+@media (max-width: 640px) {
+  .rom-sem { min-width: 118px; padding: 8px 10px 12px; }
+  .rom-ck { font-size: .84rem; }
+  .rom-lote .acoes select { flex: 1 1 100%; }
+}
 
 /* v3.3 — aviso da pesquisa rápida */
 .faixa-pesquisa { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--marca-suave); border-bottom: 1px solid var(--borda); }

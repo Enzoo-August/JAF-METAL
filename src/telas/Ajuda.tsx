@@ -114,8 +114,10 @@ export const ARTIGOS: Artigo[] = [
     '*Nota de retorno* (o fornecedor devolve): a quantidade entra na *Qde retornada* do serviço em aberto daquele fornecedor e daquela peça — primeiro o da NF de saída citada na nota, depois o mais antigo. Voltou tudo: fica *Retornou*. Voltou uma parte: continua em aberto.',
     'A linha da cobrança do serviço (CFOP 5124) não soma peça: só a linha do retorno da mercadoria (CFOP 5902). Nota em quilo: digite quantas peças voltaram.',
     'A mesma nota não entra duas vezes. Errou? Em *Notas lidas*, toque em *Desfazer*.'] },
-  { id: 'romaneio', area: 'pcp', titulo: 'Romaneio para faturamento (com o peso da carga)', palavras: 'romaneio carga faturamento peso embalagem ri of expedição entrega semana atraso', perm: 'vendas', rota: '#/entregas?aba=romaneio', corpo: [
-    'Em *Relatório de entregas*, toque na aba *Romaneio*. Escolha o cliente e até que data: o sistema junta *os atrasados + as entregas até a data*, uma linha por peça e pedido.',
+  { id: 'romaneio', area: 'pcp', titulo: 'Romaneio para faturamento (com o peso da carga)', palavras: 'romaneio carga faturamento peso embalagem ri of expedição entrega semana atraso período data de até próximas semanas acumulado', perm: 'vendas', rota: '#/entregas?aba=romaneio', corpo: [
+    'Em *Relatório de entregas*, toque na aba *Romaneio* e escolha o cliente. A *faixa das semanas* mostra cada semana de entrega com quantos itens e peças tem (a barrinha embaixo é o tamanho da carga). Toque numa semana para fazer o romaneio dela.',
+    '*Esta semana* junta os atrasados + as entregas da semana. As *semanas seguintes* trazem só os pedidos daquela semana, sem acumular. Para outras datas, toque em *Outro período* e escolha *de* e *até* (e se quer somar o que ficou em aberto antes).',
+    '*Várias semanas de uma vez*: escolha 2, 3, 4... semanas e toque em *Excel*: sai a aba geral + uma aba por semana, como a planilha do PCP (o PDF sai com uma página por semana). Marque *Quantidade cheia do pedido* se quiser os números sem descontar o que já saiu.',
     'A quantidade já vem com o saldo; mude se a carga for menor e desmarque o que não vai. A OF e o R.I. vêm sugeridos (a OF do pedido ou a última OF encerrada da peça); a embalagem você digita.',
     'Embaixo preencha o *peso total da carga*, o responsável e a data. *Romaneio em PDF* sai no modelo do formulário; *Excel* sai no mesmo desenho da planilha, com uma aba de detalhe.',
     'O que você digitou fica guardado neste aparelho até tocar em *Limpar o que digitei*.'] },

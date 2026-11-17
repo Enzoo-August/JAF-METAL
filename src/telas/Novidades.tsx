@@ -12,6 +12,12 @@ export interface ItemNovidade { titulo: string; txt: string; pode: () => boolean
 export interface Novidade { versao: string; data: string; itens: ItemNovidade[] }
 
 export const NOVIDADES: Novidade[] = [
+  { versao: '3.6', data: '2026-11-17', itens: [
+    { titulo: 'Romaneio por semana (de uma data até outra)', pode: () => Perm.pode('vendas'), ir: { rota: '#/entregas?aba=romaneio', txt: 'Abrir o Romaneio' },
+      txt: 'No Romaneio, uma faixa mostra as próximas semanas com a carga de cada uma. Esta semana soma os atrasados; as seguintes trazem só os pedidos daquela semana, sem acumular. Em "Outro período" você escolhe de uma data até outra.' },
+    { titulo: 'As 3 semanas de uma vez, como a planilha', pode: () => Perm.pode('vendas'), ir: { rota: '#/entregas?aba=romaneio', txt: 'Gerar as semanas' },
+      txt: 'Em "Várias semanas de uma vez", escolha quantas semanas e toque em Excel: sai a aba geral + uma aba por semana (19-11, 26-11, 03-12...). O PDF sai com uma página por semana, pronta para assinar.' },
+  ] },
   { versao: '3.5', data: '2026-11-16', itens: [
     { titulo: 'Serviço externo pela nota fiscal', pode: () => Perm.pode('pcp_reg_editar'), ir: { rota: '#/reg/servico_externo', txt: 'Abrir Serviço externo' },
       txt: 'Em Serviço externo, botão "Ler nota (XML ou PDF)". A nota de saída para o fornecedor lança os serviços; a nota de retorno dá a baixa na quantidade que voltou. Você confere tudo antes de gravar.' },

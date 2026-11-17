@@ -1311,8 +1311,8 @@ window.roteiro = async function roteiro(filtro) {
     const entrarSemVer = async (login) => { await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); App.gravarPref('novidades', null); await App.entrarNoSistema() };
     await entrarSemVer('pcp');
     const j = await espera(() => document.querySelector('[data-novidades]'), 4000);
-    conf(!!j && j.dataset.novidades === '3.5,3.4', 'PCP vê a janelinha da 3.5 e da 3.4 ao entrar', j?.dataset.novidades);
-    conf(document.querySelectorAll('[data-novidades] [data-nov-item]').length === 6, 'PCP vê as 6 novidades dele (2 da 3.5 + 4 da 3.4)', document.querySelectorAll('[data-novidades] [data-nov-item]').length);
+    conf(!!j && j.dataset.novidades === '3.6,3.5,3.4', 'PCP vê a janelinha da 3.6, 3.5 e 3.4 ao entrar', j?.dataset.novidades);
+    conf(document.querySelectorAll('[data-novidades] [data-nov-item]').length === 8, 'PCP vê as 8 novidades dele (2 da 3.6 + 2 da 3.5 + 4 da 3.4)', document.querySelectorAll('[data-novidades] [data-nov-item]').length);
     conf(/Versão 3\.5/.test(j?.textContent || '') && /Versão 3\.4/.test(j?.textContent || ''), 'cada versão com o seu título');
     UI.fecharTodas(); await dorme(300);
     await API.sair(); await API.entrar('pcp', 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await dorme(1200);
@@ -1323,7 +1323,7 @@ window.roteiro = async function roteiro(filtro) {
     conf(!document.querySelector('[data-novidades]'), 'operador também não');
     await entrarSemVer('comercial');
     const jc = await espera(() => document.querySelector('[data-novidades]'), 4000);
-    conf(!!jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length === 2, 'Comercial vê só as 2 de compra de matéria-prima', jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length);
+    conf(!!jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length === 4, 'Comercial vê só as 2 do romaneio + 2 de compra de matéria-prima', jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length);
     UI.fecharTodas();
     await ir('#/ajuda'); const b = await espera(() => document.querySelector('[data-a=novidades]'));
     conf(!!b, 'Ajuda tem o botão “O que mudou” para ver de novo');
@@ -1549,6 +1549,57 @@ window.roteiro = async function roteiro(filtro) {
     await clicar(document.querySelector('[data-rom=limpar]')); await dorme(120);
     conf(document.querySelector('[data-rom-peso]').value === '' && pecasTela() === esperado, 'limpar volta para o sugerido');
     await clicar(document.querySelector('[data-ent-aba=relatorio]'));
+  });
+
+  await passo('v3.6 romaneio de uma data até outra, por semana, sem acumular', async () => {
+    await como('pcp');
+    await S.garantir(['produtos', 'vendas', 'vendas_entregas', 'notas_saida', 'produto_saldos', 'ofs', 'clientes']);
+    const hoje = U.hoje(), d = U.d(hoje), seg = U.somaDias(hoje, -((d.getDay() + 6) % 7));
+    // pedidos de teste nas próximas semanas (dados inventados), do cliente que o romaneio mostra primeiro
+    await ir('#/entregas'); await clicar(await espera(() => document.querySelector('[data-ent-aba=romaneio]')));
+    const cli = (await espera(() => document.querySelector('[data-rom-cli]'))).value;
+    const prods = S.lista('produtos').filter(p => p.classe === 'peca').slice(0, 3);
+    for (const [i, p] of prods.entries()) for (const k of [1, 1, 2]) {
+      await API.rpc('salvar_venda', { p: { id: U.uuid(), cliente_id: cli, produto_id: p.id, codigo: p.codigo, codigo_cliente: p.codigo_cliente, descricao: p.descricao, pedido: 'T36-' + i, prazo: U.somaDias(seg, 3 + 7 * k), qtd: 100 * (i + 1) * (k + 1), valor: 0 } });
+    }
+    await App.gravou(['vendas']); await dorme(300);
+    const doCli = S.lista('vendas').filter(v => !v.cancelado && v.prazo && (v.cliente_id || v.cliente_nome || '') === cli);
+    const saldoEntre = (a, b) => U.soma(doCli.filter(v => v.prazo >= a && v.prazo <= b), v => Math.max(0, C.saldoVenda(v)));
+    const pecasTela = () => Number((document.querySelector('[data-rom-pecas]')?.textContent || '0').replace(/\./g, '').replace(',', '.'));
+    conf(document.querySelectorAll('.rom-sem[data-rom-sem]').length >= 6, 'faixa com as próximas semanas');
+    await clicar(document.querySelector('[data-rom-prox]')); await dorme(150);
+    const prox = saldoEntre(U.somaDias(seg, 7), U.somaDias(seg, 13));
+    conf(prox > 0 && pecasTela() === prox, 'próxima semana: só os pedidos daquela semana (nada acumulado)', [pecasTela(), prox]);
+    conf(/só os pedidos desta semana/.test(document.querySelector('[data-rom-titulo]').textContent), 'título diz que não soma atrasados');
+    conf(document.querySelectorAll('[data-rom-linha]').length === prods.length, 'duas entregas da mesma peça e pedido na semana viram uma linha', document.querySelectorAll('[data-rom-linha]').length);
+    // outro período: de A até B, com e sem o que ficou para trás
+    await clicar(document.querySelector('[data-rom-livre]'));
+    const deI = await espera(() => document.querySelector('[data-rom-de]'));
+    digitar(deI, U.somaDias(seg, 7)); await dorme(100); digitar(document.querySelector('[data-rom-ate]'), U.somaDias(seg, 20)); await dorme(150);
+    const atr = document.querySelector('[data-rom-atr]'); if (atr.checked) { atr.click(); await dorme(150); }
+    const ab = saldoEntre(U.somaDias(seg, 7), U.somaDias(seg, 20));
+    conf(pecasTela() === ab, 'período de A até B soma só o que está entre as datas', [pecasTela(), ab]);
+    atr.click(); await dorme(150);
+    const antes = U.soma(doCli.filter(v => v.prazo < U.somaDias(seg, 7)), v => Math.max(0, C.saldoVenda(v)));
+    conf(pecasTela() === U.r4(ab + antes), 'marcar "somar o que ficou em aberto antes" junta os de antes de A', [pecasTela(), ab, antes]);
+    // várias semanas de uma vez: a geral + uma aba por semana
+    let blob = null; const oPick = window.showSaveFilePicker, oUrl = URL.createObjectURL;
+    window.showSaveFilePicker = async () => ({ createWritable: async () => ({ write: async (b) => { blob = b; }, close: async () => {} }) });
+    URL.createObjectURL = (b) => { blob = b; return 'blob:teste'; };
+    Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true });
+    digitar(document.querySelector('[data-rom-n]'), '3'); await dorme(100);
+    try { await clicar(document.querySelector('[data-rom-lote=excel]')); await espera(() => blob, 8000); } finally { window.showSaveFilePicker = oPick; URL.createObjectURL = oUrl; delete navigator.canShare; }
+    if (blob) {
+      const X = await window.XLSX(); const wb = X.read(new Uint8Array(await blob.arrayBuffer()), { type: 'array' });
+      conf(wb.SheetNames.length === 4 && /^Geral /.test(wb.SheetNames[0]), 'Excel das 3 semanas: a geral + 3 abas', wb.SheetNames);
+      const a2 = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[2]], { header: 1 });
+      conf(a2[a2.length - 1][4] === prox, 'aba da 2ª semana com o total só daquela semana', [a2[a2.length - 1], prox]);
+    } else conf(false, 'Excel das 3 semanas gerado');
+    await clicar(document.querySelector('[data-rom-lote=pdf]'));
+    const pv = await espera(() => document.querySelector('.previa-pdf[data-previa=ok], .previa-pdf[data-previa=erro]'), 10000);
+    conf(pv?.dataset.previa === 'ok', 'PDF das semanas abre a prévia', pv?.dataset.previa);
+    UI.fecharTodas(); await dorme(150);
+    await clicar(document.querySelector('[data-rom-semana]')); await clicar(document.querySelector('[data-ent-aba=relatorio]'));
   });
 
   await passo('v3.1 exportação para a contabilidade e eventos', async () => {
