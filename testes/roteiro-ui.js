@@ -1311,8 +1311,8 @@ window.roteiro = async function roteiro(filtro) {
     const entrarSemVer = async (login) => { await API.sair(); await API.entrar(login, 'teste1234'); App.gravarPref('boasVindas', true); App.gravarPref('novidades', null); await App.entrarNoSistema() };
     await entrarSemVer('pcp');
     const j = await espera(() => document.querySelector('[data-novidades]'), 4000);
-    conf(!!j && j.dataset.novidades === '3.6,3.5,3.4', 'PCP vê a janelinha da 3.6, 3.5 e 3.4 ao entrar', j?.dataset.novidades);
-    conf(document.querySelectorAll('[data-novidades] [data-nov-item]').length === 8, 'PCP vê as 8 novidades dele (2 da 3.6 + 2 da 3.5 + 4 da 3.4)', document.querySelectorAll('[data-novidades] [data-nov-item]').length);
+    conf(!!j && j.dataset.novidades === '3.7,3.6,3.5,3.4', 'PCP vê a janelinha da 3.7, 3.6, 3.5 e 3.4 ao entrar', j?.dataset.novidades);
+    conf(document.querySelectorAll('[data-novidades] [data-nov-item]').length === 9, 'PCP vê as 9 novidades dele (1 da 3.7 + 2 da 3.6 + 2 da 3.5 + 4 da 3.4)', document.querySelectorAll('[data-novidades] [data-nov-item]').length);
     conf(/Versão 3\.5/.test(j?.textContent || '') && /Versão 3\.4/.test(j?.textContent || ''), 'cada versão com o seu título');
     UI.fecharTodas(); await dorme(300);
     await API.sair(); await API.entrar('pcp', 'teste1234'); App.gravarPref('boasVindas', true); await App.entrarNoSistema(); await dorme(1200);
@@ -1323,7 +1323,7 @@ window.roteiro = async function roteiro(filtro) {
     conf(!document.querySelector('[data-novidades]'), 'operador também não');
     await entrarSemVer('comercial');
     const jc = await espera(() => document.querySelector('[data-novidades]'), 4000);
-    conf(!!jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length === 4, 'Comercial vê só as 2 do romaneio + 2 de compra de matéria-prima', jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length);
+    conf(!!jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length === 5, 'Comercial vê a da programação + 2 do romaneio + 2 de compra de matéria-prima', jc && document.querySelectorAll('[data-novidades] [data-nov-item]').length);
     UI.fecharTodas();
     await ir('#/ajuda'); const b = await espera(() => document.querySelector('[data-a=novidades]'));
     conf(!!b, 'Ajuda tem o botão “O que mudou” para ver de novo');
@@ -1600,6 +1600,33 @@ window.roteiro = async function roteiro(filtro) {
     conf(pv?.dataset.previa === 'ok', 'PDF das semanas abre a prévia', pv?.dataset.previa);
     UI.fecharTodas(); await dorme(150);
     await clicar(document.querySelector('[data-rom-semana]')); await clicar(document.querySelector('[data-ent-aba=relatorio]'));
+  });
+
+  await passo('v3.7 programação com as datas em colunas (Excel do cliente)', async () => {
+    await como('pcp');
+    await S.garantir(['produtos', 'vendas', 'vendas_releases', 'clientes']);
+    // planilha inventada no desenho do cliente: Programa firme diário / Previsão semanal / Mensal, coluna Atraso
+    const X = await window.XLSX(), dt0 = (n) => { const x = U.d(U.somaDias(U.hoje(), n)); return x; };
+    const aoa = [['', '', '', '', '', '', '', '', '', 'PROGRAMA FIRME', '', '', 'PREVISÃO'], ['', '', '', '', '', '', '', '', '', 'DIÁRIO', 'DIÁRIO', 'SEMANA', 'SEMANA', 'MENSAL'],
+      ['CÓDIGO', 'DESCRIÇÃO', 'ANALISTA', 'CÓD. PARCEIRO', 'PLANTA', 'FORNECEDOR', 'VALOR CONTRATO', 'ULTIMA NF', 'ATRASO', dt0(1), dt0(3), dt0(8), dt0(15), dt0(40)],
+      ['TX-001', 'PERFIL TESTE LD', 'ANA', 99000001, 'P1', 'FORNECEDOR TESTE', 22.4, 1234, 30, 250, '', 100, '', 900],
+      ['TX-002', 'TUBO TESTE LE', 'ANA', 99000001, 'P1', 'FORNECEDOR TESTE', 40, 1235, '', '', 60, '', 60, ''],
+      ['TX-003', 'PEÇA SEM PROGRAMA', 'ANA', 99000001, 'P1', 'FORNECEDOR TESTE', 3.9, 1236, '', '', '', '', '', '']];
+    const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(aoa, { cellDates: true }), 'Release');
+    const arq = new File([X.write(wb, { bookType: 'xlsx', type: 'array' })], 'Programação TESTE.xlsx');
+    // entra pelo botão "Pedido PDF / NF-e" → PDF: a planilha vai sozinha para a leitura da programação
+    await ir('#/pedidos'); await clicar(await espera(() => document.querySelector('[data-ven=arquivo]')));
+    const je = await espera(() => janela()?.querySelector('[data-escolha=pdf]') && janela());
+    await clicar(je.querySelector('[data-escolha=pdf]'));
+    const j0 = await espera(() => janela()?.querySelector('[data-doc=pdf] input') && janela());
+    const inp = j0.querySelector('[data-doc=pdf] input'), dt = new DataTransfer(); dt.items.add(arq); inp.files = dt.files; inp.dispatchEvent(new Event('change', { bubbles: true }));
+    const j = await espera(() => janela()?.querySelector('[data-rel-deitada]') && janela(), 10000);
+    conf(!!j, 'Excel no botão do pedido abre a leitura da programação e reconhece as datas em colunas');
+    const nota = j?.querySelector('[data-rel-deitada]')?.textContent || '';
+    conf(/5 datas/.test(nota) && /2 peça\(s\) com entrega, 6 entrega\(s\)/.test(nota), 'desdobra em uma linha por peça e data (atraso entra também)', nota);
+    conf(/Atraso/.test(nota), 'avisa onde entra a quantidade em atraso');
+    conf(/6 entregas de 2 peças/.test(j?.querySelector('#relLido')?.textContent || ''), 'resumo da leitura com 6 entregas de 2 peças', j?.querySelector('#relLido')?.textContent);
+    UI.fecharTodas(); await dorme(200);
   });
 
   await passo('v3.1 exportação para a contabilidade e eventos', async () => {

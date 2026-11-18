@@ -93,6 +93,7 @@ export const ARTIGOS: Artigo[] = [
   { id: 'programacao', area: 'comercial', titulo: 'Programação do cliente pelo arquivo (release)', palavras: 'programação release arquivo txt csv excel importar pedido cliente sap atualizar última atualização desfazer', perm: 'vendas_editar', rota: '#/pedidos', corpo: [
     'O cliente manda a programação num arquivo (*.TXT*, *.CSV* ou *Excel*) e manda de novo quando muda. Em *Pedidos de clientes → Atualizar programação*, escolha o arquivo do jeito que veio.',
     'O sistema acha sozinho o código, a quantidade, a data e o pedido, reconhece o cliente pelas peças e *compara com os pedidos em aberto*: mostra o que é *entrega nova*, o que *mudou de quantidade* e o que *saiu*. Nada é gravado antes de você tocar em *Atualizar a programação*.',
+    'Planilha com *as datas em colunas* (Programa firme diário, Previsão semanal, Mensal, Atraso)? Também serve: o sistema transforma em uma linha por peça e data, e o *Atraso* entra com a véspera da primeira data. Dá para escolher o Excel também no botão *Pedido PDF / NF-e*.',
     'Depois, a tela mostra *quando foi a última atualização* de cada cliente e quem fez. O filtro *Mudou na programação* lista o que mudou, com “era 200”.',
     'Errou o arquivo? Toque na programação do cliente e em *Desfazer esta atualização*: as quantidades voltam.'] },
   { id: 'pedidosAjuda', area: 'comercial', titulo: 'Pedidos de clientes e entregas', palavras: 'pedido cliente entrega saldo situação atraso nf controle de pedidos', perm: 'vendas', rota: '#/pedidos', corpo: [

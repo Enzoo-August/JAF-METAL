@@ -5,13 +5,14 @@
 
 export class ErroRelease extends Error {}
 
-export interface Grade { nome: string; linhas: string[][]; colunas: number }
+export interface Grade { nome: string; linhas: string[][]; colunas: number; nota?: string }
 export type CampoRel = 'codigo' | 'qtd' | 'prazo' | 'pedido' | 'descricao' | 'nf' | 'nf_data' | 'nf_qtd'
 export type Mapa = Partial<Record<CampoRel, number>>          // campo → coluna (0, 1, 2…)
 export interface LinhaRel { codigo: string; pedido: string; prazo: string; qtd: number; descricao: string }
 export interface UltimaNF { codigo: string; nf: string; data: string | null; qtd: number | null }
 export interface Leitura { linhas: LinhaRel[]; ignoradas: number; ultimas: UltimaNF[]; de: string; ate: string; pecas: number }
 
+const semAcento = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 const limpa = (s: unknown): string => String(s ?? '').replace(/\s+/g, ' ').trim()
 
 // "1.490" → 1490 · "240,000" → 240 · "1,5" → 1.5 · "12.5" → 12.5
@@ -88,10 +89,52 @@ export async function lerGrade(arq: File): Promise<Grade> {
     try { texto = new TextDecoder('utf-8', { fatal: true }).decode(bytes) } catch { texto = new TextDecoder('windows-1252').decode(bytes) }
     linhas = separar(texto.replace(/^﻿/, ''))
   }
+  const deitada = desdobrar(linhas)
+  if (deitada) linhas = deitada.linhas
   const colunas = linhas.reduce((n, l) => Math.max(n, l.length), 0)
   if (!linhas.some(l => l.filter(Boolean).length >= 3)) throw new ErroRelease('Não achei linhas de pedido neste arquivo. Confira se é o arquivo da programação (release) do cliente.')
-  return { nome: arq.name, linhas, colunas }
+  return { nome: arq.name, linhas, colunas, ...(deitada ? { nota: deitada.nota } : {}) }
 }
+
+// ------------------------------------------------------------------ programação "deitada" (uma coluna por data)
+// Alguns clientes mandam uma linha por peça e as datas de entrega como colunas (Programa firme diário, Previsão semanal,
+// Mensal…), com uma coluna "Atraso". Aqui vira uma linha por peça + data, como os outros arquivos.
+export const CAB_DEITADA = ['Código', 'Descrição', 'Pedido', 'Data de entrega', 'Quantidade', 'NF']
+export function desdobrar(linhas: string[][]): { linhas: string[][]; nota: string } | null {
+  let iCab = -1, datas: number[] = []
+  for (let i = 0; i < Math.min(20, linhas.length); i++) {
+    const ds = linhas[i].map((c, k) => (dataBR(c) ? k : -1)).filter(k => k >= 0)
+    if (ds.length >= 4) { iCab = i; datas = ds; break }
+  }
+  if (iCab < 0) return null
+  const cab = linhas[iCab].map(c => semAcento(c))
+  const achar = (re: RegExp, nao?: RegExp) => cab.findIndex((c, k) => !datas.includes(k) && !!c && re.test(c) && !(nao && nao.test(c)))
+  const fora = /parceiro|fornecedor|analista|planta|valor|preco/
+  let cCod = achar(/^cod|codigo|material|pe[cç]a|part|item|produto|refer/, fora)
+  const cDesc = achar(/descri|denomina|texto/), cPed = achar(/pedido|contrato|ordem|\bpo\b|\boc\b/, /valor|preco/)
+  const cNf = achar(/\bnf\b|nota/), cAtr = achar(/atras|vencid/)
+  if (cCod < 0) cCod = 0
+  const dataCol = new Map(datas.map(k => [k, dataBR(linhas[iCab][k])!]))
+  const antes = U1(dataCol.get(datas[0])!)
+  const saida: string[][] = [CAB_DEITADA]
+  let pecas = 0
+  for (const l of linhas.slice(iCab + 1)) {
+    const cod = limpa(l[cCod])
+    if (!cod || dataBR(cod) || numBR(cod) !== null && cod.length < 5) continue
+    let teve = false
+    const linha = (prazo: string, q: number) => { saida.push([cod, cDesc >= 0 ? limpa(l[cDesc]) : '', cPed >= 0 ? limpa(l[cPed]) : '', prazo, String(q).replace('.', ','), cNf >= 0 ? limpa(l[cNf]) : '']); teve = true }
+    const qa = cAtr >= 0 ? numBR(l[cAtr] || '') : null
+    if (qa && qa > 0) linha(antes, qa)
+    for (const k of datas) { const q = numBR(l[k] || ''); if (q && q > 0) linha(dataCol.get(k)!, q) }
+    if (teve) pecas++
+  }
+  const ds = [...dataCol.values()].sort()
+  const nota = `Programação com as datas em colunas (${datas.length} datas, de ${br(ds[0])} a ${br(ds[ds.length - 1])}): virou uma linha por peça e data — ${pecas} peça(s) com entrega, ${saida.length - 1} entrega(s)${cAtr >= 0 ? '; o "Atraso" entra com a data de ' + br(antes) : ''}.`
+  return { linhas: saida, nota }
+}
+// véspera da 1ª data (onde entra a quantidade em atraso) · data no jeito brasileiro
+function U1(iso: string): string { const d = new Date(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+const br = (iso: string) => iso.split('-').reverse().join('/')
 
 // ------------------------------------------------------------------ qual coluna é o quê
 const DICAS: [CampoRel, RegExp][] = [
@@ -99,7 +142,6 @@ const DICAS: [CampoRel, RegExp][] = [
   ['prazo', /entrega|prazo|data|date|dt\b|venc/], ['qtd', /qtd|qtde|quant|saldo|qty/],
   ['pedido', /pedido|ordem|contrato|programa|\bpo\b|\boc\b|doc/], ['descricao', /descri|denomina|texto|nome/], ['codigo', /c[oó]d|material|pe[cç]a|part|produto|refer/],
 ]
-const semAcento = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 interface Col { n: number; cheias: number; datas: number; nums: number; ids: number; nfs: number; letras: number; conhecidos: number; distintos: number; tam: number }
 

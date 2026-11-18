@@ -12,6 +12,10 @@ export interface ItemNovidade { titulo: string; txt: string; pode: () => boolean
 export interface Novidade { versao: string; data: string; itens: ItemNovidade[] }
 
 export const NOVIDADES: Novidade[] = [
+  { versao: '3.7', data: '2026-11-18', itens: [
+    { titulo: 'Programação em Excel com as datas em colunas', pode: () => Perm.pode('vendas_editar'), ir: { rota: '#/pedidos', txt: 'Abrir Pedidos de clientes' },
+      txt: 'A planilha do cliente com uma coluna por data (Programa firme, Previsão semanal, Mensal e Atraso) agora é lida sozinha: vira uma linha por peça e data. Serve em "Atualizar programação" e também no botão "Pedido PDF / NF-e".' },
+  ] },
   { versao: '3.6', data: '2026-11-17', itens: [
     { titulo: 'Romaneio por semana (de uma data até outra)', pode: () => Perm.pode('vendas'), ir: { rota: '#/entregas?aba=romaneio', txt: 'Abrir o Romaneio' },
       txt: 'No Romaneio, uma faixa mostra as próximas semanas com a carga de cada uma. Esta semana soma os atrasados; as seguintes trazem só os pedidos daquela semana, sem acumular. Em "Outro período" você escolhe de uma data até outra.' },

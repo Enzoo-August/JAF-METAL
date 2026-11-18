@@ -15,6 +15,7 @@ import { ComboCliente } from '../../ui/Combo.tsx'
 import { Ic } from '../../ui/icones.tsx'
 import { confirmar, lerForm, modal, useJanela } from '../../ui/janelas.tsx'
 import { linhasDoPdf } from '../../ui/previa.tsx'
+import { atualizarProgramacao } from './Release.tsx'
 
 const digitos = (s: string | null | undefined) => String(s || '').replace(/\D/g, '')
 const clientePorCnpj = (cnpjs: string[]): Cliente | null => {
@@ -25,7 +26,7 @@ const raizJaf = (): string => digitos(S.cfg<Record<string, string>>('empresa', {
 
 function Arquivo({ tipo, txt, lendo, aoEscolher }: { tipo: 'pdf' | 'xml'; txt: string; lendo: boolean; aoEscolher: (f: File) => void }) {
   return <label className={'btn pri grande arquivo-nota' + (lendo ? ' ocupado' : '')} data-doc={tipo}>
-    <input type="file" accept={tipo === 'pdf' ? '.pdf,application/pdf' : '.xml,text/xml,application/xml'} hidden
+    <input type="file" accept={tipo === 'pdf' ? '.pdf,application/pdf,.xlsx,.xlsm,.xlsb,.xls,.csv,.txt' : '.xml,text/xml,application/xml'} hidden
       onChange={(e) => { const f = e.currentTarget.files?.[0]; e.currentTarget.value = ''; if (f) aoEscolher(f) }} />
     <Ic n={tipo === 'pdf' ? 'imprimir' : 'nota'} /><span>{lendo ? 'Lendo…' : txt}</span>
   </label>
@@ -43,6 +44,8 @@ function EscolherPdf() {
   const ler = async (f: File) => {
     setLendo(true); j.erro('')
     try {
+      // planilha / texto do cliente: vai para a leitura da programação (mesmo arquivo do botão "Atualizar programação")
+      if (/\.(xlsx|xlsm|xlsb|xls|csv|txt)$/i.test(f.name)) { j.limparSujo(); j.fechar(null); setTimeout(() => void atualizarProgramacao({ arquivo: f }), 250); return }
       if (f.size > 15 * 1024 * 1024) throw new ErroNota('Arquivo grande demais para um pedido.')
       const linhas = await linhasDoPdf(await f.arrayBuffer())
       if (!linhas.length) throw new ErroNota('Este PDF não tem texto (parece uma foto ou um documento escaneado). Peça ao cliente o PDF gerado pelo sistema dele ou lance à mão.')
@@ -53,9 +56,10 @@ function EscolherPdf() {
     } catch (e) { if (e instanceof ErroNota) j.erro(e.message); else erro(e) } finally { setLendo(false) }
   }
   return <>
-    <p>Escolha o <b>PDF da ordem de compra</b> que o cliente mandou. O sistema lê o número do pedido, os códigos, as datas de entrega, as quantidades e os preços; você confere e lança tudo de uma vez.</p>
-    <Arquivo tipo="pdf" txt="Escolher o PDF do pedido" lendo={lendo} aoEscolher={(f) => void ler(f)} />
+    <p>Escolha o <b>PDF da ordem de compra</b> (ou a <b>planilha Excel</b> de programação) que o cliente mandou. O sistema lê o número do pedido, os códigos, as datas de entrega, as quantidades e os preços; você confere e lança tudo de uma vez.</p>
+    <Arquivo tipo="pdf" txt="Escolher o PDF ou Excel do pedido" lendo={lendo} aoEscolher={(f) => void ler(f)} />
     <ul className="dicas mt">
+      <li>Mandou uma planilha Excel (programação com as datas em colunas, ou uma linha por entrega)? O sistema abre a leitura da programação sozinho.</li>
       <li>Lê o código do cliente (ex.: o “Artículo” da ordem de compra) e acha a peça pelo cadastro de Produtos.</li>
       <li>Mandou o mesmo pedido de novo? O que já estava lançado (mesmo pedido, peça e data) não entra outra vez.</li>
       <li>O arquivo não sai do seu aparelho: só os itens que você confirmar vão para o sistema.</li>

@@ -3,7 +3,7 @@
  * Em vez de lançar item por item: escolhe o arquivo → o sistema compara com os pedidos em aberto do cliente e mostra
  * o que é novo, o que mudou de quantidade e o que saiu → a pessoa confere e confirma. Fica guardado quando foi a
  * última atualização, quem fez e o que mudou; a última dá para desfazer. */
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode, useEffect } from 'react'
 import { App } from '../../app/controle.tsx'
 import { API, ErroApp } from '../../lib/api.ts'
 import { S } from '../../lib/dados.ts'
@@ -54,12 +54,12 @@ interface Sim { id: string; linhas: number; iguais: number; n_novos: number; n_a
 interface Envio { cliente_id: string; arquivo: string; data_ref: string; ate: string | null; qtd_saldo: boolean; layout: Record<string, unknown>; ultimas_nf: unknown[]; linhas: LinhaRel[] }
 
 // ---------------------------------------------------------------- passo 1: o arquivo
-export async function atualizarProgramacao(ini: { cliente_id?: string | null } = {}): Promise<void> {
+export async function atualizarProgramacao(ini: { cliente_id?: string | null; arquivo?: File } = {}): Promise<void> {
   await S.garantir(['produtos', 'vendas', 'vendas_releases'])
   const est: Est = { grade: null, mapa: {}, leitura: null }
   await modal({
     titulo: 'Atualizar a programação do cliente', largura: 'larga',
-    corpo: <Arquivo est={est} cliIni={S.get('clientes', ini.cliente_id)} />,
+    corpo: <Arquivo est={est} cliIni={S.get('clientes', ini.cliente_id)} arqIni={ini.arquivo} />,
     botoes: [{ txt: 'Comparar com o sistema', icone: 'atualizar', acao: async (f) => {
       if (!est.grade || !est.leitura) throw new ErroApp('Escolha primeiro o arquivo que o cliente mandou.')
       const d = lerForm(f)
@@ -78,7 +78,7 @@ export async function atualizarProgramacao(ini: { cliente_id?: string | null } =
   })
 }
 
-function Arquivo({ est, cliIni }: { est: Est; cliIni: Cliente | null }) {
+function Arquivo({ est, cliIni, arqIni }: { est: Est; cliIni: Cliente | null; arqIni?: File }) {
   const j = useJanela()
   const combo = useRef<ComboApi<Cliente>>(null)
   const [lendo, setLendo] = useState(false)
@@ -124,6 +124,8 @@ function Arquivo({ est, cliIni }: { est: Est; cliIni: Cliente | null }) {
       if (e instanceof ErroRelease) j.erro(e.message); else erro(e)
     } finally { setLendo(false) }
   }
+  // veio de outro botão (ex.: "Pedido PDF / Excel") já com o arquivo escolhido
+  useEffect(() => { if (arqIni) void ler(arqIni) }, [])  // eslint-disable-line react-hooks/exhaustive-deps
   const trocar = (campo: CampoRel, v: string) => {
     if (!est.grade) return
     const m = { ...est.mapa }
@@ -150,6 +152,7 @@ function Arquivo({ est, cliIni }: { est: Est; cliIni: Cliente | null }) {
         ? <>{U.plural(l.linhas.length, 'entrega')} de {U.plural(l.pecas, 'peça')} · de {U.dataCurta(l.de)} a {U.dataCurta(l.ate)}{l.ignoradas ? ` · ${U.plural(l.ignoradas, 'linha incompleta ficou', 'linhas incompletas ficaram')} de fora` : ''}</>
         : 'Não consegui ler as entregas. Confira abaixo qual coluna é o quê.'}
     </div>}
+    {g?.nota && <p className="sub mt" data-rel-deitada="1"><Ic n="ok" /> {g.nota}</p>}
     <fieldset className="secao mt"><legend>De quem é e até quando</legend>
       <ComboCliente ref={combo} id="relCli" nome="cliente_id" rotulo="Cliente" req placeholder="Nome do cliente" inicial={cliIni} aoEscolher={usarAnterior} />
       <div className="linha-campos l2">
